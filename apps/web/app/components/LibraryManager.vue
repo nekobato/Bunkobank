@@ -17,6 +17,7 @@ const emit = defineEmits<{
 
 const {
   apiBase,
+  cancelJob,
   createCollectionRoot,
   createScanAllJobs,
   createScanJob,
@@ -30,6 +31,7 @@ const jobMessage = ref("");
 const isAddingRoot = ref(false);
 const isScanningAll = ref(false);
 const isRefreshingJobs = ref(false);
+const cancellingJobId = ref<string | null>(null);
 const scanningRootId = ref<string | null>(null);
 const deletingRootId = ref<string | null>(null);
 const {
@@ -170,6 +172,29 @@ const scanAllRoots = async (): Promise<void> => {
 };
 
 /**
+ * Cancels one queued or running scan job and refreshes the library state.
+ */
+const cancelScanJob = async (jobId: string): Promise<void> => {
+  if (cancellingJobId.value) {
+    return;
+  }
+
+  cancellingJobId.value = jobId;
+  jobMessage.value = "";
+
+  try {
+    await cancelJob(jobId);
+    jobMessage.value = "Scan cancelled";
+    await refreshJobList();
+    emit("updated");
+  } catch (error) {
+    jobMessage.value = getApiErrorMessage(error, "Failed to cancel scan");
+  } finally {
+    cancellingJobId.value = null;
+  }
+};
+
+/**
  * Refreshes roots, jobs, and the parent book list together.
  */
 const refreshManager = async (): Promise<void> => {
@@ -196,7 +221,11 @@ async function refreshJobList(): Promise<void> {
 </script>
 
 <template>
-  <section class="manager" aria-labelledby="library-manager-title">
+  <section
+    id="collections"
+    class="manager"
+    aria-labelledby="library-manager-title"
+  >
     <div class="head">
       <h2 id="library-manager-title">Collections</h2>
       <div class="actions">
@@ -268,7 +297,7 @@ async function refreshJobList(): Promise<void> {
         <p v-else class="message">No roots</p>
       </section>
 
-      <section class="group" aria-labelledby="library-jobs-title">
+      <section id="jobs" class="group" aria-labelledby="library-jobs-title">
         <div class="subhead">
           <h3 id="library-jobs-title">Jobs</h3>
           <button
@@ -297,6 +326,15 @@ async function refreshJobList(): Promise<void> {
               {{ getJobStatusLabel(job.status) }}
             </span>
             <span class="path">{{ getScanJobPath(job) ?? job.type }}</span>
+            <button
+              v-if="job.canCancel"
+              class="cancel-button"
+              type="button"
+              :disabled="cancellingJobId !== null"
+              @click="cancelScanJob(job.id)"
+            >
+              {{ cancellingJobId === job.id ? "Cancelling" : "Cancel" }}
+            </button>
             <progress
               class="progress"
               max="100"
@@ -321,6 +359,11 @@ async function refreshJobList(): Promise<void> {
 .manager {
   display: grid;
   gap: 1rem;
+  scroll-margin-top: 5rem;
+}
+
+#jobs {
+  scroll-margin-top: 5rem;
 }
 
 .head,
@@ -386,7 +429,8 @@ async function refreshJobList(): Promise<void> {
 .form button,
 .actions button,
 .subhead button,
-.root-actions button {
+.root-actions button,
+.cancel-button {
   min-height: 2.5rem;
   padding: 0 0.85rem;
   border: 1px solid var(--line);
@@ -404,7 +448,8 @@ async function refreshJobList(): Promise<void> {
 .form button:disabled,
 .actions button:disabled,
 .subhead button:disabled,
-.root-actions button:disabled {
+.root-actions button:disabled,
+.cancel-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -460,8 +505,12 @@ async function refreshJobList(): Promise<void> {
 }
 
 .job {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.cancel-button {
+  justify-self: end;
 }
 
 .job .message,

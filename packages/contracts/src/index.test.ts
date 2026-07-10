@@ -1,11 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  backgroundJobSchema,
   bookListQuerySchema,
   initialSetupRequestSchema,
   libraryExportResponseSchema,
   updateBookMetadataRequestSchema
 } from "./index.js";
+
+describe("backgroundJobSchema", () => {
+  it("describes cancellable and cancelled jobs", () => {
+    expect(
+      backgroundJobSchema.parse({
+        id: "job-1",
+        type: "scan-collection-root",
+        status: "cancelled",
+        payload: { collectionRootId: "root-1" },
+        progress: 35,
+        error: null,
+        canCancel: false,
+        createdAt: "2026-07-10T00:00:00.000Z",
+        updatedAt: "2026-07-10T00:01:00.000Z"
+      })
+    ).toMatchObject({
+      status: "cancelled",
+      progress: 35,
+      canCancel: false
+    });
+  });
+});
 
 describe("initialSetupRequestSchema", () => {
   it("applies default server network settings", () => {

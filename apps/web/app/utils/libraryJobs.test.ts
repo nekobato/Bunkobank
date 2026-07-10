@@ -46,11 +46,13 @@ describe("library job utilities", () => {
     expect(getJobStatusLabel("running")).toBe("Running");
     expect(getJobStatusLabel("completed")).toBe("Completed");
     expect(getJobStatusLabel("failed")).toBe("Failed");
+    expect(getJobStatusLabel("cancelled")).toBe("Cancelled");
 
     expect(getJobTone("queued")).toBe("active");
     expect(getJobTone("running")).toBe("active");
     expect(getJobTone("completed")).toBe("success");
     expect(getJobTone("failed")).toBe("danger");
+    expect(getJobTone("cancelled")).toBe("neutral");
   });
 
   it("reads a scan target path only from valid object payloads", () => {
@@ -113,6 +115,7 @@ const createJob = (
         },
   progress: overrides.progress ?? 100,
   error: overrides.error ?? null,
+  canCancel: overrides.canCancel ?? false,
   createdAt: overrides.createdAt ?? "2026-07-09T00:00:00.000Z",
   updatedAt: overrides.updatedAt ?? "2026-07-09T00:00:00.000Z"
 });

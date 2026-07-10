@@ -108,7 +108,7 @@ const submitLogin = async (): Promise<void> => {
 .login {
   display: grid;
   place-items: start center;
-  min-height: calc(100dvh - 57px);
+  min-height: calc(100dvh - var(--app-topbar-height, 4rem));
   padding: clamp(1rem, 4vw, 2rem);
 }
 

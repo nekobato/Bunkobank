@@ -18,6 +18,7 @@ export interface GenerateBookThumbnailOptions {
   sourceData?: Uint8Array;
   thumbnailDir: string;
   page: number;
+  signal?: AbortSignal;
 }
 
 export interface GeneratedBookThumbnail {
@@ -33,7 +34,9 @@ export interface GeneratedBookThumbnail {
 export const generateBookThumbnail = async (
   options: GenerateBookThumbnailOptions
 ): Promise<GeneratedBookThumbnail> => {
+  options.signal?.throwIfAborted();
   await mkdir(options.thumbnailDir, { recursive: true });
+  options.signal?.throwIfAborted();
 
   const source = getSharpSource(options);
   const thumbnailPath = join(options.thumbnailDir, `${options.bookId}.webp`);
@@ -45,6 +48,7 @@ export const generateBookThumbnail = async (
     })
     .webp({ quality: 80 })
     .toFile(thumbnailPath);
+  options.signal?.throwIfAborted();
 
   const width = info.width ?? thumbnailWidth;
   const height = info.height ?? thumbnailHeight;

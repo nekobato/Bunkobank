@@ -2,16 +2,13 @@
  * Shared planning surface for the future Tauri manager application.
  */
 
-import { posix } from "node:path";
-
 import {
   createServerUrl,
-  getDefaultDataDir,
   normalizeBindHost,
   type AppConfig,
   type BindHost,
   type ThumbnailSettings
-} from "@bookcafe/config";
+} from "@bookcafe/config/shared";
 import { healthResponseSchema } from "@bookcafe/contracts";
 
 import type { InitialSetupRequest } from "@bookcafe/contracts";
@@ -226,10 +223,10 @@ export const normalizePort = (port: number): number =>
 /**
  * Creates the default setup draft for the desktop manager setup form.
  */
-export const createDefaultSetupDraft = (): SetupDraft => ({
+export const createDefaultSetupDraft = (dataDir = ""): SetupDraft => ({
   username: "",
   password: "",
-  dataDir: getDefaultDataDir(),
+  dataDir,
   host: "127.0.0.1",
   port: 4510,
   thumbnails: { enabled: true }
@@ -350,7 +347,8 @@ export const readManagedServerStatus = createManagedServerStatusReader();
 export const createMacLaunchAgentPath = (
   label: string,
   homeDir: string
-): string => posix.join(homeDir, "Library", "LaunchAgents", `${label}.plist`);
+): string =>
+  joinPosixPath(homeDir, "Library", "LaunchAgents", `${label}.plist`);
 
 /**
  * Creates the LaunchAgent model for the BookCafe server sidecar.
@@ -376,8 +374,8 @@ export const createBookCafeServerLaunchAgent = (
   keepAlive: true,
   ...(options.logDir
     ? {
-        standardOutPath: posix.join(options.logDir, "server.out.log"),
-        standardErrorPath: posix.join(options.logDir, "server.err.log")
+        standardOutPath: joinPosixPath(options.logDir, "server.out.log"),
+        standardErrorPath: joinPosixPath(options.logDir, "server.err.log")
       }
     : {})
 });
@@ -680,6 +678,35 @@ const getManagedServerLifecycleState = (
   }
 
   return managedByDesktop ? "starting" : "stopped";
+};
+
+/**
+ * Joins POSIX path segments without relying on Node.js APIs in the Tauri
+ * WebView bundle.
+ */
+const joinPosixPath = (...segments: string[]): string => {
+  const absolute = segments[0]?.startsWith("/") ?? false;
+  const pathSegments = segments
+    .flatMap((segment) => segment.split("/"))
+    .filter((segment) => segment.length > 0 && segment !== ".")
+    .reduce<string[]>((result, segment) => {
+      if (segment === "..") {
+        if (result.length > 0 && result.at(-1) !== "..") {
+          return result.slice(0, -1);
+        }
+
+        return absolute ? result : [...result, segment];
+      }
+
+      return [...result, segment];
+    }, []);
+  const joined = pathSegments.join("/");
+
+  if (absolute) {
+    return joined ? `/${joined}` : "/";
+  }
+
+  return joined || ".";
 };
 
 /**

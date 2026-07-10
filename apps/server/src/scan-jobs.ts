@@ -29,20 +29,32 @@ export interface RunScanCollectionRootJobOptions {
   configPath?: string;
   jobId: string;
   collectionRootId: string;
+  signal?: AbortSignal;
+}
+
+export interface RunScanCollectionRootJobDependencies {
+  scanCollectionRoot?: typeof scanCollectionRoot;
 }
 
 /**
  * Runs a scan job and persists discovered image-folder books.
  */
 export const runScanCollectionRootJob = async (
-  options: RunScanCollectionRootJobOptions
+  options: RunScanCollectionRootJobOptions,
+  dependencies: RunScanCollectionRootJobDependencies = {}
 ): Promise<void> => {
+  options.signal?.throwIfAborted();
   const config = loadConfig(options.configPath);
   const paths = resolveDataPaths(config.dataDir);
   const database = openBookCafeDatabase(paths.databasePath);
 
   try {
-    markJobRunning(database, options.jobId);
+    options.signal?.throwIfAborted();
+    const runningJob = markJobRunning(database, options.jobId);
+
+    if (runningJob?.status !== "running") {
+      return;
+    }
 
     const root = findCollectionRoot(database, options.collectionRootId);
 
@@ -50,9 +62,15 @@ export const runScanCollectionRootJob = async (
       throw new Error("Collection root not found.");
     }
 
-    const scannedBooks = await scanCollectionRoot(root.path);
+    const scannedBooks = await (
+      dependencies.scanCollectionRoot ?? scanCollectionRoot
+    )(root.path, {
+      signal: options.signal
+    });
+    options.signal?.throwIfAborted();
 
     for (const [index, book] of scannedBooks.entries()) {
+      options.signal?.throwIfAborted();
       const persistedBook = persistScannedBook(database, {
         collectionRootId: root.id,
         title: book.title,
@@ -107,13 +125,16 @@ export const runScanCollectionRootJob = async (
                 : undefined,
             sourceData: sourceData ?? undefined,
             thumbnailDir: paths.thumbnailDir,
-            page: 1
+            page: 1,
+            signal: options.signal
           });
         } catch {
+          options.signal?.throwIfAborted();
           // Thumbnail generation is best effort during scan.
         }
       }
 
+      options.signal?.throwIfAborted();
       updateJobProgress(
         database,
         options.jobId,
@@ -121,6 +142,7 @@ export const runScanCollectionRootJob = async (
       );
     }
 
+    options.signal?.throwIfAborted();
     const missingBooks = markMissingBooksForCollectionRoot(
       database,
       root.id,
@@ -135,6 +157,10 @@ export const runScanCollectionRootJob = async (
     });
     markJobCompleted(database, options.jobId);
   } catch (error) {
+    if (options.signal?.aborted) {
+      return;
+    }
+
     markJobFailed(
       database,
       options.jobId,

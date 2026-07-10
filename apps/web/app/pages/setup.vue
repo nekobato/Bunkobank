@@ -3,6 +3,7 @@ import { getApiErrorMessage } from "../utils/apiErrors";
 
 const {
   apiBase,
+  cancelJob,
   createCollectionRoot,
   createInitialSetup,
   createScanAllJobs,
@@ -28,6 +29,7 @@ const message = ref("");
 const rootMessage = ref("");
 const networkMessage = ref("");
 const thumbnailMessage = ref("");
+const jobMessage = ref("");
 const isSaving = ref(false);
 const isSavingNetwork = ref(false);
 const isSavingThumbnails = ref(false);
@@ -35,6 +37,7 @@ const isAddingRoot = ref(false);
 const isScanningAll = ref(false);
 const scanningRootId = ref<string | null>(null);
 const deletingRootId = ref<string | null>(null);
+const cancellingJobId = ref<string | null>(null);
 const { data: status, refresh } = await useAsyncData(
   "setup-status",
   getSetupStatus,
@@ -264,6 +267,28 @@ const scanAllRoots = async (): Promise<void> => {
     rootMessage.value = getApiErrorMessage(error, "Failed");
   } finally {
     isScanningAll.value = false;
+  }
+};
+
+/**
+ * Cancels one queued or running scan job.
+ */
+const cancelScanJob = async (jobId: string): Promise<void> => {
+  if (cancellingJobId.value) {
+    return;
+  }
+
+  cancellingJobId.value = jobId;
+  jobMessage.value = "";
+
+  try {
+    await cancelJob(jobId);
+    jobMessage.value = "Scan cancelled";
+    await refreshJobs();
+  } catch (error) {
+    jobMessage.value = getApiErrorMessage(error, "Failed to cancel scan");
+  } finally {
+    cancellingJobId.value = null;
   }
 };
 </script>
@@ -559,12 +584,23 @@ const scanAllRoots = async (): Promise<void> => {
           <span class="badge">{{ job.status }}</span>
           <span class="path">{{ job.type }}</span>
           <span class="progress">{{ job.progress }}%</span>
+          <button
+            v-if="job.canCancel"
+            type="button"
+            :disabled="cancellingJobId !== null"
+            @click="cancelScanJob(job.id)"
+          >
+            {{ cancellingJobId === job.id ? "Cancelling" : "Cancel" }}
+          </button>
         </li>
       </ul>
       <p v-else-if="protectedStatus" class="message">
         {{ protectedStatus }}
       </p>
       <p v-else class="message">No jobs</p>
+      <p v-if="jobMessage" class="message" aria-live="polite">
+        {{ jobMessage }}
+      </p>
     </section>
   </section>
 </template>
@@ -732,7 +768,7 @@ const scanAllRoots = async (): Promise<void> => {
 }
 
 .job-item {
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
 }
 
 .path {
@@ -755,6 +791,21 @@ const scanAllRoots = async (): Promise<void> => {
   color: var(--text);
   background: var(--surface);
   cursor: pointer;
+}
+
+.job-item button {
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.job-item button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .root-actions button:disabled {

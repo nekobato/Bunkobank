@@ -16,6 +16,15 @@ afterEach(() => {
 });
 
 describe("scanCollectionRoot", () => {
+  it("stops before filesystem work when the scan is cancelled", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      scanCollectionRoot("/collection", { signal: controller.signal })
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("discovers nested image-folder books with naturally sorted pages", async () => {
     const root = join(mkdirTempDir(), "collection");
     const bookDir = join(root, "Volume 1");

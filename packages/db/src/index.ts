@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
-import { and, asc, count, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, like, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -98,8 +98,10 @@ export type BookPageRow = typeof bookPages.$inferSelect;
 export type ThumbnailRow = typeof thumbnails.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
 
-export type JobStatus = "queued" | "running" | "completed" | "failed";
+export type JobStatus =
+  "queued" | "running" | "completed" | "failed" | "cancelled";
 export type JobType = "scan-collection-root";
+export type CancelJobResult = "cancelled" | "not-found" | "not-cancellable";
 export type DeleteCollectionRootResult = "deleted" | "not-found" | "has-books";
 export type BookPageSourceType =
   "file" | "archive-entry" | "packed-archive-entry" | "pdf-page" | "epub-page";
@@ -807,12 +809,37 @@ export const findJob = (
 };
 
 /**
+ * Atomically cancels a queued or running job without changing terminal jobs.
+ */
+export const cancelJob = (
+  database: BookCafeDatabase,
+  jobId: string
+): CancelJobResult => {
+  const result = database.db
+    .update(jobs)
+    .set({
+      status: "cancelled",
+      error: null,
+      updatedAt: new Date()
+    })
+    .where(and(eq(jobs.id, jobId), inArray(jobs.status, ["queued", "running"])))
+    .run();
+
+  if (Number(result.changes) > 0) {
+    return "cancelled";
+  }
+
+  return findJob(database, jobId) ? "not-cancellable" : "not-found";
+};
+
+/**
  * Marks a job as running.
  */
 export const markJobRunning = (
   database: BookCafeDatabase,
   jobId: string
-): JobRecord | null => updateJob(database, jobId, "running", 5, null);
+): JobRecord | null =>
+  updateJob(database, jobId, "running", 5, null, ["queued"]);
 
 /**
  * Marks a job as completed.
@@ -820,7 +847,8 @@ export const markJobRunning = (
 export const markJobCompleted = (
   database: BookCafeDatabase,
   jobId: string
-): JobRecord | null => updateJob(database, jobId, "completed", 100, null);
+): JobRecord | null =>
+  updateJob(database, jobId, "completed", 100, null, ["running"]);
 
 /**
  * Marks a job as failed with an error message.
@@ -829,7 +857,8 @@ export const markJobFailed = (
   database: BookCafeDatabase,
   jobId: string,
   error: string
-): JobRecord | null => updateJob(database, jobId, "failed", 100, error);
+): JobRecord | null =>
+  updateJob(database, jobId, "failed", 100, error, ["queued", "running"]);
 
 /**
  * Updates a job progress value without changing status.
@@ -851,7 +880,7 @@ export const updateJobProgress = (
       progress: Math.min(Math.max(Math.trunc(progress), 0), 100),
       updatedAt: new Date()
     })
-    .where(eq(jobs.id, jobId))
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, "running")))
     .run();
 
   return findJob(database, jobId);
@@ -877,7 +906,7 @@ export const updateJobPayload = (
       payload: JSON.stringify(payload),
       updatedAt: new Date()
     })
-    .where(eq(jobs.id, jobId))
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, "running")))
     .run();
 
   return findJob(database, jobId);
@@ -928,7 +957,8 @@ const updateJob = (
   jobId: string,
   status: JobStatus,
   progress: number,
-  error: string | null
+  error: string | null,
+  allowedStatuses: JobStatus[]
 ): JobRecord | null => {
   database.db
     .update(jobs)
@@ -938,7 +968,7 @@ const updateJob = (
       error,
       updatedAt: new Date()
     })
-    .where(eq(jobs.id, jobId))
+    .where(and(eq(jobs.id, jobId), inArray(jobs.status, allowedStatuses)))
     .run();
 
   return findJob(database, jobId);

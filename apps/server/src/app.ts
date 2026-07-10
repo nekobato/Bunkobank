@@ -35,6 +35,7 @@ import {
   updateBookProgressRequestSchema
 } from "@bookcafe/contracts";
 import {
+  cancelJob,
   closeDatabase,
   createJob,
   deleteCollectionRoot,
@@ -116,6 +117,23 @@ export const createApp = (options: AppOptions = {}) => {
 
     try {
       return await callback(database);
+    } finally {
+      closeDatabase(database);
+    }
+  };
+
+  /**
+   * Runs one synchronous database operation without yielding between state
+   * transition and its caller's next in-process action.
+   */
+  const withDatabaseSync = <T>(
+    callback: (database: BookCafeDatabase) => T
+  ): T => {
+    const paths = resolveDataPaths(readConfig().dataDir);
+    const database = openBookCafeDatabase(paths.databasePath);
+
+    try {
+      return callback(database);
     } finally {
       closeDatabase(database);
     }
@@ -393,6 +411,32 @@ export const createApp = (options: AppOptions = {}) => {
     return c.json(backgroundJobSchema.parse(toBackgroundJobResponse(job)));
   });
 
+  app.delete("/api/jobs/:jobId", async (c) => {
+    const jobId = c.req.param("jobId");
+    const result = withDatabaseSync((database) => {
+      const cancellation = cancelJob(database, jobId);
+
+      return {
+        cancellation,
+        job: findJob(database, jobId)
+      };
+    });
+
+    if (result.cancellation === "not-found" || !result.job) {
+      return c.json({ message: "Job not found." }, 404);
+    }
+
+    if (result.cancellation === "not-cancellable") {
+      return c.json({ message: "Job can no longer be cancelled." }, 409);
+    }
+
+    jobQueue.cancel(jobId);
+
+    return c.json(
+      backgroundJobSchema.parse(toBackgroundJobResponse(result.job))
+    );
+  });
+
   app.post(
     "/api/jobs/scan",
     zValidator("json", scanJobCreateRequestSchema),
@@ -416,11 +460,12 @@ export const createApp = (options: AppOptions = {}) => {
         })
       );
 
-      jobQueue.add(() =>
+      jobQueue.add(job.id, (signal) =>
         runScanCollectionRootJob({
           configPath: options.configPath,
           jobId: job.id,
-          collectionRootId: root.id
+          collectionRootId: root.id,
+          signal
         })
       );
 
@@ -454,11 +499,12 @@ export const createApp = (options: AppOptions = {}) => {
         continue;
       }
 
-      jobQueue.add(() =>
+      jobQueue.add(job.id, (signal) =>
         runScanCollectionRootJob({
           configPath: options.configPath,
           jobId: job.id,
-          collectionRootId
+          collectionRootId,
+          signal
         })
       );
     }
@@ -823,6 +869,7 @@ const toBackgroundJobResponse = (job: JobRecord) => ({
   payload: job.payload,
   progress: job.progress,
   error: job.error,
+  canCancel: job.status === "queued" || job.status === "running",
   createdAt: job.createdAt.toISOString(),
   updatedAt: job.updatedAt.toISOString()
 });

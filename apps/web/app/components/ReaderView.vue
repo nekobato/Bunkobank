@@ -881,7 +881,7 @@ onUnmounted(() => {
 <style scoped>
 .reader {
   display: grid;
-  height: calc(100dvh - 57px);
+  height: calc(100dvh - var(--app-topbar-height, 4rem));
   min-height: 0;
   grid-template-rows: auto 1fr;
   color: var(--reader-text);
@@ -1005,7 +1005,7 @@ onUnmounted(() => {
   gap: var(--spread-gap);
   width: 100%;
   max-width: 100%;
-  max-height: calc(100dvh - 130px);
+  max-height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
   transform-origin: center center;
   transition: transform 120ms ease-out;
 }
@@ -1024,7 +1024,7 @@ onUnmounted(() => {
 
 .fit-contain .page {
   max-width: min(100%, 980px);
-  max-height: calc(100dvh - 130px);
+  max-height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
 }
 
 .fit-contain .spread .page.is-spread {
@@ -1046,7 +1046,7 @@ onUnmounted(() => {
 .fit-height .page {
   width: auto;
   max-width: none;
-  height: calc(100dvh - 130px);
+  height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
   max-height: 100%;
 }
 
@@ -1103,7 +1103,7 @@ onUnmounted(() => {
 .mode-vertical.fit-height .page {
   width: auto;
   max-width: none;
-  height: calc(100dvh - 130px);
+  height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
 }
 
 .mode-vertical.fit-actual .page {

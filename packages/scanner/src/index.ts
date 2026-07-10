@@ -34,6 +34,7 @@ export interface CandidateSource {
  */
 export interface ScanCollectionRootOptions {
   concurrency?: number;
+  signal?: AbortSignal;
 }
 
 export interface ScanCandidate extends CandidateSource {
@@ -49,6 +50,7 @@ interface FileBookCandidate {
 
 interface ScanRuntime {
   concurrency: number;
+  signal?: AbortSignal;
 }
 
 export type ScannedPageSourceType =
@@ -112,14 +114,17 @@ export const scanCollectionRoot = async (
   const runtime = createScanRuntime(options);
 
   try {
+    runtime.signal?.throwIfAborted();
     const rootStat = await stat(root);
+    runtime.signal?.throwIfAborted();
 
     if (!rootStat.isDirectory()) {
       return [];
     }
 
-    return scanDirectory(root, runtime);
+    return await scanDirectory(root, runtime);
   } catch {
+    runtime.signal?.throwIfAborted();
     return [];
   }
 };
@@ -131,7 +136,9 @@ const scanDirectory = async (
   directoryPath: string,
   runtime: ScanRuntime
 ): Promise<ScannedBook[]> => {
+  runtime.signal?.throwIfAborted();
   const entries = await readdir(directoryPath, { withFileTypes: true });
+  runtime.signal?.throwIfAborted();
   const imageNames = sortPageNames(
     entries
       .filter(
@@ -162,25 +169,41 @@ const scanDirectory = async (
       archiveCandidates,
       runtime.concurrency,
       (candidate) =>
-        createScannedBookSafely(() =>
-          createArchiveBook(candidate.path, candidate.format)
-        )
+        createScannedBookSafely(
+          () => createArchiveBook(candidate.path, candidate.format),
+          runtime.signal
+        ),
+      runtime.signal
     )
   ).filter((book): book is ScannedBook => book !== null);
   const pdfCandidates = sortFileBookCandidates(
     fileCandidates.filter((candidate) => candidate.format === "pdf")
   );
   const pdfBooks = (
-    await mapWithConcurrency(pdfCandidates, runtime.concurrency, (candidate) =>
-      createScannedBookSafely(() => createPdfBook(candidate.path))
+    await mapWithConcurrency(
+      pdfCandidates,
+      runtime.concurrency,
+      (candidate) =>
+        createScannedBookSafely(
+          () => createPdfBook(candidate.path),
+          runtime.signal
+        ),
+      runtime.signal
     )
   ).filter((book): book is ScannedBook => book !== null);
   const epubCandidates = sortFileBookCandidates(
     fileCandidates.filter((candidate) => candidate.format === "epub")
   );
   const epubBooks = (
-    await mapWithConcurrency(epubCandidates, runtime.concurrency, (candidate) =>
-      createScannedBookSafely(() => createEpubBook(candidate.path))
+    await mapWithConcurrency(
+      epubCandidates,
+      runtime.concurrency,
+      (candidate) =>
+        createScannedBookSafely(
+          () => createEpubBook(candidate.path),
+          runtime.signal
+        ),
+      runtime.signal
     )
   ).filter((book): book is ScannedBook => book !== null);
   const packedArchiveCandidates = sortFileBookCandidates(
@@ -196,9 +219,11 @@ const scanDirectory = async (
       packedArchiveCandidates,
       runtime.concurrency,
       (candidate) =>
-        createScannedBookSafely(() =>
-          createPackedArchiveBook(candidate.path, candidate.format)
-        )
+        createScannedBookSafely(
+          () => createPackedArchiveBook(candidate.path, candidate.format),
+          runtime.signal
+        ),
+      runtime.signal
     )
   ).filter((book): book is ScannedBook => book !== null);
   const childDirectories = sortPageNames(
@@ -211,10 +236,13 @@ const scanDirectory = async (
   const nestedBooks: ScannedBook[][] = [];
 
   for (const name of childDirectories) {
+    runtime.signal?.throwIfAborted();
     nestedBooks.push(
       await scanDirectorySafely(join(directoryPath, name), runtime)
     );
   }
+
+  runtime.signal?.throwIfAborted();
 
   return [
     ...archiveBooks,
@@ -235,6 +263,7 @@ const scanDirectorySafely = async (
   try {
     return await scanDirectory(directoryPath, runtime);
   } catch {
+    runtime.signal?.throwIfAborted();
     return [];
   }
 };
@@ -243,11 +272,16 @@ const scanDirectorySafely = async (
  * Creates one book without letting one unreadable candidate stop the scan.
  */
 const createScannedBookSafely = async (
-  createBook: () => Promise<ScannedBook | null>
+  createBook: () => Promise<ScannedBook | null>,
+  signal?: AbortSignal
 ): Promise<ScannedBook | null> => {
   try {
-    return await createBook();
+    signal?.throwIfAborted();
+    const book = await createBook();
+    signal?.throwIfAborted();
+    return book;
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 };
@@ -267,18 +301,24 @@ const listFileBookCandidates = async (
       ),
       runtime.concurrency,
       async (entry) => {
+        runtime.signal?.throwIfAborted();
         const path = join(directoryPath, entry.name);
 
         try {
-          return {
+          const candidate = {
             name: entry.name,
             path,
             format: await detectFileFormat(path, false)
           };
+
+          runtime.signal?.throwIfAborted();
+          return candidate;
         } catch {
+          runtime.signal?.throwIfAborted();
           return null;
         }
-      }
+      },
+      runtime.signal
     )
   ).filter((candidate): candidate is FileBookCandidate => candidate !== null);
 
@@ -325,7 +365,8 @@ const createImageFolderBook = async (
   const stats = await mapWithConcurrency(
     pagePaths,
     runtime.concurrency,
-    (path) => stat(path)
+    (path) => stat(path),
+    runtime.signal
   );
   const size = stats.reduce((total, item) => total + item.size, 0);
   const mtimeMs = stats.reduce(
@@ -538,7 +579,8 @@ const toPackedArchiveFormat = (
 const createScanRuntime = (
   options: ScanCollectionRootOptions
 ): ScanRuntime => ({
-  concurrency: normalizeScanConcurrency(options.concurrency)
+  concurrency: normalizeScanConcurrency(options.concurrency),
+  signal: options.signal
 });
 
 /**
@@ -558,8 +600,11 @@ const normalizeScanConcurrency = (concurrency: number | undefined): number => {
 const mapWithConcurrency = async <Input, Output>(
   items: Input[],
   concurrency: number,
-  mapper: (item: Input, index: number) => Promise<Output>
+  mapper: (item: Input, index: number) => Promise<Output>,
+  signal?: AbortSignal
 ): Promise<Output[]> => {
+  signal?.throwIfAborted();
+
   if (items.length === 0) {
     return [];
   }
@@ -570,6 +615,7 @@ const mapWithConcurrency = async <Input, Output>(
 
   const workers = Array.from({ length: workerCount }, async () => {
     for (;;) {
+      signal?.throwIfAborted();
       const index = nextIndex;
       nextIndex += 1;
 
@@ -578,6 +624,7 @@ const mapWithConcurrency = async <Input, Output>(
       }
 
       results[index] = await mapper(items[index] as Input, index);
+      signal?.throwIfAborted();
     }
   });
 

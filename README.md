@@ -208,6 +208,15 @@ Hono serverは`/api/*`でbackend APIを提供し、それ以外のrouteではNux
 - 狭い画面ではサイドバーを折りたたみ、drawerとして開閉できる形にする。
 - 読書画面では本文表示を優先し、サイドバーは既定で隠すか、読書操作を妨げない表示にする。
 
+実装済みのWeb UI navigation:
+
+- desktopではLibrary、Collections、Jobs、Setupへの主要navigationを常設サイドバーに配置する。
+- 狭い画面では主要navigationをnative dialogのdrawerとして開き、Escape、背景クリック、close button、遷移完了で閉じられる。
+- drawerをmodal表示している間はbrowser標準のfocus管理と外側contentのinert化を利用する。
+- CollectionsとJobsはLibrary画面内の対応sectionへ直接移動できる。
+- 読書画面では画面幅にかかわらずサイドバーを隠し、menu buttonから必要な場合だけdrawerを開ける。
+- keyboard利用者が反復navigationを飛ばせるよう、main contentへのskip linkを提供する。
+
 ## 本ビューワー方針
 
 本のビューワーはプロダクト体験の中核なので、外部ライブラリに読書体験全体を預けず、`apps/web`で自前実装することを第一候補にする。
@@ -334,6 +343,17 @@ Hono serverは`/api/*`でbackend APIを提供し、それ以外のrouteではNux
 - job APIは機能実装に合わせて設計するが、frontendが進捗、成功、失敗、キャンセル可否を表示できる状態を返す。
 - 外部queue serviceやRedis前提のqueueは初期構成では採用しない。
 
+実装済みのjob cancellation:
+
+- job responseは`queued`または`running`のときだけ`canCancel: true`を返す。
+- 認証済みの`DELETE /api/jobs/:jobId`で、待機中または実行中のscan jobを`cancelled`へ変更できる。
+- 待機中jobは`p-queue`へ渡した`AbortSignal`でqueueから除去し、scan処理を開始しない。
+- 実行中jobはscanner、book persist、thumbnail、missing判定などの協調停止境界で中断する。
+- `cancelled`は終端状態とし、遅れて完了したworkerがprogress、payload、`completed`、`failed`で上書きしないよう、SQLiteの状態条件付き更新を使う。
+- キャンセル前に永続化を完了した本はrollbackせず、以降の本とmissing判定を停止するbest-effort cancellationとする。
+- archive展開、PDF解析、EPUB解析、画像変換など中断APIを持たない処理は、その処理が戻った次の協調停止境界で終了する。
+- Library画面とSetup画面はキャンセル可能なjobだけにCancel buttonを表示し、結果をjob listへ反映する。
+
 ## Tauri desktop appの役割
 
 - 初期設定画面を提供する。
@@ -359,6 +379,11 @@ Hono serverは`/api/*`でbackend APIを提供し、それ以外のrouteではNux
 - macOS向けにHono server sidecar用LaunchAgentのplist model、plist XML、保存先pathを生成できる。
 - macOS向けLaunchAgentの現在plistをexpected plistと比較し、作成、更新、削除、変更なしの操作planを副作用なしで生成できる。
 - Windows向けにTauri autostart pluginの有効状態から、ログイン時起動の有効化、無効化、変更なしの操作planと必要permissionを副作用なしで生成できる。
+- desktop managerは現在起動中のserverからsetup statusを取得し、初期setup requestを送信して、responseを共有contractで検証できる。送信先は現在のserver port、保存対象はsetup draftの新しいportとして分離する。
+- sidecar起動、既知child停止、browser URL open、LaunchAgent plist読取・書込・削除、Windows autostart状態確認・切替を、注入されたTauriまたはOS adapter経由で実行する操作層を提供する。
+- 操作planが変更なしの場合はadapterを呼ばず、sidecar起動結果のPIDが正の整数でなければmanaged childとして保持しない。
+- `apps/desktop`の共有planning・operation codeはNode.js runtime APIへ依存せず、Tauri WebView bundleから利用できる。
+- 現時点の操作層は副作用adapterの境界までを実装している。Tauri plugin、LaunchAgentの`launchctl`登録、sidecar packageとの実接続は後続実装とする。
 
 ## 常駐化・自動起動の初期方針
 

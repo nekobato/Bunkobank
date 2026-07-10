@@ -184,6 +184,18 @@ export const useBookApi = () => {
     });
 
   /**
+   * Cancels one queued or running background job.
+   */
+  const cancelJob = (jobId: string) =>
+    $fetch<BackgroundJobResponse>(
+      `${apiBase}/jobs/${encodeURIComponent(jobId)}`,
+      {
+        credentials: "include",
+        method: "DELETE"
+      }
+    );
+
+  /**
    * Starts a collection-root scan job.
    */
   const createScanJob = (body: ScanJobCreateRequest) =>
@@ -204,6 +216,7 @@ export const useBookApi = () => {
 
   return {
     apiBase,
+    cancelJob,
     createCollectionRoot,
     createInitialSetup,
     createScanAllJobs,

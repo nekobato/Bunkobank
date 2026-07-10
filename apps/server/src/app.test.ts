@@ -115,6 +115,7 @@ describe("BookCafe Hono app", () => {
       completedJobId = completedJob.id;
 
       markJobRunning(database, runningJob.id);
+      markJobRunning(database, completedJob.id);
       markJobCompleted(database, completedJob.id);
     } finally {
       closeDatabase(database);
@@ -744,6 +745,93 @@ describe("BookCafe Hono app", () => {
         path: populatedCollectionPath
       })
     ]);
+  });
+
+  it("lets authenticated users cancel queued scan jobs", async () => {
+    const { dir, configPath } = createTestConfig();
+    const collectionPath = join(dir, "collection");
+    const bookPath = join(collectionPath, "Volume 1");
+    mkdirSync(bookPath, { recursive: true });
+    writeFileSync(join(bookPath, "001.jpg"), "image-one");
+
+    const jobQueue = createBookCafeJobQueue(1);
+    const blockerStarted = createDeferred<void>();
+    const releaseBlocker = createDeferred<void>();
+    jobQueue.add("test-blocker", async () => {
+      blockerStarted.resolve();
+      await releaseBlocker.promise;
+    });
+
+    const app = createApp({ configPath, jobQueue });
+    await initializeUser(app);
+    const cookie = await signInUser(app);
+    await blockerStarted.promise;
+
+    const rootResponse = await app.request("/api/collection-roots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ path: collectionPath })
+    });
+    const root = await rootResponse.json();
+    const jobResponse = await app.request("/api/jobs/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ collectionRootId: root.id })
+    });
+    const queuedJob = await jobResponse.json();
+    const unauthorizedResponse = await app.request(
+      `/api/jobs/${queuedJob.id}`,
+      { method: "DELETE" }
+    );
+    const cancelResponse = await app.request(`/api/jobs/${queuedJob.id}`, {
+      method: "DELETE",
+      headers: { Cookie: cookie }
+    });
+    const cancelledJob = await cancelResponse.json();
+    const repeatedCancelResponse = await app.request(
+      `/api/jobs/${queuedJob.id}`,
+      {
+        method: "DELETE",
+        headers: { Cookie: cookie }
+      }
+    );
+    const missingCancelResponse = await app.request("/api/jobs/missing-job", {
+      method: "DELETE",
+      headers: { Cookie: cookie }
+    });
+
+    releaseBlocker.resolve();
+    await jobQueue.onIdle();
+
+    const database = openBookCafeDatabase(resolveDataPaths(dir).databasePath);
+
+    try {
+      expect(rootResponse.status).toBe(201);
+      expect(jobResponse.status).toBe(202);
+      expect(queuedJob).toEqual(
+        expect.objectContaining({ status: "queued", canCancel: true })
+      );
+      expect(unauthorizedResponse.status).toBe(401);
+      expect(cancelResponse.status).toBe(200);
+      expect(cancelledJob).toEqual(
+        expect.objectContaining({
+          id: queuedJob.id,
+          status: "cancelled",
+          canCancel: false
+        })
+      );
+      expect(repeatedCancelResponse.status).toBe(409);
+      expect(missingCancelResponse.status).toBe(404);
+      expect(listBookSummaries(database)).toEqual([]);
+      expect(listJobs(database)).toEqual([
+        expect.objectContaining({
+          id: queuedJob.id,
+          status: "cancelled"
+        })
+      ]);
+    } finally {
+      closeDatabase(database);
+    }
   });
 
   it("scans an image-folder collection root into persisted books", async () => {
@@ -1486,6 +1574,21 @@ const createTestConfig = (options: { port?: number } = {}) => {
   );
 
   return { dir, configPath, port };
+};
+
+interface Deferred<Value> {
+  promise: Promise<Value>;
+  resolve: (value: Value) => void;
+}
+
+/** Creates a manually resolved promise for deterministic queue tests. */
+const createDeferred = <Value>(): Deferred<Value> => {
+  let resolvePromise: (value: Value) => void = () => undefined;
+  const promise = new Promise<Value>((resolve) => {
+    resolvePromise = resolve;
+  });
+
+  return { promise, resolve: resolvePromise };
 };
 
 /**

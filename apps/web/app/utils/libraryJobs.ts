@@ -36,6 +36,8 @@ export const getJobStatusLabel = (
       return "Completed";
     case "failed":
       return "Failed";
+    case "cancelled":
+      return "Cancelled";
   }
 };
 
@@ -53,6 +55,8 @@ export const getJobTone = (
       return "success";
     case "failed":
       return "danger";
+    case "cancelled":
+      return "neutral";
   }
 };
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createBookCafeServerLaunchAgent,
+  createDefaultSetupDraft,
   createInitialSetupRequest,
   createMacLaunchAgentInstallPlan,
   createMacLaunchAgentPath,
@@ -25,6 +26,14 @@ import {
 } from "./index.js";
 
 describe("desktop setup helpers", () => {
+  it("accepts the Tauri-resolved data directory for a default draft", () => {
+    expect(createDefaultSetupDraft("/Users/alice/BookCafe")).toMatchObject({
+      dataDir: "/Users/alice/BookCafe",
+      host: "127.0.0.1",
+      port: 4510
+    });
+  });
+
   it("normalizes unsafe setup draft values", () => {
     expect(
       normalizeSetupDraft({
@@ -89,6 +98,22 @@ describe("desktop macOS launch agent helpers", () => {
     expect(
       createMacLaunchAgentPath("dev.bookcafe.server", "/Users/alice")
     ).toBe("/Users/alice/Library/LaunchAgents/dev.bookcafe.server.plist");
+  });
+
+  it("normalizes repeated separators in desktop-managed macOS paths", () => {
+    expect(
+      createMacLaunchAgentPath("dev.bookcafe.server", "/Users/alice/")
+    ).toBe("/Users/alice/Library/LaunchAgents/dev.bookcafe.server.plist");
+
+    expect(
+      createBookCafeServerLaunchAgent({
+        serverCommand: "/Applications/BookCafe.app/server",
+        logDir: "/Users/alice/Library/Logs/BookCafe/"
+      })
+    ).toMatchObject({
+      standardOutPath: "/Users/alice/Library/Logs/BookCafe/server.out.log",
+      standardErrorPath: "/Users/alice/Library/Logs/BookCafe/server.err.log"
+    });
   });
 
   it("escapes LaunchAgent plist string values", () => {

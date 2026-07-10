@@ -4,26 +4,33 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@bookcafe/config": fileURLToPath(
+    alias: [
+      {
+        find: "@bookcafe/config/shared",
+        replacement: fileURLToPath(
+          new URL("./packages/config/src/shared.ts", import.meta.url)
+        )
+      },
+      {
+        find: "@bookcafe/config",
+        replacement: fileURLToPath(
         new URL("./packages/config/src/index.ts", import.meta.url)
-      ),
-      "@bookcafe/contracts": fileURLToPath(
-        new URL("./packages/contracts/src/index.ts", import.meta.url)
-      ),
-      "@bookcafe/core": fileURLToPath(
-        new URL("./packages/core/src/index.ts", import.meta.url)
-      ),
-      "@bookcafe/db": fileURLToPath(
-        new URL("./packages/db/src/index.ts", import.meta.url)
-      ),
-      "@bookcafe/format-adapters": fileURLToPath(
-        new URL("./packages/format-adapters/src/index.ts", import.meta.url)
-      ),
-      "@bookcafe/scanner": fileURLToPath(
-        new URL("./packages/scanner/src/index.ts", import.meta.url)
-      )
-    }
+        )
+      },
+      ...[
+        ["@bookcafe/contracts", "./packages/contracts/src/index.ts"],
+        ["@bookcafe/core", "./packages/core/src/index.ts"],
+        ["@bookcafe/db", "./packages/db/src/index.ts"],
+        [
+          "@bookcafe/format-adapters",
+          "./packages/format-adapters/src/index.ts"
+        ],
+        ["@bookcafe/scanner", "./packages/scanner/src/index.ts"]
+      ].map(([find, path]) => ({
+        find,
+        replacement: fileURLToPath(new URL(path, import.meta.url))
+      }))
+    ]
   },
   test: {
     exclude: [

@@ -152,7 +152,8 @@ export const backgroundJobStatusSchema = z.enum([
   "queued",
   "running",
   "completed",
-  "failed"
+  "failed",
+  "cancelled"
 ]);
 
 export const backgroundJobSchema = z.object({
@@ -162,6 +163,7 @@ export const backgroundJobSchema = z.object({
   payload: z.unknown(),
   progress: z.number().int().min(0).max(100),
   error: z.string().nullable(),
+  canCancel: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string()
 });

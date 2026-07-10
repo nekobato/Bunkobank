@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  cancelJob,
   closeDatabase,
   createJob,
   deleteCollectionRoot,
@@ -14,6 +15,7 @@ import {
   listBookSummaries,
   listJobs,
   markInterruptedJobsFailed,
+  markJobFailed,
   markMissingBooksForCollectionRoot,
   markJobCompleted,
   markJobRunning,
@@ -21,6 +23,7 @@ import {
   persistScannedBook,
   searchBookSummaries,
   setBookThumbnail,
+  updateJobProgress,
   updateJobPayload,
   updateBookMetadata,
   updateBookCurrentPage,
@@ -66,6 +69,7 @@ describe("BookCafe database", () => {
         type: "scan-collection-root",
         payload: { collectionRootId: root.id }
       });
+      markJobRunning(database, job.id);
       const updatedJob = updateJobPayload(database, job.id, {
         collectionRootId: root.id,
         discoveredBooks: 1
@@ -690,6 +694,7 @@ describe("BookCafe database", () => {
       });
 
       markJobRunning(database, runningJob.id);
+      markJobRunning(database, completedJob.id);
       markJobCompleted(database, completedJob.id);
 
       const failedCount = markInterruptedJobsFailed(database);
@@ -705,6 +710,70 @@ describe("BookCafe database", () => {
       );
       expect(jobsById.get(runningJob.id)?.status).toBe("failed");
       expect(jobsById.get(completedJob.id)?.status).toBe("completed");
+    } finally {
+      closeDatabase(database);
+    }
+  });
+
+  it("cancels only queued and running jobs", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bookcafe-db-"));
+    tempDirs.push(dir);
+    const database = openBookCafeDatabase(join(dir, "bookcafe.sqlite"));
+
+    try {
+      const queuedJob = createJob(database, {
+        type: "scan-collection-root",
+        payload: { collectionRootId: "queued-root" }
+      });
+      const runningJob = createJob(database, {
+        type: "scan-collection-root",
+        payload: { collectionRootId: "running-root" }
+      });
+      const completedJob = createJob(database, {
+        type: "scan-collection-root",
+        payload: { collectionRootId: "completed-root" }
+      });
+      const failedJob = createJob(database, {
+        type: "scan-collection-root",
+        payload: { collectionRootId: "failed-root" }
+      });
+
+      markJobRunning(database, runningJob.id);
+      markJobRunning(database, completedJob.id);
+      markJobCompleted(database, completedJob.id);
+      markJobRunning(database, failedJob.id);
+      markJobFailed(database, failedJob.id, "Scan failed.");
+
+      expect(cancelJob(database, queuedJob.id)).toBe("cancelled");
+      expect(cancelJob(database, runningJob.id)).toBe("cancelled");
+      expect(cancelJob(database, completedJob.id)).toBe("not-cancellable");
+      expect(cancelJob(database, failedJob.id)).toBe("not-cancellable");
+      expect(cancelJob(database, "missing-job")).toBe("not-found");
+
+      updateJobProgress(database, runningJob.id, 90);
+      updateJobPayload(database, runningJob.id, { discoveredBooks: 99 });
+      markJobFailed(database, runningJob.id, "Late failure.");
+      expect(markJobCompleted(database, runningJob.id)?.status).toBe(
+        "cancelled"
+      );
+
+      const jobsById = new Map(listJobs(database).map((job) => [job.id, job]));
+
+      expect(jobsById.get(queuedJob.id)).toEqual(
+        expect.objectContaining({
+          status: "cancelled",
+          progress: 0,
+          error: null
+        })
+      );
+      expect(jobsById.get(runningJob.id)).toEqual(
+        expect.objectContaining({
+          status: "cancelled",
+          progress: 5,
+          error: null,
+          payload: { collectionRootId: "running-root" }
+        })
+      );
     } finally {
       closeDatabase(database);
     }
