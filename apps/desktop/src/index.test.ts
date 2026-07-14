@@ -62,6 +62,7 @@ describe("desktop setup helpers", () => {
         dataDir: "",
         host: "127.0.0.1",
         port: 4525,
+        collectionRoots: ["/Users/alice/Books"],
         thumbnails: { enabled: false }
       })
     ).toEqual({
@@ -70,6 +71,7 @@ describe("desktop setup helpers", () => {
       dataDir: undefined,
       host: "127.0.0.1",
       port: 4525,
+      collectionRoots: ["/Users/alice/Books"],
       thumbnails: { enabled: false }
     });
   });
@@ -429,6 +431,16 @@ describe("desktop server lifecycle helpers", () => {
       canStart: false,
       canStop: true
     });
+    expect(
+      inspectManagedServerLifecycle({
+        status: createManagedServerStatusFixture("http-error"),
+        childPid: null
+      })
+    ).toMatchObject({
+      state: "port-conflict",
+      canStart: false,
+      canStop: false
+    });
   });
 
   it("plans server start only when the managed server is stopped", () => {
@@ -552,6 +564,7 @@ describe("desktop server status helpers", () => {
     ).resolves.toEqual({
       status: "reachable",
       reachable: true,
+      responding: true,
       url: "http://127.0.0.1:4525/api/health",
       statusCode: 200,
       service: "bookcafe-server",
@@ -559,7 +572,7 @@ describe("desktop server status helpers", () => {
     });
   });
 
-  it("reports unreachable HTTP responses", async () => {
+  it("reports HTTP responses from a non-BookCafe endpoint as conflicts", async () => {
     const readStatus = createManagedServerStatusReader(async () =>
       createFetchResponse(503, {
         message: "Unavailable"
@@ -572,8 +585,9 @@ describe("desktop server status helpers", () => {
         port: 4525
       })
     ).resolves.toMatchObject({
-      status: "unreachable",
+      status: "http-error",
       reachable: false,
+      responding: true,
       statusCode: 503
     });
   });
@@ -598,6 +612,29 @@ describe("desktop server status helpers", () => {
     });
   });
 
+  it("treats a non-JSON success response as an occupied endpoint", async () => {
+    const readStatus = createManagedServerStatusReader(async () =>
+      Promise.resolve(
+        new Response("<html><body>Another service</body></html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" }
+        })
+      )
+    );
+
+    await expect(
+      readStatus({
+        host: "127.0.0.1",
+        port: 4525
+      })
+    ).resolves.toMatchObject({
+      status: "invalid-response",
+      reachable: false,
+      responding: true,
+      statusCode: 200
+    });
+  });
+
   it("reports fetch failures", async () => {
     const readStatus = createManagedServerStatusReader(async () => {
       throw new Error("connection refused");
@@ -611,6 +648,7 @@ describe("desktop server status helpers", () => {
     ).resolves.toMatchObject({
       status: "unreachable",
       reachable: false,
+      responding: false,
       error: "connection refused"
     });
   });
@@ -629,10 +667,11 @@ const createFetchResponse = (status: number, payload: unknown) => ({
  * Creates a managed server status fixture for lifecycle helper tests.
  */
 const createManagedServerStatusFixture = (
-  status: "reachable" | "unreachable" | "invalid-response"
+  status: "reachable" | "unreachable" | "http-error" | "invalid-response"
 ) => ({
   status,
   reachable: status === "reachable",
+  responding: status !== "unreachable",
   url: "http://127.0.0.1:4510/api/health",
   statusCode: status === "unreachable" ? null : 200,
   service: status === "reachable" ? "bookcafe-server" : null,

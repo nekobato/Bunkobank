@@ -101,6 +101,11 @@ export const initialSetupRequestSchema = z.object({
   username: z.string().min(1).max(64),
   password: z.string().min(8).max(256),
   dataDir: z.string().min(1).optional(),
+  collectionRoots: z
+    .array(z.string().trim().min(1).max(32767))
+    .max(100)
+    .default([])
+    .transform((paths) => Array.from(new Set(paths))),
   host: bindHostSchema.default("127.0.0.1"),
   port: z.number().int().min(1).max(65535).default(4510),
   thumbnails: thumbnailSettingsSchema.default({ enabled: true })

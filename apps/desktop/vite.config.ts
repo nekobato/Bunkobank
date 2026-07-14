@@ -2,11 +2,13 @@
  * Vite configuration for the Tauri desktop manager WebView.
  */
 
+import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vite";
 
 const devHost = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
+  plugins: [vue()],
   clearScreen: false,
   envPrefix: ["VITE_", "TAURI_ENV_*"],
   server: {
@@ -26,9 +28,7 @@ export default defineConfig({
   },
   build: {
     target:
-      process.env.TAURI_ENV_PLATFORM === "windows"
-        ? "chrome105"
-        : "safari13",
+      process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
     minify: process.env.TAURI_ENV_DEBUG ? false : "esbuild",
     sourcemap: Boolean(process.env.TAURI_ENV_DEBUG)
   }

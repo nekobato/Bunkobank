@@ -9,6 +9,8 @@ export default [
       "**/.output/**",
       "**/dist/**",
       "**/apps/server/public/**",
+      "**/apps/desktop/src-tauri/gen/**",
+      "**/apps/desktop/src-tauri/target/**",
       "**/node_modules/**",
       "coverage/**"
     ]

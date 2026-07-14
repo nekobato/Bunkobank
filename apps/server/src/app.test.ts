@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +16,7 @@ import {
   closeDatabase,
   createJob,
   listBookSummaries,
+  listCollectionRoots,
   listJobs,
   markJobCompleted,
   markJobRunning,
@@ -199,6 +206,120 @@ describe("BookCafe Hono app", () => {
       thumbnails: { enabled: false },
       setupComplete: true
     });
+  });
+
+  it("persists readable collection roots during initial desktop setup", async () => {
+    const { dir, configPath } = createTestConfig();
+    const firstRoot = join(dir, "Manga");
+    const secondRoot = join(dir, "Art books");
+    mkdirSync(firstRoot);
+    mkdirSync(secondRoot);
+    const app = createApp({ configPath });
+
+    const response = await app.request("/api/setup/initial-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...testUser,
+        collectionRoots: [firstRoot, secondRoot]
+      })
+    });
+    const database = openBookCafeDatabase(
+      resolveDataPaths(loadConfig(configPath).dataDir).databasePath
+    );
+
+    try {
+      expect(response.status).toBe(201);
+      expect(listCollectionRoots(database).map((root) => root.path)).toEqual([
+        secondRoot,
+        firstRoot
+      ]);
+    } finally {
+      closeDatabase(database);
+    }
+  });
+
+  it("rejects an initial data directory inside a collection root", async () => {
+    const { dir, configPath } = createTestConfig();
+    const collectionRoot = join(dir, "Library");
+    const nestedDataDir = join(collectionRoot, ".bookcafe");
+    mkdirSync(collectionRoot);
+    const app = createApp({ configPath });
+
+    const response = await app.request("/api/setup/initial-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...testUser,
+        dataDir: nestedDataDir,
+        collectionRoots: [collectionRoot]
+      })
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      message: "Data directory must not be inside a collection root."
+    });
+    expect(loadConfig(configPath)).toMatchObject({
+      dataDir: dir,
+      setupComplete: false
+    });
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects an initial collection root without read access",
+    async () => {
+      const { dir, configPath } = createTestConfig();
+      const collectionRoot = join(dir, "Unreadable");
+      mkdirSync(collectionRoot);
+      chmodSync(collectionRoot, 0o000);
+      const app = createApp({ configPath });
+
+      try {
+        const response = await app.request("/api/setup/initial-user", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...testUser,
+            collectionRoots: [collectionRoot]
+          })
+        });
+
+        expect(response.status).toBe(400);
+        expect(await response.json()).toEqual({
+          message: "Collection roots must be readable directories."
+        });
+      } finally {
+        chmodSync(collectionRoot, 0o700);
+      }
+    }
+  );
+
+  it("allows exact Tauri origins without reflecting unknown origins", async () => {
+    const { configPath } = createTestConfig();
+    const app = createApp({ configPath });
+    const createPreflight = (origin: string) =>
+      app.request("/api/setup/status", {
+        method: "OPTIONS",
+        headers: {
+          Origin: origin,
+          "Access-Control-Request-Method": "GET"
+        }
+      });
+
+    const macResponse = await createPreflight("tauri://localhost");
+    const windowsResponse = await createPreflight("http://tauri.localhost");
+    const unknownResponse = await createPreflight("https://unknown.test");
+
+    expect(macResponse.headers.get("Access-Control-Allow-Origin")).toBe(
+      "tauri://localhost"
+    );
+    expect(windowsResponse.headers.get("Access-Control-Allow-Origin")).toBe(
+      "http://tauri.localhost"
+    );
+    expect(unknownResponse.headers.has("Access-Control-Allow-Origin")).toBe(
+      false
+    );
   });
 
   it("lets authenticated users manage persisted network settings", async () => {
@@ -650,6 +771,33 @@ describe("BookCafe Hono app", () => {
       message: "Collection root must be a readable directory."
     });
     expect(rootsBody.roots).toEqual([]);
+  });
+
+  it("rejects a collection root containing the managed data directory", async () => {
+    const { dir, configPath } = createTestConfig();
+    const managedDataDir = join(dir, ".bookcafe");
+    saveConfig(
+      {
+        ...loadConfig(configPath),
+        dataDir: managedDataDir
+      },
+      configPath
+    );
+    const app = createApp({ configPath });
+
+    await initializeUser(app);
+
+    const cookie = await signInUser(app);
+    const response = await app.request("/api/collection-roots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify({ path: dir })
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      message: "Collection root must not contain the data directory."
+    });
   });
 
   it("lets authenticated users delete only empty collection roots", async () => {

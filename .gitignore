@@ -12,3 +12,7 @@ playwright-report/
 .env.*
 !/.env.example
 apps/server/public/
+apps/desktop/src-tauri/binaries/
+apps/desktop/.sidecar-stage/
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/target/

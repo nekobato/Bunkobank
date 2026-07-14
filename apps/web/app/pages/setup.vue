@@ -37,17 +37,20 @@ const isAddingRoot = ref(false);
 const isScanningAll = ref(false);
 const scanningRootId = ref<string | null>(null);
 const deletingRootId = ref<string | null>(null);
+const confirmingRootId = ref<string | null>(null);
 const cancellingJobId = ref<string | null>(null);
-const { data: status, refresh } = await useAsyncData(
-  "setup-status",
-  getSetupStatus,
-  {
-    server: false
-  }
-);
+const {
+  data: setupStatus,
+  status: setupRequestStatus,
+  error: setupError,
+  refresh
+} = await useAsyncData("setup-status", getSetupStatus, {
+  server: false
+});
 const canUseProtectedApi = computed(
   () =>
-    status.value?.setupComplete === true && Boolean(session.value.data?.user)
+    setupStatus.value?.setupComplete === true &&
+    Boolean(session.value.data?.user)
 );
 const { data: networkData, refresh: refreshNetwork } = await useAsyncData(
   "network-settings",
@@ -94,16 +97,32 @@ const { data: jobsData, refresh: refreshJobs } = await useAsyncData(
 const roots = computed(() => rootsData.value?.roots ?? []);
 const jobs = computed(() => jobsData.value?.jobs ?? []);
 const protectedStatus = computed(() =>
-  status.value?.setupComplete && !session.value.data?.user
+  setupStatus.value?.setupComplete && !session.value.data?.user
     ? "Login required"
     : ""
+);
+const setupStateLabel = computed(() => {
+  if (["idle", "pending"].includes(setupRequestStatus.value)) {
+    return "Loading";
+  }
+
+  if (setupRequestStatus.value === "error") {
+    return "Unavailable";
+  }
+
+  return setupStatus.value?.setupComplete ? "Complete" : "Required";
+});
+const canSubmitInitialSetup = computed(
+  () =>
+    setupRequestStatus.value === "success" &&
+    setupStatus.value?.setupComplete === false
 );
 const canScanRoots = computed(
   () => canUseProtectedApi.value && roots.value.length > 0
 );
 
 watch(
-  [status, networkData, thumbnailData],
+  [setupStatus, networkData, thumbnailData],
   ([setupValue, networkValue, thumbnailValue]) => {
     host.value = networkValue?.host ?? setupValue?.host ?? "127.0.0.1";
     port.value = networkValue?.port ?? setupValue?.port ?? 4510;
@@ -125,6 +144,7 @@ const submitSetup = async (): Promise<void> => {
       username: username.value,
       password: password.value,
       dataDir: dataDir.value || undefined,
+      collectionRoots: [],
       host: host.value,
       port: port.value,
       thumbnails: { enabled: thumbnailEnabled.value }
@@ -249,7 +269,20 @@ const removeRoot = async (collectionRootId: string): Promise<void> => {
     rootMessage.value = getApiErrorMessage(error, "Failed");
   } finally {
     deletingRootId.value = null;
+    confirmingRootId.value = null;
   }
+};
+
+/** Reveals an inline confirmation before removing one collection root. */
+const requestRootRemoval = (collectionRootId: string): void => {
+  confirmingRootId.value = collectionRootId;
+  rootMessage.value = "Confirm removal of this collection root.";
+};
+
+/** Cancels a pending collection-root removal confirmation. */
+const cancelRootRemoval = (): void => {
+  confirmingRootId.value = null;
+  rootMessage.value = "Removal cancelled";
 };
 
 /**
@@ -297,9 +330,31 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
   <section class="setup">
     <div class="heading">
       <h1>Setup</h1>
-      <p>{{ status?.setupComplete ? "Complete" : "Required" }}</p>
+      <p>{{ setupStateLabel }}</p>
     </div>
+    <section
+      v-if="setupRequestStatus === 'error'"
+      class="panel"
+      role="alert"
+      aria-labelledby="setup-unavailable-title"
+    >
+      <div class="section-head">
+        <h2 id="setup-unavailable-title">Setup unavailable</h2>
+        <button type="button" @click="() => refresh()">Retry</button>
+      </div>
+      <p class="message">
+        {{ getApiErrorMessage(setupError, "Could not reach BookCafe") }}
+      </p>
+    </section>
+    <p
+      v-else-if="['idle', 'pending'].includes(setupRequestStatus)"
+      class="message"
+      role="status"
+    >
+      Checking setup status…
+    </p>
     <form
+      v-if="canSubmitInitialSetup"
       class="form"
       :action="`${apiBase}/setup/initial-user`"
       method="post"
@@ -388,14 +443,28 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
           <span class="value">{{ thumbnailEnabled ? "On" : "Off" }}</span>
         </label>
       </fieldset>
-      <button type="submit" :disabled="isSaving || status?.setupComplete">
+      <button type="submit" :disabled="isSaving">
         {{ isSaving ? "Saving" : "Save" }}
       </button>
       <p v-if="message" class="message" aria-live="polite">{{ message }}</p>
     </form>
 
     <section
-      v-if="status?.setupComplete"
+      v-else-if="setupStatus?.setupComplete"
+      class="panel"
+      aria-labelledby="setup-complete-title"
+    >
+      <div class="section-head">
+        <h2 id="setup-complete-title">Initial setup complete</h2>
+      </div>
+      <p class="message">
+        The local account and storage location are configured. Use the settings
+        below for later changes.
+      </p>
+    </section>
+
+    <section
+      v-if="setupStatus?.setupComplete"
       class="panel"
       aria-labelledby="network-title"
     >
@@ -463,7 +532,7 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
     </section>
 
     <section
-      v-if="status?.setupComplete"
+      v-if="setupStatus?.setupComplete"
       class="panel"
       aria-labelledby="thumbnail-title"
     >
@@ -502,7 +571,11 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
       </form>
     </section>
 
-    <section class="panel" aria-labelledby="roots-title">
+    <section
+      v-if="setupStatus?.setupComplete"
+      class="panel"
+      aria-labelledby="roots-title"
+    >
       <div class="section-head">
         <h2 id="roots-title">Collection roots</h2>
         <button
@@ -549,13 +622,25 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
               {{ scanningRootId === root.id ? "Queueing" : "Scan" }}
             </button>
             <button
+              v-if="confirmingRootId !== root.id"
               type="button"
               class="is-danger"
               :disabled="deletingRootId === root.id"
-              @click="removeRoot(root.id)"
+              @click="requestRootRemoval(root.id)"
             >
-              {{ deletingRootId === root.id ? "Removing" : "Remove" }}
+              Remove
             </button>
+            <template v-else>
+              <button
+                type="button"
+                class="is-danger"
+                :disabled="deletingRootId === root.id"
+                @click="removeRoot(root.id)"
+              >
+                {{ deletingRootId === root.id ? "Removing" : "Confirm remove" }}
+              </button>
+              <button type="button" @click="cancelRootRemoval">Keep</button>
+            </template>
           </div>
         </li>
       </ul>
@@ -568,7 +653,11 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
       </p>
     </section>
 
-    <section class="panel" aria-labelledby="jobs-title">
+    <section
+      v-if="setupStatus?.setupComplete"
+      class="panel"
+      aria-labelledby="jobs-title"
+    >
       <div class="section-head">
         <h2 id="jobs-title">Jobs</h2>
         <button

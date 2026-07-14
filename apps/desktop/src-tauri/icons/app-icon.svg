@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">BookCafe</title>
+  <desc id="description">An open book with a coffee cup on a deep green field.</desc>
+  <rect width="1024" height="1024" rx="224" fill="#173f3a" />
+  <path
+    d="M176 270c108-10 212 24 304 101v401c-89-64-190-93-304-82V270Z"
+    fill="#f4efe2"
+  />
+  <path
+    d="M848 270c-108-10-212 24-304 101v401c89-64 190-93 304-82V270Z"
+    fill="#fffaf0"
+  />
+  <path d="M512 382v391" stroke="#c4ad82" stroke-width="28" stroke-linecap="round" />
+  <path
+    d="M328 448h128M328 516h128M568 448h128"
+    stroke="#8d7651"
+    stroke-width="24"
+    stroke-linecap="round"
+    opacity="0.68"
+  />
+  <path
+    d="M590 522h148v88c0 66-53 119-119 119h-29V522Z"
+    fill="#c8784f"
+  />
+  <path
+    d="M738 550h25c48 0 76 27 76 67s-28 67-76 67h-31"
+    fill="none"
+    stroke="#c8784f"
+    stroke-width="34"
+    stroke-linecap="round"
+  />
+  <path
+    d="M623 474c-28-32 25-54 0-91M686 474c-28-32 25-54 0-91"
+    fill="none"
+    stroke="#f4efe2"
+    stroke-width="22"
+    stroke-linecap="round"
+  />
+</svg>

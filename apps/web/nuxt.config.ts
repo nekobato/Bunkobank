@@ -1,4 +1,12 @@
 export default defineNuxtConfig({
+  app: {
+    head: {
+      title: "BookCafe",
+      htmlAttrs: {
+        lang: "en"
+      }
+    }
+  },
   compatibilityDate: "2026-07-09",
   css: ["~/assets/css/base.css"],
   runtimeConfig: {

@@ -6,11 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import {
-  appConfigSchema,
-  createServerOrigin,
-  type AppConfig
-} from "./shared.js";
+import { appConfigSchema, type AppConfig } from "./shared.js";
 
 export {
   appConfigSchema,

@@ -3,6 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": "dist/main.js",
+  "pkg": {
+    "assets": [
+      "public/**/*",
+      "node_modules/better-sqlite3/build/Release/*.node",
+      "node_modules/hono/dist/**/*.js",
+      "node_modules/@hono/node-server/dist/**/*",
+      "node_modules/@img/sharp-*/**/*",
+      "node_modules/@napi-rs/canvas-*/**/*",
+      "node_modules/@better-auth/utils/dist/**/*",
+      "node_modules/better-call/dist/**/*",
+      "node_modules/libarchive-wasm/dist/libarchive.wasm",
+      "node_modules/pdfjs-dist/cmaps/**/*",
+      "node_modules/pdfjs-dist/iccs/**/*",
+      "node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
+      "node_modules/pdfjs-dist/standard_fonts/**/*",
+      "node_modules/pdfjs-dist/wasm/**/*"
+    ]
+  },
   "scripts": {
     "dev": "tsx src/main.ts",
     "build": "tsc -p tsconfig.json",

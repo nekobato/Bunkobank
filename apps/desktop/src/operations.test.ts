@@ -47,6 +47,7 @@ describe("desktop initial setup operations", () => {
           dataDir: " /Users/alice/BookCafe ",
           host: "0.0.0.0",
           port: 4525,
+          collectionRoots: ["/Users/alice/Books"],
           thumbnails: { enabled: false }
         }
       )
@@ -58,6 +59,7 @@ describe("desktop initial setup operations", () => {
         dataDir: "/Users/alice/BookCafe",
         host: "0.0.0.0",
         port: 4525,
+        collectionRoots: ["/Users/alice/Books"],
         thumbnails: { enabled: false }
       },
       status: {
@@ -79,6 +81,7 @@ describe("desktop initial setup operations", () => {
           username: "admin",
           password: "password123",
           dataDir: "/Users/alice/BookCafe",
+          collectionRoots: ["/Users/alice/Books"],
           host: "0.0.0.0",
           port: 4525,
           thumbnails: { enabled: false }

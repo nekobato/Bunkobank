@@ -15,6 +15,8 @@ import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { username } from "better-auth/plugins";
 
+import { getBookCafeClientOrigins } from "./origins.js";
+
 interface CachedAuth {
   cacheKey: string;
   auth: ReturnType<typeof createAuth>;
@@ -110,22 +112,8 @@ const getAuthBaseURL = (options: AuthOptions): string =>
  * Builds the origins Better Auth should trust for local app and Nuxt dev usage.
  */
 const getTrustedOrigins = (options: AuthOptions, baseURL: string): string[] =>
-  Array.from(
-    new Set([
-      baseURL,
-      `http://127.0.0.1:${options.port}`,
-      `http://localhost:${options.port}`,
-      "http://127.0.0.1:3000",
-      "http://localhost:3000",
-      ...getExtraTrustedOrigins()
-    ])
-  );
-
-/**
- * Returns comma-separated trusted origins from the environment.
- */
-const getExtraTrustedOrigins = (): string[] =>
-  (process.env.BOOKCAFE_TRUSTED_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
+  getBookCafeClientOrigins([
+    baseURL,
+    `http://127.0.0.1:${options.port}`,
+    `http://localhost:${options.port}`
+  ]);

@@ -17,17 +17,19 @@ export interface SetupDraft {
   username: string;
   password: string;
   dataDir: string;
+  collectionRoots: string[];
   host: BindHost;
   port: number;
   thumbnails: ThumbnailSettings;
 }
 
 export type ManagedServerStatusKind =
-  "reachable" | "unreachable" | "invalid-response";
+  "reachable" | "unreachable" | "http-error" | "invalid-response";
 
 export interface ManagedServerStatus {
   status: ManagedServerStatusKind;
   reachable: boolean;
+  responding: boolean;
   url: string;
   statusCode: number | null;
   service: string | null;
@@ -42,6 +44,8 @@ export type ManagedServerFetch = (
   status: number;
   json: () => Promise<unknown>;
 }>;
+
+type ManagedServerResponse = Awaited<ReturnType<ManagedServerFetch>>;
 
 export interface MacLaunchAgent {
   label: string;
@@ -227,6 +231,7 @@ export const createDefaultSetupDraft = (dataDir = ""): SetupDraft => ({
   username: "",
   password: "",
   dataDir,
+  collectionRoots: [],
   host: "127.0.0.1",
   port: 4510,
   thumbnails: { enabled: true }
@@ -242,6 +247,9 @@ export const normalizeSetupDraft = (draft: Partial<SetupDraft>): SetupDraft => {
     username: (draft.username ?? defaults.username).trim(),
     password: draft.password ?? defaults.password,
     dataDir: (draft.dataDir ?? defaults.dataDir).trim(),
+    collectionRoots: normalizeCollectionRoots(
+      draft.collectionRoots ?? defaults.collectionRoots
+    ),
     host: normalizeBindHost(draft.host),
     port: normalizePort(draft.port ?? defaults.port),
     thumbnails: draft.thumbnails ?? defaults.thumbnails
@@ -260,6 +268,7 @@ export const createInitialSetupRequest = (
     username: normalized.username,
     password: normalized.password,
     dataDir: normalized.dataDir || undefined,
+    collectionRoots: normalized.collectionRoots,
     host: normalized.host,
     port: normalized.port,
     thumbnails: normalized.thumbnails
@@ -292,40 +301,14 @@ export const createManagedServerStatusReader =
   ) => Promise<ManagedServerStatus>) =>
   async (config) => {
     const url = getManagedServerHealthUrl(config);
+    let response: ManagedServerResponse;
 
     try {
-      const response = await fetchServer(url, {
+      response = await fetchServer(url, {
         headers: {
           Accept: "application/json"
         },
         method: "GET"
-      });
-
-      if (!response.ok) {
-        return createManagedServerStatus({
-          status: "unreachable",
-          url,
-          statusCode: response.status,
-          error: `Health check returned HTTP ${response.status}.`
-        });
-      }
-
-      const parsed = healthResponseSchema.safeParse(await response.json());
-
-      if (!parsed.success) {
-        return createManagedServerStatus({
-          status: "invalid-response",
-          url,
-          statusCode: response.status,
-          error: "Health check response did not match BookCafe."
-        });
-      }
-
-      return createManagedServerStatus({
-        status: "reachable",
-        url,
-        statusCode: response.status,
-        service: parsed.data.service
       });
     } catch (error) {
       return createManagedServerStatus({
@@ -334,6 +317,46 @@ export const createManagedServerStatusReader =
         error: error instanceof Error ? error.message : "Health check failed."
       });
     }
+
+    if (!response.ok) {
+      return createManagedServerStatus({
+        status: "http-error",
+        url,
+        statusCode: response.status,
+        error: `Health check returned HTTP ${response.status}.`
+      });
+    }
+
+    let payload: unknown;
+
+    try {
+      payload = await response.json();
+    } catch {
+      return createManagedServerStatus({
+        status: "invalid-response",
+        url,
+        statusCode: response.status,
+        error: "Health check response was not valid JSON."
+      });
+    }
+
+    const parsed = healthResponseSchema.safeParse(payload);
+
+    if (!parsed.success) {
+      return createManagedServerStatus({
+        status: "invalid-response",
+        url,
+        statusCode: response.status,
+        error: "Health check response did not match BookCafe."
+      });
+    }
+
+    return createManagedServerStatus({
+      status: "reachable",
+      url,
+      statusCode: response.status,
+      service: parsed.data.service
+    });
   };
 
 /**
@@ -623,6 +646,7 @@ const createManagedServerStatus = ({
 }): ManagedServerStatus => ({
   status,
   reachable: status === "reachable",
+  responding: status !== "unreachable",
   url,
   statusCode,
   service,
@@ -673,7 +697,7 @@ const getManagedServerLifecycleState = (
     return "running";
   }
 
-  if (status.status === "invalid-response") {
+  if (status.status === "invalid-response" || status.status === "http-error") {
     return managedByDesktop ? "unhealthy" : "port-conflict";
   }
 
@@ -708,6 +732,14 @@ const joinPosixPath = (...segments: string[]): string => {
 
   return joined || ".";
 };
+
+/**
+ * Normalizes collection root values selected by the native directory picker.
+ */
+const normalizeCollectionRoots = (paths: readonly string[]): string[] =>
+  Array.from(
+    new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
+  );
 
 /**
  * Serializes a plist key line.

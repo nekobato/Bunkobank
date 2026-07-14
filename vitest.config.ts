@@ -14,7 +14,7 @@ export default defineConfig({
       {
         find: "@bookcafe/config",
         replacement: fileURLToPath(
-        new URL("./packages/config/src/index.ts", import.meta.url)
+          new URL("./packages/config/src/index.ts", import.meta.url)
         )
       },
       ...[
@@ -38,6 +38,7 @@ export default defineConfig({
       "**/dist/**",
       "**/.nuxt/**",
       "**/.output/**",
+      "**/.sidecar-stage/**",
       "**/apps/server/public/**"
     ]
   }

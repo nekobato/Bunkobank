@@ -2,8 +2,18 @@
  * Hono app factory for BookCafe.
  */
 
-import { readFile, stat } from "node:fs/promises";
-import { dirname, extname, join } from "node:path";
+import { constants } from "node:fs";
+import { access, readFile, realpath, stat } from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep
+} from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -76,6 +86,7 @@ import {
   renderSamplePageSvg
 } from "./sample-books.js";
 import { createBookCafeJobQueue, type BookCafeJobQueue } from "./job-queue.js";
+import { getBookCafeClientOrigins } from "./origins.js";
 import { runScanCollectionRootJob } from "./scan-jobs.js";
 
 import type { BookDetail, BookSummary, ReadingStatus } from "@bookcafe/core";
@@ -164,7 +175,7 @@ export const createApp = (options: AppOptions = {}) => {
   app.use(
     "/api/*",
     cors({
-      origin: ["http://127.0.0.1:3000", "http://localhost:3000"],
+      origin: getBookCafeClientOrigins(),
       allowHeaders: ["Content-Type", "Authorization"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       credentials: true
@@ -240,6 +251,29 @@ export const createApp = (options: AppOptions = {}) => {
 
       const body = c.req.valid("json");
       const dataDir = body.dataDir ?? current.dataDir;
+
+      if (!(await allCollectionRootsAreReadable(body.collectionRoots))) {
+        return c.json(
+          { message: "Collection roots must be readable directories." },
+          400
+        );
+      }
+
+      const collectionRootContainsDataDir = (
+        await Promise.all(
+          body.collectionRoots.map((collectionRoot) =>
+            pathContains(collectionRoot, dataDir)
+          )
+        )
+      ).some(Boolean);
+
+      if (collectionRootContainsDataDir) {
+        return c.json(
+          { message: "Data directory must not be inside a collection root." },
+          400
+        );
+      }
+
       const nextConfig = writeConfig({
         ...current,
         dataDir,
@@ -253,7 +287,13 @@ export const createApp = (options: AppOptions = {}) => {
         resolveDataPaths(nextConfig.dataDir).databasePath
       );
 
-      closeDatabase(database);
+      try {
+        for (const collectionRoot of body.collectionRoots) {
+          upsertCollectionRoot(database, collectionRoot);
+        }
+      } finally {
+        closeDatabase(database);
+      }
 
       await runAuthMigrations(auth);
       await auth.api.signUpEmail({
@@ -357,6 +397,13 @@ export const createApp = (options: AppOptions = {}) => {
       if (!(await isReadableDirectory(body.path))) {
         return c.json(
           { message: "Collection root must be a readable directory." },
+          400
+        );
+      }
+
+      if (await pathContains(body.path, readConfig().dataDir)) {
+        return c.json(
+          { message: "Collection root must not contain the data directory." },
           400
         );
       }
@@ -833,11 +880,77 @@ const isPublicApiRoute = (path: string, method: string): boolean =>
  */
 const isReadableDirectory = async (path: string): Promise<boolean> => {
   try {
+    await access(path, constants.R_OK | constants.X_OK);
     return (await stat(path)).isDirectory();
   } catch {
     return false;
   }
 };
+
+/**
+ * Returns true when every initial collection root is a readable directory.
+ */
+const allCollectionRootsAreReadable = async (
+  paths: readonly string[]
+): Promise<boolean> =>
+  (await Promise.all(paths.map((path) => isReadableDirectory(path)))).every(
+    Boolean
+  );
+
+/**
+ * Returns true when a candidate path equals or contains another native path.
+ */
+const pathContains = async (
+  candidateParent: string,
+  candidateChild: string
+): Promise<boolean> => {
+  const [parentPath, childPath] = await Promise.all([
+    resolveCanonicalPath(candidateParent),
+    resolveCanonicalPath(candidateChild)
+  ]);
+  const relativePath = relative(parentPath, childPath);
+
+  return (
+    relativePath === "" ||
+    (relativePath !== ".." &&
+      !relativePath.startsWith(`..${sep}`) &&
+      !isAbsolute(relativePath))
+  );
+};
+
+/**
+ * Resolves symlinks in the existing path prefix while preserving a missing tail.
+ */
+const resolveCanonicalPath = async (path: string): Promise<string> => {
+  let existingPrefix = resolve(path);
+  const missingSegments: string[] = [];
+
+  while (true) {
+    try {
+      return resolve(
+        await realpath(existingPrefix),
+        ...missingSegments.reverse()
+      );
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "ENOENT") {
+        throw error;
+      }
+
+      const parent = dirname(existingPrefix);
+
+      if (parent === existingPrefix) {
+        return resolve(path);
+      }
+
+      missingSegments.push(basename(existingPrefix));
+      existingPrefix = parent;
+    }
+  }
+};
+
+/** Returns true when an unknown rejection carries a Node.js error code. */
+const isNodeError = (error: unknown): error is NodeJS.ErrnoException =>
+  error instanceof Error && "code" in error;
 
 /**
  * Converts a collection root row into an API response.

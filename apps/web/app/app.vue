@@ -345,8 +345,12 @@ const submitSignOut = async (): Promise<void> => {
 .drawer-sheet {
   width: min(20.5rem, calc(100vw - 3rem));
   height: 100%;
-  padding: 1rem 0.8rem 2rem;
+  padding: max(1rem, env(safe-area-inset-top))
+    max(0.8rem, env(safe-area-inset-right))
+    max(2rem, env(safe-area-inset-bottom))
+    max(0.8rem, env(safe-area-inset-left));
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-right: 1px solid var(--line);
   background: var(--surface);
   box-shadow: 1rem 0 3rem rgb(23 23 23 / 20%);

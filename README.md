@@ -37,6 +37,7 @@
 | `@tauri-apps/api`              | `2.11.1`  |
 | `@tauri-apps/plugin-shell`     | `2.3.5`   |
 | `@tauri-apps/plugin-autostart` | `2.5.1`   |
+| `@yao-pkg/pkg`                 | `6.21.0`  |
 
 ## 初期アーキテクチャ案
 
@@ -69,7 +70,7 @@
 - Tauri desktop appを初期設定用のmanager appとして提供する。
 - 初回ユーザーはTauri desktop appを起動し、解析対象フォルダー群、DB保存先、server port、認証設定などを入力する。
 - Tauri desktop appからHono serverを起動できるようにする。
-- Hono serverはTauri sidecar binary、または同梱されたserver commandとして起動する案を検討する。
+- Hono serverは`@yao-pkg/pkg`のEnhanced SEAでhost native binaryにし、Tauri sidecarとして同梱する。
 - macOSではTauri desktop appが`launchd`用の設定を作成し、ログイン時または常駐serverとして起動できるようにする。
 - WindowsではTauri desktop appがHono serverを起動する。
 - Windowsではservice化を扱わず、Tauri desktop appに「ユーザーログイン時に起動する」オプションを提供する。
@@ -373,6 +374,7 @@ Hono serverは`/api/*`でbackend APIを提供し、それ以外のrouteではNux
 - `0.0.0.0`でbindする場合も、desktop appが開くURLは`127.0.0.1`へ正規化する。
 - `packages/config`でbind host正規化とserver URL生成を共有し、Hono auth設定とdesktop managerが同じ規則を使う。
 - desktop managerから`/api/health`を読んで、server状態を`reachable`、`unreachable`、`invalid-response`に分類できる。
+- HTTP error responseを接続失敗と区別し、外部processのport競合とmanaged processの異常応答を別状態として表示できる。
 - Hono server entrypointは`--config <path>`を受け取り、Tauri sidecarや外部起動から明示config pathを渡せる。
 - desktop managerはTauri sidecarとしてHono serverを起動するためのcommand name、`--config` args、browser URL、health URL、`shell:allow-spawn` permissionを副作用なしで生成できる。
 - desktop managerはserver healthと既知のsidecar child processから、`stopped`、`starting`、`running`、`port-conflict`、`unhealthy`のlifecycle状態を判定し、二重起動を避けるstart planと既知のchildだけを対象にするstop planを生成できる。
@@ -383,7 +385,30 @@ Hono serverは`/api/*`でbackend APIを提供し、それ以外のrouteではNux
 - sidecar起動、既知child停止、browser URL open、LaunchAgent plist読取・書込・削除、Windows autostart状態確認・切替を、注入されたTauriまたはOS adapter経由で実行する操作層を提供する。
 - 操作planが変更なしの場合はadapterを呼ばず、sidecar起動結果のPIDが正の整数でなければmanaged childとして保持しない。
 - `apps/desktop`の共有planning・operation codeはNode.js runtime APIへ依存せず、Tauri WebView bundleから利用できる。
-- 現時点の操作層は副作用adapterの境界までを実装している。Tauri plugin、LaunchAgentの`launchctl`登録、sidecar packageとの実接続は後続実装とする。
+- Tauri pluginの実runtime adapterはsidecar child handleを保持し、生成元が既知のprocessだけを停止する。
+- Tauri Rust commandはnative path解決、config読取、macOS LaunchAgent plistのatomic更新、`launchctl`登録・解除を行う。
+- desktop manager UIはserver状態、初期account、data directory、複数collection root、network、thumbnail、自動起動を単一画面で管理する。
+- Windowsではmanager起動時に停止中のsidecarを起動し、autostartを有効にした場合も同じ起動経路を使う。
+- 初期setupとcollection root追加は、collection root配下へdatabase、thumbnail、logを置くdata directory構成を拒否する。
+- server package、Nuxt静的assets、PDF.js resources、libarchive WASM、native addonをEnhanced SEAへ収録するasset宣言を持つ。
+- Tauri `externalBin`とshell capabilityは`binaries/bookcafe-server`という固定名でsidecarへ接続する。
+- Tauri bundleは`dev.bookcafe.desktop`をidentifierに使い、共通SVGから生成したmacOS、Windows、PNG iconを収録する。
+- desktop UIが利用するWebView/CSS機能に合わせ、macOS bundleの最低対応版を13.0とする。
+- 実binaryの生成、native addonとWASMのsmoke test、Tauri bundleの検証は配布前にbuild hostごとに実行する。
+
+## Desktop sidecarのbuild
+
+sidecarはbuild hostと同じOS・CPU向けに生成する。Enhanced SEAとnative addonのABIを合わせるため、repositoryで指定したNode.js 24.xとRust toolchainを必要とする。Node.js 24以外ではbuildを拒否する。
+
+```sh
+pnpm --filter @bookcafe/app sidecar:build
+pnpm --filter @bookcafe/app tauri:dev
+pnpm --filter @bookcafe/app tauri:build
+```
+
+`sidecar:build`は共有package、Nuxt静的assets、Hono serverを先にbuildする。次に`pnpm deploy --prod --legacy`で隔離したstaging treeを作り、pnpm virtual storeのpackage linkをstaging内だけで実体化してからEnhanced SEAへ収録する。source workspaceのpnpm stateは退避・復元し、staging treeはbuildの成否にかかわらず削除する。
+
+生成するbinaryは`rustc -vV`のhost tripleを名前に持ち、`apps/desktop/src-tauri/binaries/`へ配置する。このdirectoryは生成物としてGit管理しない。配布前には実binaryで初期設定と認証を行い、画像フォルダー、7z、PDFのscan、page配信、thumbnail配信を確認する。macOSでは`cargo test`、`cargo clippy -- -D warnings`、`.app`/DMG生成、DMG checksum、LaunchAgentの登録・解除も確認する。
 
 ## 常駐化・自動起動の初期方針
 
@@ -610,7 +635,6 @@ EPUBはreflowable formatのため、どのviewport・フォント・余白で画
 - 表紙画像の扱い: 外部URL参照、ローカル保存、アップロード対応のどれにするか。
 - import: JSON、CSV、ISBNリストなど、初期投入方法をどうするか。
 - server processの監視方法、異常終了時の復旧方針。
-- macOS常駐化の粒度: ログイン時起動のLaunchAgentにするか、よりsystem serviceに近い扱いにするか。
 - WindowsでTauri desktop appを閉じたときの扱い: serverも停止するか、tray常駐で継続するか。
 - Windowsログイン時起動のUI: 初期設定時に有効化するか、後から設定画面で切り替えるか。
 - Linux向けドキュメント: 設定ファイル例、server起動コマンド例、`systemd` unit例をどこまで同梱するか。

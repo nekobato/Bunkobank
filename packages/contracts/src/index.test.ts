@@ -40,7 +40,8 @@ describe("initialSetupRequestSchema", () => {
     ).toMatchObject({
       host: "127.0.0.1",
       port: 4510,
-      thumbnails: { enabled: true }
+      thumbnails: { enabled: true },
+      collectionRoots: []
     });
   });
 
@@ -56,6 +57,16 @@ describe("initialSetupRequestSchema", () => {
       host: "0.0.0.0",
       thumbnails: { enabled: false }
     });
+  });
+
+  it("normalizes and deduplicates initial collection roots", () => {
+    expect(
+      initialSetupRequestSchema.parse({
+        username: "admin",
+        password: "password123",
+        collectionRoots: [" /Books/Manga ", "/Books/Manga", "/Books/Art"]
+      }).collectionRoots
+    ).toEqual(["/Books/Manga", "/Books/Art"]);
   });
 });
 
