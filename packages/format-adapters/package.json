@@ -1,0 +1,30 @@
+{
+  "name": "@bookcafe/format-adapters",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bookcafe/core": "workspace:*",
+    "@napi-rs/canvas": "^1.0.2",
+    "fast-xml-parser": "^5.9.3",
+    "fflate": "^0.8.3",
+    "libarchive-wasm": "^1.2.0",
+    "pdfjs-dist": "^6.1.200"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  }
+}
