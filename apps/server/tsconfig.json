@@ -6,5 +6,27 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts", "src/**/*.test.ts"]
+  "include": [
+    "src/auth.ts",
+    "src/cli.ts",
+    "src/cli.test.ts",
+    "src/initialization.ts",
+    "src/initialization.test.ts",
+    "src/job-queue.ts",
+    "src/job-queue.test.ts",
+    "src/library-app.ts",
+    "src/library-app.test.ts",
+    "src/library-scan-jobs.ts",
+    "src/library-scan-jobs.test.ts",
+    "src/loopback.ts",
+    "src/loopback.test.ts",
+    "src/main.ts",
+    "src/origins.ts",
+    "src/origins.test.ts",
+    "src/pdf-process.ts",
+    "src/pdf-process.test.ts",
+    "src/pdf-protocol.ts",
+    "src/pdf-worker.ts",
+    "src/thumbnails.ts"
+  ]
 }

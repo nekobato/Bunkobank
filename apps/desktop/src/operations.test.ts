@@ -18,19 +18,17 @@ import {
   executeManagedServerStartPlan,
   executeManagedServerStopPlan,
   executeWindowsAutostartPlan,
+  isManagedServerApiError,
   openManagedServer,
   readMacLaunchAgentStatus,
   readWindowsAutostartStatus
 } from "./operations.js";
 
 describe("desktop initial setup operations", () => {
-  it("submits desired settings to the currently running server", async () => {
+  it("submits the initial account to the currently running server", async () => {
     const fetchServer = vi.fn(async () =>
       createFetchResponse(201, {
-        setupComplete: true,
-        host: "0.0.0.0",
-        port: 4525,
-        thumbnails: { enabled: false }
+        setupComplete: true
       })
     );
     const submitInitialSetup = createInitialSetupSubmitter(fetchServer);
@@ -43,30 +41,17 @@ describe("desktop initial setup operations", () => {
         },
         {
           username: " admin ",
-          password: "password123",
-          dataDir: " /Users/alice/BookCafe ",
-          host: "0.0.0.0",
-          port: 4525,
-          collectionRoots: ["/Users/alice/Books"],
-          thumbnails: { enabled: false }
+          password: "password123"
         }
       )
     ).resolves.toEqual({
       url: "http://127.0.0.1:4510/api/setup/initial-user",
       request: {
         username: "admin",
-        password: "password123",
-        dataDir: "/Users/alice/BookCafe",
-        host: "0.0.0.0",
-        port: 4525,
-        collectionRoots: ["/Users/alice/Books"],
-        thumbnails: { enabled: false }
+        password: "password123"
       },
       status: {
-        setupComplete: true,
-        host: "0.0.0.0",
-        port: 4525,
-        thumbnails: { enabled: false }
+        setupComplete: true
       }
     });
     expect(fetchServer).toHaveBeenCalledWith(
@@ -79,12 +64,7 @@ describe("desktop initial setup operations", () => {
         },
         body: JSON.stringify({
           username: "admin",
-          password: "password123",
-          dataDir: "/Users/alice/BookCafe",
-          collectionRoots: ["/Users/alice/Books"],
-          host: "0.0.0.0",
-          port: 4525,
-          thumbnails: { enabled: false }
+          password: "password123"
         })
       }
     );
@@ -116,8 +96,7 @@ describe("desktop initial setup operations", () => {
   it("rejects a successful response with an invalid setup payload", async () => {
     const submitInitialSetup = createInitialSetupSubmitter(async () =>
       createFetchResponse(201, {
-        setupComplete: true,
-        port: "4525"
+        setupComplete: "yes"
       })
     );
 
@@ -138,10 +117,7 @@ describe("desktop initial setup operations", () => {
   it("reads and validates setup status from the active server", async () => {
     const fetchServer = vi.fn(async () =>
       createFetchResponse(200, {
-        setupComplete: false,
-        host: "127.0.0.1",
-        port: 4510,
-        thumbnails: { enabled: true }
+        setupComplete: false
       })
     );
     const readSetupStatus = createInitialSetupStatusReader(fetchServer);
@@ -154,10 +130,7 @@ describe("desktop initial setup operations", () => {
     ).resolves.toEqual({
       url: "http://127.0.0.1:4510/api/setup/status",
       status: {
-        setupComplete: false,
-        host: "127.0.0.1",
-        port: 4510,
-        thumbnails: { enabled: true }
+        setupComplete: false
       }
     });
     expect(fetchServer).toHaveBeenCalledWith(
@@ -169,6 +142,29 @@ describe("desktop initial setup operations", () => {
         }
       }
     );
+  });
+
+  it("preserves DATA_UNAVAILABLE metadata from setup status", async () => {
+    const readSetupStatus = createInitialSetupStatusReader(async () =>
+      createFetchResponse(503, {
+        code: "DATA_UNAVAILABLE",
+        message: "BookCafe data is unavailable."
+      })
+    );
+
+    try {
+      await readSetupStatus({
+        host: "127.0.0.1",
+        port: 4510
+      });
+      throw new Error("Expected setup status to fail.");
+    } catch (error) {
+      expect(isManagedServerApiError(error)).toBe(true);
+      expect(error).toMatchObject({
+        status: 503,
+        code: "DATA_UNAVAILABLE"
+      });
+    }
   });
 });
 

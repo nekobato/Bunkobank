@@ -124,8 +124,7 @@ describe("createTauriDesktopRuntime", () => {
       dataDir: "C:\\Users\\alice\\BookCafe",
       host: "127.0.0.1" as const,
       port: 4510,
-      thumbnails: { enabled: true },
-      setupComplete: true
+      thumbnails: { enabled: true }
     };
     const invoke = vi.fn(async (command: string) =>
       command === "get_desktop_environment" ? environment : serverConfig

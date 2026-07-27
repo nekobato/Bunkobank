@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { useDebounceFn } from "@vueuse/core";
 
-import { getApiErrorMessage } from "../../../utils/apiErrors";
+import {
+  getAccessErrorMessage,
+  getApiErrorMessage
+} from "../../../utils/apiErrors";
 
 const route = useRoute("/books/[bookId]/read");
 const bookId = computed(() => String(route.params.bookId));
+const { selectedLibraryId } = useLibraries();
 const { getBook, updateBookProgress } = useBookApi();
-const { data, error, pending } = await useAsyncData(
+const { data, error, pending, refresh } = await useAsyncData(
   `book-${bookId.value}`,
-  () => getBook(bookId.value),
+  () =>
+    selectedLibraryId.value
+      ? getBook(selectedLibraryId.value, bookId.value)
+      : Promise.resolve(null),
   {
-    server: false
+    server: false,
+    watch: [selectedLibraryId]
   }
 );
 const lastSavedPage = ref(1);
@@ -18,19 +26,17 @@ const progressError = ref("");
 const statusCode = computed(() => error.value?.statusCode);
 const actionLink = computed(() => {
   if (statusCode.value === 409) {
-    return { label: "Setup", to: "/setup" };
+    return { label: "設定を開く", to: "/setup" };
   }
 
   if (statusCode.value === 401) {
-    return { label: "Login", to: "/login" };
+    return { label: "ログイン", to: "/login" };
   }
 
   return null;
 });
 const errorMessage = computed(() =>
-  statusCode.value === 409 || statusCode.value === 401
-    ? "Authentication required."
-    : "Failed to load book."
+  getAccessErrorMessage(statusCode.value, "書籍を読み込めませんでした。")
 );
 
 watch(
@@ -48,19 +54,27 @@ watch(
  */
 const saveProgress = useDebounceFn(
   async (currentPage: number): Promise<void> => {
-    if (!data.value || currentPage === lastSavedPage.value) {
+    if (
+      !data.value ||
+      !selectedLibraryId.value ||
+      currentPage === lastSavedPage.value
+    ) {
       return;
     }
 
     try {
-      const book = await updateBookProgress(bookId.value, { currentPage });
+      const book = await updateBookProgress(
+        selectedLibraryId.value,
+        bookId.value,
+        { currentPage }
+      );
       data.value = book;
       lastSavedPage.value = book.currentPage;
       progressError.value = "";
     } catch (error) {
       progressError.value = getApiErrorMessage(
         error,
-        "Progress could not be saved."
+        "読書位置を保存できませんでした。"
       );
     }
   },
@@ -78,24 +92,51 @@ const handlePageChange = (currentPage: number): void => {
 </script>
 
 <template>
-  <p v-if="pending" class="status">Loading</p>
-  <p v-else-if="error" class="status is-error">
-    <span>{{ errorMessage }}</span>
-    <NuxtLink v-if="actionLink" :to="actionLink.to">
-      {{ actionLink.label }}
-    </NuxtLink>
-  </p>
-  <template v-else-if="data">
-    <ReaderView :book="data" @page-change="handlePageChange" />
-    <p
-      v-if="progressError"
-      class="progress-status is-error"
-      role="status"
-      aria-live="polite"
+  <ClientOnly>
+    <div v-if="pending" class="status" role="status">
+      <ProgressSpinner class="spinner" stroke-width="4" />
+      <span>書籍を読み込んでいます。</span>
+    </div>
+    <Message
+      v-else-if="error"
+      class="status"
+      severity="error"
+      :closable="false"
     >
-      {{ progressError }}
-    </p>
-  </template>
+      <span>{{ errorMessage }}</span>
+      <span class="status-actions">
+        <NuxtLink v-if="actionLink" :to="actionLink.to">
+          {{ actionLink.label }}
+        </NuxtLink>
+        <Button
+          v-else
+          label="再試行"
+          icon="pi pi-refresh"
+          severity="secondary"
+          size="small"
+          @click="() => refresh()"
+        />
+        <NuxtLink to="/">ライブラリへ戻る</NuxtLink>
+      </span>
+    </Message>
+    <template v-else-if="data">
+      <ReaderView :book="data" @page-change="handlePageChange" />
+      <Message
+        v-if="progressError"
+        class="progress-status is-error"
+        severity="error"
+        :closable="false"
+      >
+        {{ progressError }}
+      </Message>
+    </template>
+    <template #fallback>
+      <div class="status" role="status">
+        <ProgressSpinner class="spinner" stroke-width="4" />
+        <span>書籍を読み込んでいます。</span>
+      </div>
+    </template>
+  </ClientOnly>
 </template>
 
 <style scoped>
@@ -116,6 +157,14 @@ const handlePageChange = (currentPage: number): void => {
   color: var(--text);
 }
 
+.status-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.75rem;
+}
+
 .is-error {
   color: var(--danger);
 }
@@ -131,5 +180,10 @@ const handlePageChange = (currentPage: number): void => {
   border-radius: 6px;
   background: var(--panel);
   box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 18%);
+}
+
+.spinner {
+  inline-size: 2rem;
+  block-size: 2rem;
 }
 </style>

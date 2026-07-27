@@ -16,22 +16,20 @@ describe("book availability", () => {
   });
 
   it("formats compact source status labels", () => {
-    expect(getBookSourceStatusLabel("ready")).toBe("Ready");
-    expect(getBookSourceStatusLabel("scanning")).toBe("Scanning");
-    expect(getBookSourceStatusLabel("missing")).toBe("Missing");
-    expect(getBookSourceStatusLabel("error")).toBe("Error");
+    expect(getBookSourceStatusLabel("ready")).toBe("閲覧可能");
+    expect(getBookSourceStatusLabel("scanning")).toBe("スキャン中");
+    expect(getBookSourceStatusLabel("missing")).toBe("見つかりません");
+    expect(getBookSourceStatusLabel("error")).toBe("エラー");
   });
 
   it("explains unavailable source states with remediation text", () => {
-    expect(getBookSourceStatusTitle("missing")).toBe("Source unavailable");
-    expect(getBookSourceStatusMessage("missing")).toContain(
-      "scan the collection root again"
+    expect(getBookSourceStatusTitle("missing")).toBe(
+      "元ファイルを確認できません"
     );
-    expect(getBookSourceStatusTitle("error")).toBe("Source error");
-    expect(getBookSourceStatusMessage("error")).toContain("Check the file");
-    expect(getBookSourceStatusTitle("scanning")).toBe("Source scanning");
-    expect(getBookSourceStatusMessage("scanning")).toContain(
-      "after the current scan finishes"
-    );
+    expect(getBookSourceStatusMessage("missing")).toContain("再スキャン");
+    expect(getBookSourceStatusTitle("error")).toBe("元ファイルのエラー");
+    expect(getBookSourceStatusMessage("error")).toContain("ファイルを確認");
+    expect(getBookSourceStatusTitle("scanning")).toBe("スキャン中");
+    expect(getBookSourceStatusMessage("scanning")).toContain("完了すると");
   });
 });

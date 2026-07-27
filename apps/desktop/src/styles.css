@@ -1,94 +1,131 @@
-/**
- * Global tokens and document defaults for the BookCafe desktop manager.
- */
+/** Global layout and platform color behavior for the Desktop Manager. */
 
-:root {
-  color-scheme: light;
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-
-  --ink: #10252c;
-  --ink-soft: #41565a;
-  --fog: #e9f0ef;
-  --paper: #fbfcfa;
-  --paper-raised: #ffffff;
-  --line: #aebdb9;
-  --line-soft: #d4dfdc;
-  --teal: #176a67;
-  --teal-strong: #0e4f4d;
-  --amber: #a75f12;
-  --danger: #a43c32;
-  --success: #276848;
-  --rail: #102f35;
-  --rail-ink: #edf7f4;
-  --focus: #d17c1b;
-  --shadow: 0 1rem 2.5rem rgb(16 37 44 / 0.12);
-  --font-display: ui-rounded, "Avenir Next", "Segoe UI", sans-serif;
-  --font-data: ui-monospace, "SFMono-Regular", Consolas, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer bookcafe {
   :root {
-    color-scheme: dark;
-    --ink: #e6f0ed;
-    --ink-soft: #a8b9b5;
-    --fog: #0e1b20;
-    --paper: #13242a;
-    --paper-raised: #182d33;
-    --line: #60736f;
-    --line-soft: #334a4c;
-    --teal: #70c3ba;
-    --teal-strong: #9edbd3;
-    --amber: #efad5d;
-    --danger: #f08b7f;
-    --success: #78c99d;
-    --rail: #071418;
-    --rail-ink: #edf7f4;
-    --focus: #ffba67;
-    --shadow: 0 1rem 2.5rem rgb(0 0 0 / 0.32);
+    color-scheme: light dark;
+    font-synthesis: none;
   }
-}
 
-html,
-body,
-#app {
-  min-block-size: 100%;
-  margin: 0;
-}
+  html,
+  body,
+  #app {
+    min-block-size: 100%;
+  }
 
-body {
-  min-block-size: 100dvh;
-  background: var(--fog);
-  color: var(--ink);
-  line-height: 1.5;
-}
+  body {
+    min-block-size: 100dvh;
+  }
 
-button,
-input {
-  font: inherit;
-}
+  button:disabled {
+    cursor: not-allowed;
+  }
 
-button {
-  cursor: pointer;
-}
+  .desktop-app {
+    display: grid;
+    grid-template-columns: minmax(17rem, 23rem) minmax(30rem, 1fr);
+    min-inline-size: 47.5rem;
+    min-block-size: 100dvh;
+    background:
+      radial-gradient(
+        circle at 78% 4%,
+        color-mix(in oklab, var(--bc-patina) 16%, transparent),
+        transparent 30rem
+      ),
+      var(--bc-fog);
+  }
 
-button:disabled {
-  cursor: not-allowed;
-}
+  .skip-link {
+    position: fixed;
+    z-index: 100;
+    inset-block-start: 0.75rem;
+    inset-inline-start: 0.75rem;
+    translate: 0 -180%;
+    border-radius: 0.45rem;
+    background: var(--bc-panel);
+    color: var(--bc-ink);
+    padding: 0.7rem 1rem;
+    font-weight: 750;
+    box-shadow: var(--bc-shadow-high);
+  }
 
-:where(button, input, a):focus-visible {
-  outline: 0.1875rem solid var(--focus);
-  outline-offset: 0.1875rem;
-}
+  .skip-link:focus {
+    translate: 0;
+  }
 
-::selection {
-  background: var(--teal);
-  color: var(--paper-raised);
+  .manager-content {
+    container-name: manager-content;
+    container-type: inline-size;
+    inline-size: min(100%, 74rem);
+    min-inline-size: 0;
+    margin-inline: auto;
+    padding: clamp(2rem, 5vw, 4.5rem);
+  }
+
+  .page-heading {
+    margin-block-end: clamp(1.75rem, 4vw, 3rem);
+  }
+
+  .page-heading h1 {
+    margin: 0;
+    font-family: var(--bc-font-display);
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.1;
+    letter-spacing: -0.045em;
+    text-wrap: balance;
+  }
+
+  .error-summary {
+    margin-block-end: 1rem;
+  }
+
+  .error-summary ul {
+    margin: 0;
+    padding-inline-start: 1.2rem;
+  }
+
+  .panel-stack {
+    display: grid;
+    gap: 1rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bc-fog: #0d1c21;
+      --bc-paper: #12252b;
+      --bc-panel: #172c32;
+      --bc-ink: #edf4f2;
+      --bc-ink-soft: #a9bbb7;
+      --bc-line: #60716f;
+      --bc-line-soft: #30474a;
+      --bc-ink-blue: #9bb1ff;
+      --bc-patina: #86b8ae;
+      --bc-success: #7dd3a5;
+      --bc-warning: #f2b665;
+      --bc-danger: #ff9182;
+      --bc-focus: #b7c4ff;
+      --bc-shadow-low: 0 0.4rem 1.2rem rgb(0 0 0 / 20%);
+      --bc-shadow-high: 0 1.25rem 3rem rgb(0 0 0 / 38%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
 }

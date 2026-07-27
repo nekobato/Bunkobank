@@ -1,97 +1,145 @@
 <script setup lang="ts">
-import { useTemplateRef } from "vue";
+/** Responsive PrimeVue application shell for the BookCafe Web Library. */
 
 import { isReaderRoute } from "./utils/appNavigation";
 
 const route = useRoute();
-const navigationDrawer = useTemplateRef<HTMLDialogElement>("navigation-drawer");
 const isNavigationOpen = ref(false);
 const { session, signOut } = useBookAuth();
+const {
+  libraries,
+  loading: librariesLoading,
+  refreshLibraries,
+  resetLibraries,
+  selectedLibraryId,
+  selectLibrary
+} = useLibraries();
 const hasSession = computed(() => Boolean(session.value.data?.user));
 const userLabel = computed(
   () =>
     session.value.data?.user.name ??
     session.value.data?.user.email ??
-    "Signed in"
+    "ログイン中"
 );
 const isReader = computed(() => isReaderRoute(route.path));
 
 watch(
-  () => route.fullPath,
-  () => closeNavigation()
+  hasSession,
+  async (authenticated) => {
+    if (!authenticated) {
+      resetLibraries();
+      return;
+    }
+
+    try {
+      await refreshLibraries();
+    } catch {
+      // Individual pages expose actionable API errors.
+    }
+  },
+  { immediate: true }
 );
 
-/** Opens the modal navigation drawer when the persistent sidebar is hidden. */
-const openNavigation = (): void => {
-  const drawer = navigationDrawer.value;
-
-  if (!drawer || drawer.open) {
-    return;
+watch(
+  () => route.fullPath,
+  () => {
+    isNavigationOpen.value = false;
   }
+);
 
-  drawer.showModal();
-  isNavigationOpen.value = true;
-};
-
-/** Closes the navigation drawer and lets the browser restore trigger focus. */
-const closeNavigation = (): void => {
-  const drawer = navigationDrawer.value;
-
-  if (drawer?.open) {
-    drawer.close();
-  }
-
-  isNavigationOpen.value = false;
-};
-
-/** Synchronizes reactive drawer state after native Escape dismissal. */
-const handleNavigationClosed = (): void => {
-  isNavigationOpen.value = false;
-};
-
-/** Signs the current user out and moves back to the login screen. */
+/** Signs out the current user and returns to the login screen. */
 const submitSignOut = async (): Promise<void> => {
-  closeNavigation();
+  isNavigationOpen.value = false;
   await signOut();
+  resetLibraries();
   await navigateTo("/login");
+};
+
+/** Persists a library chosen in the application header. */
+const updateSelectedLibrary = async (
+  libraryId: string | null
+): Promise<void> => {
+  if (libraryId) {
+    await selectLibrary(libraryId);
+  }
+};
+
+/** Restores keyboard focus to the control that opened the navigation drawer. */
+const restoreNavigationFocus = (): void => {
+  document.querySelector<HTMLButtonElement>(".menu-trigger")?.focus();
 };
 </script>
 
 <template>
   <div class="app-shell" :class="{ 'is-reader': isReader }">
-    <a class="skip-link" href="#content">Skip to content</a>
+    <a class="skip-link" href="#content">本文へ移動</a>
 
     <header class="topbar">
       <div class="topbar-start">
-        <button
+        <Button
           class="menu-trigger"
-          type="button"
-          aria-label="Open navigation"
-          aria-haspopup="dialog"
+          icon="pi pi-bars"
+          severity="secondary"
+          variant="text"
+          rounded
+          aria-label="ナビゲーションを開く"
           aria-controls="navigation-drawer"
           :aria-expanded="isNavigationOpen"
-          @click="openNavigation"
-        >
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
-        </button>
-
+          @click="isNavigationOpen = true"
+        />
         <NuxtLink class="brand" to="/">
           <span class="brand-mark" aria-hidden="true">BC</span>
-          <span class="brand-copy">
+          <span class="brand-copy" translate="no">
             <strong>BookCafe</strong>
-            <small>Personal library</small>
           </span>
         </NuxtLink>
       </div>
 
       <ClientOnly>
+        <div v-if="hasSession" class="library-picker">
+          <span id="application-library-label" class="control-label">
+            ライブラリ
+          </span>
+          <Select
+            input-id="application-library"
+            :model-value="selectedLibraryId"
+            :options="libraries"
+            option-label="name"
+            option-value="id"
+            placeholder="未登録"
+            :loading="librariesLoading"
+            :disabled="libraries.length === 0"
+            aria-labelledby="application-library-label"
+            @update:model-value="updateSelectedLibrary"
+          />
+        </div>
+        <template #fallback>
+          <span class="library-placeholder" aria-hidden="true" />
+        </template>
+      </ClientOnly>
+
+      <ClientOnly>
         <div v-if="hasSession" class="account">
           <span class="user">{{ userLabel }}</span>
-          <button type="button" @click="submitSignOut">Sign out</button>
+          <Button
+            class="logout-button"
+            label="ログアウト"
+            icon="pi pi-sign-out"
+            severity="secondary"
+            variant="outlined"
+            size="small"
+            aria-label="ログアウト"
+            @click="submitSignOut"
+          />
         </div>
-        <NuxtLink v-else class="session-link" to="/login">Login</NuxtLink>
+        <Button
+          v-else
+          as="router-link"
+          label="ログイン"
+          icon="pi pi-sign-in"
+          to="/login"
+          size="small"
+        />
         <template #fallback>
           <span class="session-placeholder" aria-hidden="true" />
         </template>
@@ -99,111 +147,98 @@ const submitSignOut = async (): Promise<void> => {
     </header>
 
     <aside class="sidebar">
-      <AppNavigation />
+      <AppNavigation dark />
     </aside>
 
     <main id="content" class="content" tabindex="-1">
       <NuxtPage />
     </main>
 
-    <dialog
+    <Drawer
       id="navigation-drawer"
-      ref="navigation-drawer"
-      class="drawer"
-      aria-labelledby="navigation-drawer-title"
-      @click.self="closeNavigation"
-      @close="handleNavigationClosed"
+      v-model:visible="isNavigationOpen"
+      header="BookCafe"
+      aria-label="メインナビゲーション"
+      position="left"
+      block-scroll
+      class="navigation-drawer"
+      :close-button-props="{ 'aria-label': '閉じる' }"
+      @after-hide="restoreNavigationFocus"
     >
-      <div class="drawer-sheet">
-        <div class="drawer-header">
-          <div>
-            <p class="drawer-kicker">Personal library</p>
-            <h2 id="navigation-drawer-title">BookCafe</h2>
-          </div>
-          <button
-            class="close-button"
-            type="button"
-            aria-label="Close navigation"
-            @click="closeNavigation"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="m6 6 12 12M18 6 6 18" />
-            </svg>
-          </button>
-        </div>
-        <AppNavigation @navigate="closeNavigation" />
-      </div>
-    </dialog>
+      <AppNavigation @navigate="isNavigationOpen = false" />
+    </Drawer>
   </div>
 </template>
 
 <style scoped>
 .app-shell {
-  --app-topbar-height: 4rem;
+  --app-topbar-height: 4.25rem;
 
   display: grid;
   grid-template-areas:
     "topbar topbar"
     "sidebar content";
-  grid-template-columns: 16rem minmax(0, 1fr);
-  grid-template-rows:
-    var(--app-topbar-height)
-    minmax(calc(100dvh - var(--app-topbar-height)), auto);
-  min-height: 100dvh;
-  color: var(--text);
-  background: var(--surface);
+  grid-template-columns: 16.5rem minmax(0, 1fr);
+  grid-template-rows: var(--app-topbar-height) minmax(
+      calc(100dvh - var(--app-topbar-height)),
+      auto
+    );
+  min-block-size: 100dvh;
+  background: var(--bc-fog);
 }
 
 .skip-link {
   position: fixed;
-  top: 0.65rem;
-  left: 50%;
-  z-index: 100;
+  z-index: 1000;
+  inset-block-start: 0.65rem;
+  inset-inline-start: 50%;
+  translate: -50% -170%;
+  border-radius: 0.5rem;
+  background: var(--bc-deep-shelf);
+  color: white;
   padding: 0.65rem 0.9rem;
-  border-radius: 6px;
-  color: #fff;
-  background: var(--accent-strong);
+  font-weight: 750;
   text-decoration: none;
-  transform: translate(-50%, -150%);
 }
 
 .skip-link:focus {
-  transform: translate(-50%, 0);
+  translate: -50% 0;
 }
 
 .topbar {
   position: sticky;
-  top: 0;
   z-index: 30;
+  inset-block-start: 0;
   grid-area: topbar;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  min-width: 0;
-  height: var(--app-topbar-height);
-  padding: 0.55rem clamp(0.75rem, 2vw, 1.25rem);
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in oklab, var(--surface) 94%, transparent);
-  backdrop-filter: blur(12px);
+  min-inline-size: 0;
+  block-size: var(--app-topbar-height);
+  border-block-end: 1px solid var(--bc-line-soft);
+  background: color-mix(in oklab, var(--bc-panel) 92%, transparent);
+  padding-inline: clamp(0.75rem, 2vw, 1.4rem);
+  backdrop-filter: blur(14px);
 }
 
 .topbar-start,
 .brand,
-.account {
+.account,
+.library-picker {
   display: flex;
   align-items: center;
 }
 
 .topbar-start {
-  gap: 0.65rem;
-  min-width: 0;
+  gap: 0.6rem;
+  min-inline-size: 0;
 }
 
 .brand {
-  gap: 0.65rem;
-  min-width: 0;
-  color: var(--text);
+  gap: 0.7rem;
+  min-inline-size: 0;
+  color: var(--bc-ink);
   text-decoration: none;
 }
 
@@ -211,16 +246,15 @@ const submitSignOut = async (): Promise<void> => {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 2.25rem;
-  height: 2.55rem;
-  border: 1px solid color-mix(in oklab, var(--accent) 55%, var(--line));
-  border-left-width: 0.28rem;
-  border-radius: 3px 7px 7px 3px;
-  color: var(--accent-strong);
-  background: var(--panel);
+  inline-size: 2.35rem;
+  block-size: 2.8rem;
+  border-radius: 0.25rem 0.7rem 0.7rem 0.25rem;
+  background: #d9ddff;
+  color: var(--bc-deep-shelf);
+  font-family: var(--bc-font-display);
   font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-weight: 850;
+  box-shadow: inset 0.28rem 0 rgb(49 89 168 / 24%);
 }
 
 .brand-copy {
@@ -229,162 +263,74 @@ const submitSignOut = async (): Promise<void> => {
 }
 
 .brand-copy strong {
-  font-size: 0.98rem;
-  font-weight: 750;
-  letter-spacing: -0.01em;
-}
-
-.brand-copy small {
-  margin-top: 0.22rem;
-  color: var(--muted);
-  font-size: 0.7rem;
-}
-
-.menu-trigger,
-.close-button {
-  display: none;
-  place-items: center;
-  width: 2.5rem;
-  height: 2.5rem;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-
-.menu-trigger svg,
-.close-button svg {
-  width: 1.25rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-width: 1.8;
-}
-
-.account {
-  gap: 0.65rem;
-  min-width: 0;
-}
-
-.account button,
-.session-link {
-  flex: 0 0 auto;
-  min-height: 2.4rem;
-  padding: 0 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  color: var(--text);
-  background: var(--panel);
-  font-size: 0.82rem;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.session-link {
-  display: grid;
-  place-items: center;
-}
-
-.account button:hover,
-.session-link:hover {
-  border-color: color-mix(in oklab, var(--accent) 45%, var(--line));
+  font-family: var(--bc-font-display);
+  font-size: 1rem;
 }
 
 .user {
-  max-width: min(16rem, 30vw);
+  color: var(--bc-ink-soft);
+  font-size: 0.72rem;
+}
+
+.account {
+  gap: 0.7rem;
+  min-inline-size: 0;
+}
+
+.library-picker {
+  gap: 0.55rem;
+  min-inline-size: 0;
+  margin-inline: auto;
+}
+
+.library-picker .control-label {
+  color: var(--bc-ink-soft);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.library-picker :deep(.p-select) {
+  inline-size: min(22rem, 30vw);
+}
+
+.library-placeholder {
+  inline-size: min(22rem, 30vw);
+  block-size: 2.5rem;
+  margin-inline: auto;
+}
+
+.user {
+  max-inline-size: min(16rem, 30vw);
   overflow: hidden;
-  color: var(--muted);
-  font-size: 0.82rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .session-placeholder {
-  width: 4.5rem;
-  height: 2.4rem;
+  inline-size: 5rem;
+  block-size: 2.4rem;
+}
+
+.menu-trigger {
+  display: none;
 }
 
 .sidebar {
   position: sticky;
-  top: var(--app-topbar-height);
+  inset-block-start: var(--app-topbar-height);
   grid-area: sidebar;
   align-self: start;
-  height: calc(100dvh - var(--app-topbar-height));
-  padding: 1.15rem 0.75rem 2rem;
+  block-size: calc(100dvh - var(--app-topbar-height));
   overflow-y: auto;
-  border-right: 1px solid var(--line);
-  background: color-mix(in oklab, var(--surface) 82%, var(--panel));
+  border-inline-end: 1px solid rgb(255 255 255 / 12%);
+  background: var(--bc-deep-shelf);
+  padding: 1.35rem 0.85rem 2rem;
 }
 
 .content {
   grid-area: content;
-  min-width: 0;
-  min-height: calc(100dvh - var(--app-topbar-height));
-}
-
-.drawer {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  max-width: none;
-  height: 100dvh;
-  max-height: none;
-  padding: 0;
-  border: 0;
-  margin: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
-.drawer::backdrop {
-  background: rgb(23 23 23 / 46%);
-}
-
-.drawer-sheet {
-  width: min(20.5rem, calc(100vw - 3rem));
-  height: 100%;
-  padding: max(1rem, env(safe-area-inset-top))
-    max(0.8rem, env(safe-area-inset-right))
-    max(2rem, env(safe-area-inset-bottom))
-    max(0.8rem, env(safe-area-inset-left));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  border-right: 1px solid var(--line);
-  background: var(--surface);
-  box-shadow: 1rem 0 3rem rgb(23 23 23 / 20%);
-}
-
-.drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.15rem 0.25rem 1.15rem;
-  margin-bottom: 1.1rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.drawer-header h2,
-.drawer-kicker {
-  margin: 0;
-}
-
-.drawer-header h2 {
-  font-size: 1.15rem;
-}
-
-.drawer-kicker {
-  margin-bottom: 0.2rem;
-  color: var(--muted);
-  font-size: 0.7rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.drawer .close-button {
-  display: grid;
+  min-inline-size: 0;
+  min-block-size: calc(100dvh - var(--app-topbar-height));
 }
 
 .is-reader {
@@ -399,10 +345,10 @@ const submitSignOut = async (): Promise<void> => {
 }
 
 .is-reader .menu-trigger {
-  display: grid;
+  display: inline-flex;
 }
 
-@media (width <= 760px) {
+@media (width <= 50rem) {
   .app-shell {
     grid-template-areas:
       "topbar"
@@ -415,38 +361,57 @@ const submitSignOut = async (): Promise<void> => {
   }
 
   .menu-trigger {
-    display: grid;
+    display: inline-flex;
   }
 }
 
-@media (width <= 480px) {
-  .brand-copy small,
+@media (width <= 32rem) {
+  .topbar {
+    gap: 0.5rem;
+  }
+
+  .topbar-start {
+    flex: 0 0 auto;
+    gap: 0.35rem;
+  }
+
+  .brand {
+    gap: 0;
+  }
+
+  .brand-copy {
+    display: none;
+  }
+
   .user {
     display: none;
   }
 
-  .topbar {
-    gap: 0.5rem;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .skip-link {
-    transition: transform 150ms ease;
+  .account {
+    flex: 0 0 auto;
   }
 
-  .drawer[open] .drawer-sheet {
-    animation: reveal-drawer 180ms ease-out both;
+  .logout-button {
+    inline-size: 2.5rem;
+    padding-inline: 0;
   }
 
-  @keyframes reveal-drawer {
-    from {
-      transform: translateX(-100%);
-    }
+  .logout-button :deep(.p-button-label) {
+    display: none;
+  }
 
-    to {
-      transform: translateX(0);
-    }
+  .library-picker {
+    flex: 1 1 auto;
+    margin-inline: 0;
+  }
+
+  .library-picker .control-label {
+    display: none;
+  }
+
+  .library-picker :deep(.p-select) {
+    inline-size: 100%;
+    min-inline-size: 0;
   }
 }
 </style>

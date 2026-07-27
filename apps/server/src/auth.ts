@@ -3,13 +3,9 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
-import {
-  createServerOrigin,
-  resolveDataPaths,
-  type AppConfig,
-  type BindHost
-} from "@bookcafe/config";
+import { createServerOrigin, type BindHost } from "@bookcafe/config";
 import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
@@ -22,29 +18,26 @@ interface CachedAuth {
   auth: ReturnType<typeof createAuth>;
 }
 
-interface AuthOptions {
-  dataDir: string;
+export interface AuthOptions {
+  databasePath: string;
   host: BindHost;
   port: number;
 }
 
-type AuthInput = AppConfig | AuthOptions | string;
-
 let cachedAuth: CachedAuth | null = null;
 
 /**
- * Creates a Better Auth instance for a data directory.
+ * Creates a Better Auth instance backed by the shared BookCafe SQLite file.
  */
-export const createAuth = (input: AuthInput) => {
-  const options = toAuthOptions(input);
-  const paths = resolveDataPaths(options.dataDir);
+export const createAuth = (options: AuthOptions) => {
+  const databasePath = resolve(options.databasePath);
   const baseURL = getAuthBaseURL(options);
-  mkdirSync(paths.root, { recursive: true });
+  mkdirSync(dirname(databasePath), { recursive: true });
 
   return betterAuth({
     appName: "BookCafe",
     baseURL,
-    database: new Database(paths.databasePath),
+    database: new Database(databasePath),
     emailAndPassword: {
       enabled: true
     },
@@ -54,13 +47,14 @@ export const createAuth = (input: AuthInput) => {
 };
 
 /**
- * Returns a cached Better Auth instance for the active data directory.
+ * Returns a cached Better Auth instance for the active shared database.
  */
-export const getAuth = (input: AuthInput): ReturnType<typeof createAuth> => {
-  const options = toAuthOptions(input);
+export const getAuth = (
+  options: AuthOptions
+): ReturnType<typeof createAuth> => {
   const baseURL = getAuthBaseURL(options);
   const cacheKey = [
-    options.dataDir,
+    resolve(options.databasePath),
     options.host,
     options.port,
     baseURL,
@@ -85,22 +79,6 @@ export const runAuthMigrations = async (
   const { runMigrations } = await getMigrations(auth.options);
   await runMigrations();
 };
-
-/**
- * Normalizes a config object or legacy data directory string for auth setup.
- */
-const toAuthOptions = (input: AuthInput): AuthOptions =>
-  typeof input === "string"
-    ? {
-        dataDir: input,
-        host: "127.0.0.1",
-        port: 4510
-      }
-    : {
-        dataDir: input.dataDir,
-        host: input.host,
-        port: input.port
-      };
 
 /**
  * Builds the canonical Better Auth server URL for the active config.

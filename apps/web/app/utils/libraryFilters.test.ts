@@ -71,11 +71,9 @@ describe("library filter helpers", () => {
   });
 
   it("formats result summaries with active filter labels", () => {
-    expect(formatLibraryResultSummary(2, "", "", "")).toBe(
-      "2 books in library"
-    );
+    expect(formatLibraryResultSummary(2, "", "", "")).toBe("蔵書 2冊");
     expect(formatLibraryResultSummary(1, " Origin ", "reading", "ready")).toBe(
-      "Showing 1 book for Search: Origin, Reading: Reading, Book: Ready"
+      "蔵書 1冊（検索: Origin、読書状況: 読書中、元ファイル: 閲覧可能）"
     );
   });
 });

@@ -8,8 +8,14 @@ import {
 } from "../utils/bookAvailability";
 import { createBookCoverPlaceholder } from "../utils/bookCover";
 
-defineProps<{
+const { mode = "normal", busyBookId = null } = defineProps<{
   books: BookSummary[];
+  mode?: "normal" | "archived";
+  busyBookId?: string | null;
+}>();
+const emit = defineEmits<{
+  archive: [book: BookSummary];
+  restore: [book: BookSummary];
 }>();
 
 /**
@@ -27,7 +33,7 @@ const canReadBook = (book: BookSummary): boolean =>
  * Creates the reader route only when the source can be opened.
  */
 const getReadRoute = (book: BookSummary): string | undefined =>
-  canReadBook(book) ? `/books/${book.id}/read` : undefined;
+  mode === "normal" && canReadBook(book) ? `/books/${book.id}/read` : undefined;
 
 /**
  * Formats the persisted reading status for library cards.
@@ -37,11 +43,11 @@ const getReadingStatusLabel = (
 ): string => {
   switch (readingStatus) {
     case "finished":
-      return "Finished";
+      return "読了";
     case "reading":
-      return "Reading";
+      return "読書中";
     default:
-      return "Unread";
+      return "未読";
   }
 };
 
@@ -60,8 +66,38 @@ const getCoverPlaceholder = (book: BookSummary) =>
  */
 const getCoverLinkLabel = (book: BookSummary): string =>
   book.thumbnailUrl
-    ? `Read ${book.title}`
+    ? `${book.title}を読む`
     : getCoverPlaceholder(book).accessibleName;
+
+/** Returns a PrimeVue severity for a persisted reading state. */
+const getReadingSeverity = (
+  readingStatus: BookSummary["readingStatus"]
+): "secondary" | "info" | "success" => {
+  switch (readingStatus) {
+    case "finished":
+      return "success";
+    case "reading":
+      return "info";
+    default:
+      return "secondary";
+  }
+};
+
+/** Returns a PrimeVue severity for source availability. */
+const getSourceSeverity = (
+  status: BookSummary["status"]
+): "secondary" | "info" | "warn" | "danger" => {
+  switch (status) {
+    case "error":
+      return "danger";
+    case "missing":
+      return "warn";
+    case "scanning":
+      return "info";
+    default:
+      return "secondary";
+  }
+};
 
 /**
  * Creates a stable id for the source availability text on one card.
@@ -73,7 +109,7 @@ const getAvailabilityId = (book: BookSummary): string =>
  * Stops reader navigation while keeping unavailable read links discoverable.
  */
 const preventUnavailableRead = (event: Event, book: BookSummary): void => {
-  if (canReadBook(book)) {
+  if (mode === "normal" && canReadBook(book)) {
     return;
   }
 
@@ -82,10 +118,19 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 </script>
 
 <template>
-  <ul class="book-list" aria-label="Books">
+  <ul class="book-list" aria-label="蔵書">
     <li v-for="book in books" :key="book.id" class="item">
-      <div class="book">
+      <div
+        class="book status-spine"
+        :class="{
+          'tone-success': book.status === 'ready',
+          'tone-info': book.status === 'scanning',
+          'tone-warning': book.status === 'missing',
+          'tone-danger': book.status === 'error'
+        }"
+      >
         <NuxtLink
+          v-if="mode === 'normal'"
           class="cover-link"
           :class="{ 'is-disabled': !canReadBook(book) }"
           :to="getReadRoute(book)"
@@ -115,8 +160,27 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
             </span>
           </span>
         </NuxtLink>
+        <span v-else class="cover-link">
+          <span class="cover">
+            <img
+              v-if="book.thumbnailUrl"
+              :src="book.thumbnailUrl"
+              alt=""
+              width="160"
+              height="240"
+            />
+            <span v-else class="empty" aria-hidden="true">
+              <span class="mark">{{ getCoverPlaceholder(book).initials }}</span>
+              <span class="details">
+                <span>{{ getCoverPlaceholder(book).formatLabel }}</span>
+                <span>{{ getCoverPlaceholder(book).pageLabel }}</span>
+              </span>
+            </span>
+          </span>
+        </span>
         <div class="info">
           <NuxtLink
+            v-if="mode === 'normal'"
             class="title"
             :class="{ 'is-disabled': !canReadBook(book) }"
             :to="getReadRoute(book)"
@@ -130,31 +194,23 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
           >
             {{ book.title }}
           </NuxtLink>
+          <strong v-else class="title">{{ book.title }}</strong>
           <span v-if="book.authors.length > 0" class="authors">
             {{ getAuthorsLabel(book.authors) }}
           </span>
           <span class="line">
-            <span class="meta">{{ book.pageCount }} pages</span>
-            <span
-              class="badge"
-              :class="{
-                'is-reading': book.readingStatus === 'reading',
-                'is-finished': book.readingStatus === 'finished'
-              }"
-            >
-              {{ getReadingStatusLabel(book.readingStatus) }}
-            </span>
-            <span
+            <span class="meta">{{ book.pageCount }}ページ</span>
+            <Tag
+              :value="getReadingStatusLabel(book.readingStatus)"
+              :severity="getReadingSeverity(book.readingStatus)"
+              rounded
+            />
+            <Tag
               v-if="book.status !== 'ready'"
-              class="badge"
-              :class="{
-                'is-error': book.status === 'error',
-                'is-missing': book.status === 'missing',
-                'is-scanning': book.status === 'scanning'
-              }"
-            >
-              {{ getBookSourceStatusLabel(book.status) }}
-            </span>
+              :value="getBookSourceStatusLabel(book.status)"
+              :severity="getSourceSeverity(book.status)"
+              rounded
+            />
           </span>
           <span
             v-if="!canReadBook(book)"
@@ -164,11 +220,13 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
             {{ getBookSourceStatusMessage(book.status) }}
           </span>
           <span v-if="book.tags.length > 0" class="tags">
-            <span v-for="tag in book.tags.slice(0, 3)" :key="tag" class="tag">
-              {{ tag }}
-            </span>
+            <Chip
+              v-for="tag in book.tags.slice(0, 3)"
+              :key="tag"
+              :label="tag"
+            />
           </span>
-          <span class="actions">
+          <span v-if="mode === 'normal'" class="actions">
             <NuxtLink
               class="action"
               :class="{ 'is-disabled': !canReadBook(book) }"
@@ -181,11 +239,27 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
               "
               @click="preventUnavailableRead($event, book)"
             >
-              Read
+              読む
             </NuxtLink>
-            <NuxtLink class="action" :to="`/books/${book.id}`">
-              Details
-            </NuxtLink>
+            <NuxtLink class="action" :to="`/books/${book.id}`"> 詳細 </NuxtLink>
+            <Button
+              label="アーカイブ"
+              icon="pi pi-inbox"
+              size="small"
+              severity="secondary"
+              variant="text"
+              @click="emit('archive', book)"
+            />
+          </span>
+          <span v-else class="actions">
+            <Button
+              label="元に戻す"
+              icon="pi pi-replay"
+              size="small"
+              :loading="busyBookId === book.id"
+              :disabled="busyBookId !== null && busyBookId !== undefined"
+              @click="emit('restore', book)"
+            />
           </span>
         </div>
       </div>
@@ -196,7 +270,7 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 <style scoped>
 .book-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(11.5rem, 100%), 1fr));
   gap: 1rem;
   padding: 0;
   margin: 0;
@@ -205,11 +279,21 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 
 .item {
   min-width: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 28rem;
 }
 
 .book {
   display: grid;
   gap: 0.75rem;
+  min-block-size: 100%;
+  overflow: hidden;
+  border-block: 1px solid var(--bc-line-soft);
+  border-inline-end: 1px solid var(--bc-line-soft);
+  border-radius: 0.85rem;
+  background: var(--bc-panel);
+  padding: 0.65rem;
+  box-shadow: var(--bc-shadow-low);
 }
 
 .cover-link,
@@ -224,7 +308,7 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
   aspect-ratio: 2 / 3;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0.55rem;
   background: var(--panel);
 }
 
@@ -285,6 +369,7 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 .info {
   display: grid;
   gap: 0.15rem;
+  align-content: start;
 }
 
 .title {
@@ -341,6 +426,11 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+.actions {
+  margin-block-start: auto;
+  padding-block-start: 0.5rem;
 }
 
 .tag,

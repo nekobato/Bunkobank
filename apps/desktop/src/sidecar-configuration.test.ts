@@ -104,7 +104,14 @@ describe("sidecar package configuration", () => {
 
     expect(
       packagePaths.map((path) => readJson<PackageManifest>(path).main)
-    ).toEqual(packagePaths.map(() => "./dist/index.js"));
+    ).toEqual([
+      "./dist/index.js",
+      "./dist/index.js",
+      "./dist/index.js",
+      "./dist/library.js",
+      "./dist/index.js",
+      "./dist/index.js"
+    ]);
   });
 
   it("keeps bundle, build command, and shell capability names aligned", () => {

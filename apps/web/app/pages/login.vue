@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { getApiErrorMessage } from "../utils/apiErrors";
+
 const route = useRoute();
 const { apiBase } = useBookApi();
 const { session, signInWithUsername } = useBookAuth();
 const username = ref("");
 const password = ref("");
-const showPassword = ref(false);
 const message = ref("");
 const isSubmitting = ref(false);
 const redirectTo = computed(() =>
@@ -26,13 +27,16 @@ const submitLogin = async (): Promise<void> => {
     });
 
     if (result.error) {
-      message.value = result.error.message ?? "Sign in failed";
+      message.value = "ユーザー名またはパスワードが正しくありません。";
       return;
     }
 
     await navigateTo(redirectTo.value);
   } catch (error) {
-    message.value = error instanceof Error ? error.message : "Sign in failed";
+    message.value = getApiErrorMessage(
+      error,
+      "サーバーに接続できません。BookCafe Serverが起動しているか確認してから、再度お試しください。"
+    );
   } finally {
     isSubmitting.value = false;
   }
@@ -41,66 +45,93 @@ const submitLogin = async (): Promise<void> => {
 
 <template>
   <section class="login">
-    <div class="panel">
-      <div class="heading">
-        <h1>Login</h1>
-        <p v-if="hasSession">Signed in</p>
-        <p v-else>BookCafe</p>
-      </div>
-
-      <form
-        class="form"
-        :action="`${apiBase}/auth/sign-in/username`"
-        method="post"
-        @submit.prevent="submitLogin"
-      >
-        <label class="field" for="username">
-          <span>Username</span>
-          <input
-            id="username"
-            v-model="username"
-            name="username"
-            autocomplete="username"
-            enterkeyhint="next"
-            required
-          />
-        </label>
-
-        <label class="field" for="current-password">
-          <span>Password</span>
-          <input
-            id="current-password"
-            v-model="password"
-            name="password"
-            :type="showPassword ? 'text' : 'password'"
-            autocomplete="current-password"
-            enterkeyhint="done"
-            required
-          />
-        </label>
-
-        <label class="toggle" for="show-password">
-          <input
-            id="show-password"
-            v-model="showPassword"
-            name="showPassword"
-            type="checkbox"
-          />
-          <span>Show password</span>
-        </label>
-
-        <div class="actions">
-          <button type="submit" :disabled="isSubmitting">
-            {{ isSubmitting ? "Signing in" : "Sign in" }}
-          </button>
-          <NuxtLink v-if="hasSession" to="/">Library</NuxtLink>
-        </div>
-
-        <p v-if="message" class="message is-error" aria-live="polite">
-          {{ message }}
-        </p>
-      </form>
+    <div class="intro" aria-hidden="true">
+      <span class="book book-one">BC</span>
+      <span class="book book-two" />
+      <span class="book book-three" />
     </div>
+
+    <Card class="login-card status-spine tone-info">
+      <template #title>
+        <h1>ログイン</h1>
+      </template>
+      <template #content>
+        <form
+          class="form"
+          :action="`${apiBase}/auth/sign-in/username`"
+          method="post"
+          @submit.prevent="submitLogin"
+        >
+          <div class="field">
+            <label for="username">ユーザー名</label>
+            <InputText
+              id="username"
+              v-model="username"
+              name="username"
+              autocomplete="username"
+              spellcheck="false"
+              enterkeyhint="next"
+              minlength="3"
+              maxlength="30"
+              required
+              fluid
+            />
+          </div>
+
+          <div class="field">
+            <label for="current-password">パスワード</label>
+            <Password
+              v-model="password"
+              input-id="current-password"
+              name="password"
+              :feedback="false"
+              toggle-mask
+              required
+              fluid
+              :input-props="{
+                autocomplete: 'current-password',
+                maxlength: 128
+              }"
+            >
+              <template #unmaskicon="{ toggleCallback }">
+                <button
+                  class="password-toggle"
+                  type="button"
+                  aria-label="パスワードを表示"
+                  @click="toggleCallback"
+                >
+                  <i class="pi pi-eye" aria-hidden="true" />
+                </button>
+              </template>
+              <template #maskicon="{ toggleCallback }">
+                <button
+                  class="password-toggle"
+                  type="button"
+                  aria-label="パスワードを隠す"
+                  @click="toggleCallback"
+                >
+                  <i class="pi pi-eye-slash" aria-hidden="true" />
+                </button>
+              </template>
+            </Password>
+          </div>
+
+          <Message v-if="message" severity="error" :closable="false">
+            {{ message }}
+          </Message>
+
+          <div class="actions">
+            <Button
+              label="ログイン"
+              icon="pi pi-sign-in"
+              type="submit"
+              :loading="isSubmitting"
+            />
+            <NuxtLink v-if="hasSession" to="/">ライブラリへ戻る</NuxtLink>
+          </div>
+        </form>
+      </template>
+    </Card>
   </section>
 </template>
 
@@ -116,24 +147,6 @@ const submitLogin = async (): Promise<void> => {
   display: grid;
   gap: 1rem;
   width: min(420px, 100%);
-}
-
-.heading {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.heading h1,
-.heading p {
-  margin: 0;
-}
-
-.heading h1 {
-  font-size: clamp(1.6rem, 5vw, 2.2rem);
-}
-
-.heading p {
-  color: var(--muted);
 }
 
 .form {
@@ -208,5 +221,103 @@ const submitLogin = async (): Promise<void> => {
 
 .is-error {
   color: var(--danger);
+}
+</style>
+
+<style scoped>
+.login {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.75fr) minmax(20rem, 1fr);
+  place-items: center;
+  gap: clamp(2rem, 8vw, 7rem);
+  min-block-size: calc(100dvh - var(--app-topbar-height, 4.25rem));
+  background:
+    radial-gradient(
+      circle at 18% 30%,
+      color-mix(in oklab, var(--bc-patina) 22%, transparent),
+      transparent 25rem
+    ),
+    var(--bc-fog);
+  padding: clamp(1.25rem, 6vw, 5rem);
+}
+
+.intro {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  inline-size: 100%;
+  min-block-size: 22rem;
+  border-block-end: 0.75rem solid var(--bc-deep-shelf);
+}
+
+.book {
+  display: grid;
+  place-items: center;
+  inline-size: clamp(4rem, 8vw, 6.5rem);
+  border-radius: 0.25rem 0.8rem 0.8rem 0.25rem;
+  color: white;
+  font-family: var(--bc-font-data);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  box-shadow: inset 0.45rem 0 rgb(0 0 0 / 14%);
+}
+
+.book-one {
+  block-size: 16rem;
+  background: var(--bc-ink-blue);
+}
+
+.book-two {
+  block-size: 19rem;
+  background: var(--bc-spine-coral);
+}
+
+.book-three {
+  block-size: 14rem;
+  background: var(--bc-patina);
+}
+
+.login-card {
+  inline-size: min(29rem, 100%);
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.6rem);
+  letter-spacing: -0.04em;
+}
+
+.form {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.field label {
+  color: var(--bc-ink);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.actions a {
+  color: var(--bc-ink-blue);
+  font-size: 0.84rem;
+}
+
+@media (width <= 44rem) {
+  .login {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .intro {
+    display: none;
+  }
 }
 </style>

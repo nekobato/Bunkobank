@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampPage,
   clampScale,
+  createPageImageUrl,
   getAdjacentPages,
   getPageByStep,
   getReaderKeyboardAction,
@@ -130,5 +131,11 @@ describe("reader page helpers", () => {
         altKey: true
       })
     ).toBeNull();
+  });
+
+  it("builds a library-scoped page image URL", () => {
+    expect(createPageImageUrl("library/1", "book/1", 3)).toBe(
+      "/api/libraries/library%2F1/books/book%2F1/pages/3/image"
+    );
   });
 });

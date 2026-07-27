@@ -24,9 +24,10 @@
   },
   "scripts": {
     "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
     "build": "tsc -p tsconfig.json",
     "copy-web": "node scripts/copy-web.mjs",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run src/library-app.test.ts src/library-scan-jobs.test.ts src/pdf-process.test.ts src/initialization.test.ts src/loopback.test.ts src/origins.test.ts src/cli.test.ts src/job-queue.test.ts --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

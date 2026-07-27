@@ -16,7 +16,7 @@ import type {
 } from "./runtime.js";
 
 describe("desktop manager controller", () => {
-  it("initializes a fresh install with the native app data directory", async () => {
+  it("initializes a fresh install with an empty account draft", async () => {
     const runtime = createRuntime();
     const manager = createDesktopManagerController({
       runtime,
@@ -35,8 +35,9 @@ describe("desktop manager controller", () => {
       server: { phase: "stopped", childPid: null, canStart: true },
       setup: { phase: "unknown" },
       draft: {
-        dataDir: "/Users/alice/Library/Application Support/BookCafe",
-        collectionRoots: []
+        username: "",
+        password: "",
+        confirmPassword: ""
       }
     });
   });
@@ -72,6 +73,105 @@ describe("desktop manager controller", () => {
     });
     await expect(manager.stopServer()).resolves.toBe(false);
     expect(runtime.stopManagedServer).not.toHaveBeenCalled();
+  });
+
+  it("does not offer initial setup when the database is unavailable", async () => {
+    const manager = createDesktopManagerController({
+      runtime: createRuntime(),
+      readServerStatus: vi.fn(async () => createStatus("reachable")),
+      readSetupStatus: vi.fn(async () => {
+        throw Object.assign(new Error("BookCafe data is unavailable."), {
+          status: 503,
+          code: "DATA_UNAVAILABLE"
+        });
+      }),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+
+    expect(manager.getState()).toMatchObject({
+      phase: "ready",
+      server: { phase: "running" },
+      setup: { phase: "unavailable" },
+      error: null
+    });
+  });
+
+  it("moves setup submission to unavailable when the database cannot be read", async () => {
+    const manager = createDesktopManagerController({
+      runtime: createRuntime(),
+      readServerStatus: vi.fn(async () => createStatus("reachable")),
+      readSetupStatus: vi.fn(async () => ({
+        url: "http://127.0.0.1:4510/api/setup/status",
+        status: {
+          setupComplete: false,
+          host: "127.0.0.1" as const,
+          port: 4510,
+          thumbnails: { enabled: true }
+        }
+      })),
+      submitInitialSetup: vi.fn(async () => {
+        throw Object.assign(new Error("BookCafe data is unavailable."), {
+          status: 503,
+          code: "DATA_UNAVAILABLE"
+        });
+      }),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    await expect(
+      manager.submitSetup({
+        username: "admin",
+        password: "password123",
+        confirmPassword: "password123"
+      })
+    ).resolves.toBe(false);
+
+    expect(manager.getState()).toMatchObject({
+      setup: { phase: "unavailable" },
+      error: null
+    });
+  });
+
+  it("preserves a stable invalid-credentials message for presentation", async () => {
+    const manager = createDesktopManagerController({
+      runtime: createRuntime(),
+      readServerStatus: vi.fn(async () => createStatus("reachable")),
+      readSetupStatus: vi.fn(async () => ({
+        url: "http://127.0.0.1:4510/api/setup/status",
+        status: {
+          setupComplete: false,
+          host: "127.0.0.1" as const,
+          port: 4510,
+          thumbnails: { enabled: true }
+        }
+      })),
+      submitInitialSetup: vi.fn(async () => {
+        throw Object.assign(new Error("wrapped server response"), {
+          status: 401,
+          code: "INVALID_CREDENTIALS"
+        });
+      }),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    await manager.submitSetup({
+      username: "admin",
+      password: "password123",
+      confirmPassword: "password123"
+    });
+
+    expect(manager.getState()).toMatchObject({
+      setup: { phase: "error" },
+      error: "Username or password is invalid."
+    });
   });
 
   it("starts the sidecar with the fixed config path and reaches setup", async () => {
@@ -193,7 +293,7 @@ describe("desktop manager controller", () => {
     expect(readServerStatus).toHaveBeenCalledTimes(1);
   });
 
-  it("restarts a managed server when setup changes its endpoint", async () => {
+  it("creates the initial account without restarting the managed server", async () => {
     const runtime = createRuntime();
     const readServerStatus = vi
       .fn()
@@ -205,28 +305,17 @@ describe("desktop manager controller", () => {
       readSetupStatus: vi.fn(async () => ({
         url: "http://127.0.0.1:4510/api/setup/status",
         status: {
-          setupComplete: false,
-          host: "127.0.0.1" as const,
-          port: 4510,
-          thumbnails: { enabled: true }
+          setupComplete: false
         }
       })),
       submitInitialSetup: vi.fn(async () => ({
         url: "http://127.0.0.1:4510/api/setup/initial-user",
         request: {
           username: "admin",
-          password: "password123",
-          dataDir: "/Users/alice/BookCafe",
-          collectionRoots: ["/Users/alice/Books"],
-          host: "127.0.0.1" as const,
-          port: 4525,
-          thumbnails: { enabled: true }
+          password: "password123"
         },
         status: {
-          setupComplete: true,
-          host: "127.0.0.1" as const,
-          port: 4525,
-          thumbnails: { enabled: true }
+          setupComplete: true
         }
       })),
       delay: vi.fn(async () => undefined),
@@ -239,93 +328,18 @@ describe("desktop manager controller", () => {
       manager.submitSetup({
         username: "admin",
         password: "password123",
-        confirmPassword: "password123",
-        dataDir: "/Users/alice/BookCafe",
-        collectionRoots: ["/Users/alice/Books"],
-        host: "127.0.0.1",
-        port: 4525,
-        thumbnails: { enabled: true }
+        confirmPassword: "password123"
       })
     ).resolves.toBe(true);
 
-    expect(runtime.stopManagedServer).toHaveBeenCalledWith(4312);
-    expect(runtime.spawnManagedServer).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        args: [
-          "--config",
-          "/Users/alice/Library/Application Support/dev.bookcafe.desktop/config.json"
-        ],
-        browserUrl: "http://127.0.0.1:4525/"
-      }),
-      expect.any(Function)
-    );
-    expect(manager.getState()).toMatchObject({
-      activeConfig: { host: "127.0.0.1", port: 4525 },
-      setup: { phase: "complete" },
-      draft: { password: "", confirmPassword: "" }
-    });
-  });
-
-  it("keeps completed external setup in restart-required state", async () => {
-    const runtime = createRuntime();
-    const manager = createDesktopManagerController({
-      runtime,
-      readServerStatus: vi.fn(async () => createStatus("reachable")),
-      readSetupStatus: vi.fn(async () => ({
-        url: "http://127.0.0.1:4510/api/setup/status",
-        status: {
-          setupComplete: false,
-          host: "127.0.0.1" as const,
-          port: 4510,
-          thumbnails: { enabled: true }
-        }
-      })),
-      submitInitialSetup: vi.fn(async () => ({
-        url: "http://127.0.0.1:4510/api/setup/initial-user",
-        request: {
-          username: "admin",
-          password: "password123",
-          dataDir: "/Users/alice/BookCafe",
-          collectionRoots: ["/Users/alice/Books"],
-          host: "127.0.0.1" as const,
-          port: 4525,
-          thumbnails: { enabled: true }
-        },
-        status: {
-          setupComplete: true,
-          host: "127.0.0.1" as const,
-          port: 4525,
-          thumbnails: { enabled: true }
-        }
-      })),
-      delay: vi.fn(async () => undefined),
-      maxStartAttempts: 2
-    });
-
-    await manager.initialize();
-    await expect(
-      manager.submitSetup({
-        username: "admin",
-        password: "password123",
-        confirmPassword: "password123",
-        dataDir: "/Users/alice/BookCafe",
-        collectionRoots: ["/Users/alice/Books"],
-        host: "127.0.0.1",
-        port: 4525,
-        thumbnails: { enabled: true }
-      })
-    ).resolves.toBe(true);
-
+    expect(runtime.stopManagedServer).not.toHaveBeenCalled();
+    expect(runtime.spawnManagedServer).toHaveBeenCalledTimes(1);
     expect(manager.getState()).toMatchObject({
       activeConfig: { host: "127.0.0.1", port: 4510 },
-      persistedConfig: { setupComplete: true, port: 4525 },
-      server: { managedByDesktop: false },
-      setup: { phase: "restart-required" },
-      draft: { password: "", confirmPassword: "" },
-      announcement:
-        "Setup saved. Restart the external server to use the new endpoint."
+      setup: { phase: "complete" },
+      draft: { username: "admin", password: "", confirmPassword: "" },
+      announcement: "BookCafe setup is complete."
     });
-    expect(runtime.stopManagedServer).not.toHaveBeenCalled();
   });
 
   it("reads and changes Windows autostart through the runtime", async () => {
@@ -398,20 +412,14 @@ describe("validateSetupInput", () => {
       validateSetupInput({
         username: "",
         password: "short",
-        confirmPassword: "different",
-        dataDir: "",
-        collectionRoots: [],
-        host: "127.0.0.1",
-        port: 0,
-        thumbnails: { enabled: true }
+        confirmPassword: "different"
       })
     ).toMatchObject({
       valid: false,
       errors: {
         username: expect.any(String),
         password: expect.any(String),
-        confirmPassword: expect.any(String),
-        port: expect.any(String)
+        confirmPassword: expect.any(String)
       }
     });
   });

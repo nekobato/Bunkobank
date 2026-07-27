@@ -5,6 +5,7 @@
 import type { AppConfig } from "@bookcafe/config/shared";
 import {
   initialSetupRequestSchema,
+  type ApiErrorCode,
   type InitialSetupRequest
 } from "@bookcafe/contracts";
 
@@ -27,7 +28,8 @@ import type {
 } from "./operations.js";
 import {
   createInitialSetupStatusReader,
-  createInitialSetupSubmitter
+  createInitialSetupSubmitter,
+  isManagedServerApiError
 } from "./operations.js";
 import type {
   DesktopEnvironment,
@@ -46,12 +48,7 @@ export type ManagerServerPhase =
   | "crashed";
 
 export type ManagerSetupPhase =
-  | "unknown"
-  | "required"
-  | "submitting"
-  | "restart-required"
-  | "complete"
-  | "error";
+  "unknown" | "required" | "submitting" | "complete" | "unavailable" | "error";
 
 export type ManagerStartupPhase =
   | "checking"
@@ -134,9 +131,6 @@ export interface DesktopManagerController {
   stopServer: () => Promise<boolean>;
   submitSetup: (input: SetupFormInput) => Promise<boolean>;
   updateDraft: (update: Partial<SetupFormInput>) => void;
-  pickDataDirectory: () => Promise<void>;
-  addCollectionFolders: () => Promise<void>;
-  removeCollectionFolder: (path: string) => void;
   setStartupEnabled: (enabled: boolean) => Promise<void>;
   openLibrary: () => Promise<boolean>;
 }
@@ -154,12 +148,7 @@ export const validateSetupInput = (
 ): SetupValidationResult => {
   const parsed = initialSetupRequestSchema.safeParse({
     username: input.username.trim(),
-    password: input.password,
-    dataDir: input.dataDir.trim() || undefined,
-    collectionRoots: input.collectionRoots,
-    host: input.host,
-    port: input.port,
-    thumbnails: input.thumbnails
+    password: input.password
   });
   const errors: Record<string, string> = parsed.success
     ? {}
@@ -251,17 +240,30 @@ export const createDesktopManagerController = (
    * Reads setup status after BookCafe health has been confirmed.
    */
   const refreshSetupStatus = async (): Promise<void> => {
-    const response = await resolvedDependencies.readSetupStatus(
-      state.activeConfig
-    );
+    try {
+      const response = await resolvedDependencies.readSetupStatus(
+        state.activeConfig
+      );
 
-    setState((current) => ({
-      ...current,
-      setup: {
-        phase: response.status.setupComplete ? "complete" : "required",
-        fieldErrors: {}
+      setState((current) => ({
+        ...current,
+        setup: {
+          phase: response.status.setupComplete ? "complete" : "required",
+          fieldErrors: {}
+        }
+      }));
+    } catch (error) {
+      if (isManagedServerApiError(error) && error.code === "DATA_UNAVAILABLE") {
+        setState((current) => ({
+          ...current,
+          setup: { phase: "unavailable", fieldErrors: {} },
+          error: null
+        }));
+        return;
       }
-    }));
+
+      throw error;
+    }
   };
 
   /**
@@ -538,9 +540,7 @@ export const createDesktopManagerController = (
     }
   };
 
-  /**
-   * Submits validated initial setup and restarts an owned server when needed.
-   */
+  /** Submits the validated initial account to the active server. */
   const submitSetup = async (input: SetupFormInput): Promise<boolean> => {
     const validation = validateSetupInput(input);
 
@@ -561,85 +561,34 @@ export const createDesktopManagerController = (
     }));
 
     try {
-      const previousActiveConfig = state.activeConfig;
       const submission = await resolvedDependencies.submitInitialSetup(
-        previousActiveConfig,
+        state.activeConfig,
         validation.value
       );
-      const nextActiveConfig = {
-        host: submission.status.host,
-        port: submission.status.port
-      };
-      const endpointChanged = !sameEndpoint(
-        previousActiveConfig,
-        nextActiveConfig
-      );
-      const wasManaged = state.server.managedByDesktop;
-      const persistedConfig: AppConfig = {
-        dataDir:
-          submission.request.dataDir || state.draft.dataDir || "BookCafe",
-        host: submission.status.host,
-        port: submission.status.port,
-        thumbnails: submission.status.thumbnails,
-        setupComplete: submission.status.setupComplete
-      };
 
       setState((current) => ({
         ...current,
-        persistedConfig,
         draft: {
           ...current.draft,
           ...submission.request,
-          dataDir: persistedConfig.dataDir,
           password: "",
           confirmPassword: ""
         },
-        setup: {
-          phase: endpointChanged ? "restart-required" : "complete",
-          fieldErrors: {}
-        }
-      }));
-
-      if (endpointChanged && wasManaged) {
-        const stopped = await stopServer();
-
-        if (!stopped) {
-          return false;
-        }
-
-        setState((current) => ({
-          ...current,
-          activeConfig: nextActiveConfig,
-          setup: { phase: "restart-required", fieldErrors: {} }
-        }));
-
-        const started = await startServer();
-
-        if (!started) {
-          return false;
-        }
-
-        setState((current) => ({
-          ...current,
-          setup: { phase: "complete", fieldErrors: {} },
-          announcement: "Setup saved and BookCafe server restarted."
-        }));
-        return true;
-      }
-
-      setState((current) => ({
-        ...current,
-        activeConfig: endpointChanged ? current.activeConfig : nextActiveConfig,
-        announcement: endpointChanged
-          ? "Setup saved. Restart the external server to use the new endpoint."
-          : "BookCafe setup is complete."
+        setup: { phase: "complete", fieldErrors: {} },
+        announcement: "BookCafe setup is complete."
       }));
       return true;
     } catch (error) {
+      const dataUnavailable =
+        isManagedServerApiError(error) && error.code === "DATA_UNAVAILABLE";
+
       setState((current) => ({
         ...current,
-        setup: { phase: "error", fieldErrors: {} },
-        error: toErrorMessage(error)
+        setup: {
+          phase: dataUnavailable ? "unavailable" : "error",
+          fieldErrors: {}
+        },
+        error: dataUnavailable ? null : getSetupSubmissionErrorMessage(error)
       }));
       return false;
     }
@@ -773,9 +722,7 @@ export const createDesktopManagerController = (
       const activeConfig = persistedConfig
         ? { host: persistedConfig.host, port: persistedConfig.port }
         : defaultActiveConfig;
-      const defaultDraft = createDefaultSetupDraft(
-        persistedConfig?.dataDir ?? environment.appDataDir
-      );
+      const defaultDraft = createDefaultSetupDraft();
 
       setState((current) => ({
         ...current,
@@ -785,13 +732,6 @@ export const createDesktopManagerController = (
         activeConfig,
         draft: {
           ...defaultDraft,
-          ...(persistedConfig
-            ? {
-                host: persistedConfig.host,
-                port: persistedConfig.port,
-                thumbnails: persistedConfig.thumbnails
-              }
-            : {}),
           confirmPassword: ""
         }
       }));
@@ -815,20 +755,6 @@ export const createDesktopManagerController = (
   };
 
   /**
-   * Replaces the setup data directory after a native picker selection.
-   */
-  const pickDataDirectory = async (): Promise<void> => {
-    const selected = await resolvedDependencies.runtime.pickDirectory();
-
-    if (selected) {
-      setState((current) => ({
-        ...current,
-        draft: { ...current.draft, dataDir: selected }
-      }));
-    }
-  };
-
-  /**
    * Updates setup draft fields and clears errors for the edited fields.
    */
   const updateDraft = (update: Partial<SetupFormInput>): void => {
@@ -843,38 +769,6 @@ export const createDesktopManagerController = (
           Object.entries(current.setup.fieldErrors).filter(
             ([field]) => !updatedFields.has(field)
           )
-        )
-      }
-    }));
-  };
-
-  /**
-   * Adds deduplicated collection folders selected by the native picker.
-   */
-  const addCollectionFolders = async (): Promise<void> => {
-    const selected = await resolvedDependencies.runtime.pickDirectories();
-
-    setState((current) => ({
-      ...current,
-      draft: {
-        ...current.draft,
-        collectionRoots: Array.from(
-          new Set([...current.draft.collectionRoots, ...selected])
-        )
-      }
-    }));
-  };
-
-  /**
-   * Removes one collection folder from the pending setup draft.
-   */
-  const removeCollectionFolder = (path: string): void => {
-    setState((current) => ({
-      ...current,
-      draft: {
-        ...current.draft,
-        collectionRoots: current.draft.collectionRoots.filter(
-          (collectionRoot) => collectionRoot !== path
         )
       }
     }));
@@ -907,9 +801,6 @@ export const createDesktopManagerController = (
     stopServer,
     submitSetup,
     updateDraft,
-    pickDataDirectory,
-    addCollectionFolders,
-    removeCollectionFolder,
     setStartupEnabled,
     openLibrary
   };
@@ -992,14 +883,6 @@ const createLaunchAgent = (environment: DesktopEnvironment) =>
     logDir: environment.logDir
   });
 
-/**
- * Returns true when two managed server endpoints are identical.
- */
-const sameEndpoint = (
-  left: Pick<AppConfig, "host" | "port">,
-  right: Pick<AppConfig, "host" | "port">
-): boolean => left.host === right.host && left.port === right.port;
-
 /** Returns the screen-reader announcement for a completed health probe. */
 const getServerCheckAnnouncement = (
   phase: ManagedServerLifecycleStatus["state"]
@@ -1017,6 +900,35 @@ const getServerCheckAnnouncement = (
   }
 
   return "Server check complete. BookCafe needs attention.";
+};
+
+const setupApiErrorMessages = {
+  INVALID_INPUT: "Initial setup input is invalid.",
+  INVALID_SETUP_INPUT: "Initial setup input is invalid.",
+  INVALID_CREDENTIALS: "Username or password is invalid.",
+  INVALID_LIBRARY_PATH: "Library path is invalid.",
+  SETUP_LOCAL_ONLY: "Initial setup is available only from this device.",
+  SETUP_REQUIRED: "BookCafe setup is required.",
+  ALREADY_INITIALIZED: "BookCafe setup is already complete.",
+  SIGN_UP_DISABLED: "Account creation is disabled.",
+  DATA_UNAVAILABLE: "BookCafe data is unavailable.",
+  LIBRARY_BUSY: "Library is busy.",
+  LIBRARY_NAME_CONFLICT: "Library name is already in use.",
+  LIBRARY_PATH_CONFLICT: "Library path overlaps another library.",
+  NOT_FOUND: "The requested item was not found.",
+  UNAUTHORIZED: "Authentication required.",
+  INTERNAL_ERROR: "Internal server error."
+} as const satisfies Record<ApiErrorCode, string>;
+
+/**
+ * Converts a structured setup API failure into a stable presentation key.
+ */
+const getSetupSubmissionErrorMessage = (error: unknown): string => {
+  if (!isManagedServerApiError(error) || !error.code) {
+    return toErrorMessage(error);
+  }
+
+  return setupApiErrorMessages[error.code];
 };
 
 /**

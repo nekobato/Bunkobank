@@ -7,7 +7,6 @@ import type {
 import {
   clampPage,
   clampScale,
-  createPageImageUrl,
   getAdjacentPages,
   getPageByStep,
   getReaderKeyboardAction,
@@ -40,6 +39,7 @@ const { book } = defineProps<{
 const emit = defineEmits<{
   pageChange: [currentPage: number];
 }>();
+const { getPageImageUrl } = useBookApi();
 
 const currentPage = ref(clampPage(book.currentPage, book.pageCount));
 const direction = ref(book.readingDirection);
@@ -72,6 +72,9 @@ const pageProgressLabel = computed(
   () =>
     `${Math.round((lastVisiblePage.value / Math.max(book.pageCount, 1)) * 100)}%`
 );
+const pageProgress = computed(() =>
+  Math.round((lastVisiblePage.value / Math.max(book.pageCount, 1)) * 100)
+);
 const zoomLabel = computed(() => `${Math.round(scale.value * 100)}%`);
 const preloadPages = computed(() => {
   const visiblePageSet = new Set(visiblePages.value);
@@ -97,12 +100,12 @@ const hasViewportNotice = computed(
 const issueTitle = computed(() =>
   hasUnavailableSource.value
     ? getBookSourceStatusTitle(book.status)
-    : "Page unavailable"
+    : "ページを表示できません"
 );
 const issueBody = computed(() =>
   hasUnavailableSource.value
     ? getBookSourceStatusMessage(book.status)
-    : "This page image could not be read from the source file."
+    : "元ファイルからこのページ画像を読み取れませんでした。"
 );
 const readerClasses = computed(() => [
   "reader",
@@ -120,7 +123,7 @@ const readerClasses = computed(() => [
  * Builds a page image URL for a one-based page number.
  */
 const getPageUrl = (pageNumber: number): string =>
-  createPageImageUrl(book.id, pageNumber);
+  getPageImageUrl(book.libraryId, book.id, pageNumber);
 
 useHead(() => ({
   link:
@@ -694,99 +697,29 @@ onUnmounted(() => {
   <section
     :class="readerClasses"
     :style="{ '--reader-width': `${width}px` }"
-    aria-label="Book reader"
+    aria-label="書籍Reader"
   >
-    <div class="toolbar">
-      <div class="title">
-        <strong>{{ book.title }}</strong>
-        <span>{{ pageLabel }}</span>
-        <span>{{ pageProgressLabel }}</span>
-      </div>
-      <div class="controls" aria-label="Reader controls">
-        <button
-          type="button"
-          :disabled="hasUnavailableSource"
-          @click="previousPage"
-        >
-          Prev
-        </button>
-        <button
-          type="button"
-          :disabled="hasUnavailableSource"
-          @click="nextPage"
-        >
-          Next
-        </button>
-        <form
-          class="jump"
-          aria-label="Page jump"
-          @submit.prevent="commitPageInput"
-        >
-          <label :for="pageInputId">Page</label>
-          <input
-            :id="pageInputId"
-            v-model="pageInput"
-            type="number"
-            inputmode="numeric"
-            min="1"
-            :max="book.pageCount"
-            step="1"
-            required
-            :disabled="hasUnavailableSource"
-          />
-          <span>/ {{ book.pageCount }}</span>
-          <button type="submit" :disabled="hasUnavailableSource">Go</button>
-        </form>
-        <div class="zoom" aria-label="Zoom controls">
-          <button
-            type="button"
-            aria-label="Zoom out"
-            :disabled="hasUnavailableSource"
-            @click="decreaseScale"
-          >
-            -
-          </button>
-          <output aria-label="Zoom scale">{{ zoomLabel }}</output>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            :disabled="hasUnavailableSource"
-            @click="increaseScale"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            :disabled="hasUnavailableSource"
-            @click="resetScale"
-          >
-            100%
-          </button>
-        </div>
-        <select v-model="direction" aria-label="Reading direction">
-          <option value="rtl">RTL</option>
-          <option value="ltr">LTR</option>
-        </select>
-        <select v-model="mode" aria-label="Reader mode">
-          <option value="paged">Paged</option>
-          <option value="vertical">Vertical</option>
-        </select>
-        <select
-          v-if="mode === 'paged'"
-          v-model="layout"
-          aria-label="Page layout"
-        >
-          <option value="single">Single</option>
-          <option value="spread">Spread</option>
-        </select>
-        <select v-model="fit" aria-label="Image fit">
-          <option value="contain">Fit page</option>
-          <option value="width">Fit width</option>
-          <option value="height">Fit height</option>
-          <option value="actual">Actual size</option>
-        </select>
-      </div>
-    </div>
+    <ReaderToolbar
+      v-model:page-input="pageInput"
+      v-model:direction="direction"
+      v-model:mode="mode"
+      v-model:layout="layout"
+      v-model:fit="fit"
+      :title="book.title"
+      :page-label="pageLabel"
+      :page-progress="pageProgress"
+      :page-progress-label="pageProgressLabel"
+      :page-input-id="pageInputId"
+      :page-count="book.pageCount"
+      :zoom-label="zoomLabel"
+      :disabled="hasUnavailableSource"
+      @previous="previousPage"
+      @next="nextPage"
+      @commit-page="commitPageInput"
+      @zoom-out="decreaseScale"
+      @zoom-in="increaseScale"
+      @reset-zoom="resetScale"
+    />
     <div
       ref="reader"
       class="viewport"
@@ -806,7 +739,7 @@ onUnmounted(() => {
       >
         <strong>{{ issueTitle }}</strong>
         <span>{{ issueBody }}</span>
-        <NuxtLink to="/">Library</NuxtLink>
+        <NuxtLink to="/">ライブラリ</NuxtLink>
       </div>
       <div
         v-else-if="mode === 'paged' && hasVisibleFailedPage"
@@ -816,7 +749,11 @@ onUnmounted(() => {
       >
         <strong>{{ issueTitle }}</strong>
         <span>{{ issueBody }}</span>
-        <button type="button" @click="retryVisiblePages">Retry</button>
+        <Button
+          label="再試行"
+          icon="pi pi-refresh"
+          @click="retryVisiblePages"
+        />
       </div>
       <div
         v-else-if="mode === 'paged'"
@@ -830,7 +767,7 @@ onUnmounted(() => {
           class="page"
           :class="{ 'is-spread': visiblePages.length > 1 }"
           :src="getPageUrl(pageNumber)"
-          :alt="`${book.title} page ${pageNumber}`"
+          :alt="`${book.title} ${pageNumber}ページ`"
           width="960"
           height="1440"
           loading="eager"
@@ -855,14 +792,14 @@ onUnmounted(() => {
             role="status"
             aria-live="polite"
           >
-            <strong>Page unavailable</strong>
-            <span>This page image could not be read from the source file.</span>
+            <strong>ページを表示できません</strong>
+            <span>元ファイルからこのページ画像を読み取れませんでした。</span>
           </div>
           <img
             v-else
             class="page"
             :src="getPageUrl(pageNumber)"
-            :alt="`${book.title} page ${pageNumber}`"
+            :alt="`${book.title} ${pageNumber}ページ`"
             width="960"
             height="1440"
             :loading="pageNumber === currentPage ? 'eager' : 'lazy'"
@@ -886,6 +823,7 @@ onUnmounted(() => {
   grid-template-rows: auto 1fr;
   color: var(--reader-text);
   background: var(--reader-bg);
+  color-scheme: dark;
 }
 
 .toolbar {

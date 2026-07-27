@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 
+import { scanFailureCodes, scanFailureKinds } from "@bookcafe/core";
+
 export const bookFormatSchema = z.enum([
   "image-folder",
   "zip",
@@ -37,6 +39,8 @@ export const thumbnailSettingsSchema = z.object({
 
 export const bookSummarySchema = z.object({
   id: z.string(),
+  libraryId: z.string(),
+  relativePath: z.string(),
   title: z.string(),
   authors: z.array(z.string()),
   format: bookFormatSchema,
@@ -45,11 +49,11 @@ export const bookSummarySchema = z.object({
   tags: z.array(z.string()),
   pageCount: z.number().int().positive(),
   currentPage: z.number().int().positive(),
-  thumbnailUrl: z.string().nullable()
+  thumbnailUrl: z.string().nullable(),
+  archivedAt: z.string().nullable()
 });
 
 export const bookDetailSchema = bookSummarySchema.extend({
-  sourcePath: z.string(),
   readingDirection: readingDirectionSchema,
   publisher: z.string().nullable(),
   isbn: z.string().nullable(),
@@ -91,24 +95,40 @@ export const updateBookMetadataRequestSchema = z.object({
 });
 
 export const setupStatusSchema = z.object({
-  setupComplete: z.boolean(),
-  host: bindHostSchema,
-  port: z.number().int().min(1).max(65535),
-  thumbnails: thumbnailSettingsSchema
+  setupComplete: z.boolean()
+});
+
+export const apiErrorCodeSchema = z.enum([
+  "INVALID_INPUT",
+  "INVALID_SETUP_INPUT",
+  "INVALID_CREDENTIALS",
+  "INVALID_LIBRARY_PATH",
+  "SETUP_LOCAL_ONLY",
+  "SETUP_REQUIRED",
+  "ALREADY_INITIALIZED",
+  "SIGN_UP_DISABLED",
+  "DATA_UNAVAILABLE",
+  "LIBRARY_BUSY",
+  "LIBRARY_NAME_CONFLICT",
+  "LIBRARY_PATH_CONFLICT",
+  "NOT_FOUND",
+  "UNAUTHORIZED",
+  "INTERNAL_ERROR"
+]);
+
+export const apiErrorResponseSchema = z.object({
+  code: apiErrorCodeSchema,
+  message: z.string()
 });
 
 export const initialSetupRequestSchema = z.object({
-  username: z.string().min(1).max(64),
-  password: z.string().min(8).max(256),
-  dataDir: z.string().min(1).optional(),
-  collectionRoots: z
-    .array(z.string().trim().min(1).max(32767))
-    .max(100)
-    .default([])
-    .transform((paths) => Array.from(new Set(paths))),
-  host: bindHostSchema.default("127.0.0.1"),
-  port: z.number().int().min(1).max(65535).default(4510),
-  thumbnails: thumbnailSettingsSchema.default({ enabled: true })
+  username: z
+    .string()
+    .trim()
+    .min(3)
+    .max(30)
+    .regex(/^[a-zA-Z0-9_.]+$/),
+  password: z.string().min(8).max(128)
 });
 
 export const networkSettingsSchema = z.object({
@@ -129,29 +149,37 @@ export const healthResponseSchema = z.object({
   service: z.literal("bookcafe-server")
 });
 
-export const collectionRootSchema = z.object({
+export const librarySchema = z.object({
   id: z.string(),
-  path: z.string(),
+  name: z.string(),
+  rootPath: z.string(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
 
-export const collectionRootCreateRequestSchema = z.object({
-  path: z.string().min(1)
+export const libraryCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  rootPath: z.string().trim().min(1).max(32767)
 });
 
-export const collectionRootListResponseSchema = z.object({
-  roots: z.array(collectionRootSchema)
+export const libraryUpdateRequestSchema = libraryCreateRequestSchema
+  .partial()
+  .refine(
+    (request) => request.name !== undefined || request.rootPath !== undefined,
+    "At least one library field is required."
+  );
+
+export const libraryListResponseSchema = z.object({
+  libraries: z.array(librarySchema)
 });
 
-export const libraryExportResponseSchema = z.object({
-  schemaVersion: z.literal(1),
-  exportedAt: z.string().datetime(),
-  collectionRoots: z.array(collectionRootSchema),
-  books: z.array(bookDetailSchema)
+export const libraryPreferenceSchema = z.object({
+  libraryId: z.string().nullable()
 });
 
-export const jobTypeSchema = z.enum(["scan-collection-root"]);
+export const updateLibraryPreferenceRequestSchema = libraryPreferenceSchema;
+
+export const jobTypeSchema = z.enum(["scan-library"]);
 
 export const backgroundJobStatusSchema = z.enum([
   "queued",
@@ -163,6 +191,7 @@ export const backgroundJobStatusSchema = z.enum([
 
 export const backgroundJobSchema = z.object({
   id: z.string(),
+  libraryId: z.string(),
   type: jobTypeSchema,
   status: backgroundJobStatusSchema,
   payload: z.unknown(),
@@ -181,16 +210,67 @@ export const backgroundJobCreateManyResponseSchema = z.object({
   jobs: z.array(backgroundJobSchema)
 });
 
-export const scanJobCreateRequestSchema = z.object({
-  collectionRootId: z.string().min(1)
+export const scanJobCreateRequestSchema = z.object({});
+
+export const scanFailureCodeSchema = z.enum(scanFailureCodes);
+
+export const scanFailureKindSchema = z.enum(scanFailureKinds);
+
+export const scanFailureSchema = z.object({
+  id: z.string(),
+  jobId: z.string(),
+  kind: scanFailureKindSchema,
+  relativePath: z.string(),
+  format: bookFormatSchema,
+  code: scanFailureCodeSchema,
+  createdAt: z.string()
+});
+
+export const scanFailureListQuerySchema = z.object({
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(100)
+});
+
+export const scanFailureListResponseSchema = z.object({
+  failures: z.array(scanFailureSchema),
+  total: z.number().int().min(0),
+  offset: z.number().int().min(0),
+  limit: z.number().int().min(1).max(100),
+  hasMore: z.boolean()
+});
+
+export const pageSourceTypeSchema = z.enum([
+  "file",
+  "archive-entry",
+  "packed-archive-entry",
+  "pdf-page",
+  "epub-page"
+]);
+
+export const pageSchema = z.object({
+  bookId: z.string(),
+  pageNumber: z.number().int().positive(),
+  sourceType: pageSourceTypeSchema,
+  relativePath: z.string().nullable(),
+  entryPath: z.string().nullable(),
+  sourcePageNumber: z.number().int().positive().nullable(),
+  width: z.number().int().positive().nullable(),
+  height: z.number().int().positive().nullable(),
+  mimeType: z.string().nullable(),
+  createdAt: z.string()
+});
+
+export const pageListResponseSchema = z.object({
+  pages: z.array(pageSchema)
 });
 
 export type BookListResponse = z.infer<typeof bookListResponseSchema>;
-export type LibraryExportResponse = z.infer<typeof libraryExportResponseSchema>;
 export type BookListQuery = z.infer<typeof bookListQuerySchema>;
 export type BookDetailResponse = z.infer<typeof bookDetailSchema>;
 export type InitialSetupRequest = z.infer<typeof initialSetupRequestSchema>;
 export type SetupStatusResponse = z.infer<typeof setupStatusSchema>;
+export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
+export type ApiErrorResponse = z.infer<typeof apiErrorResponseSchema>;
 export type NetworkSettingsResponse = z.infer<typeof networkSettingsSchema>;
 export type ThumbnailSettingsResponse = z.infer<typeof thumbnailSettingsSchema>;
 export type UpdateNetworkSettingsRequest = z.infer<
@@ -206,12 +286,13 @@ export type UpdateBookProgressRequest = z.infer<
 export type UpdateBookMetadataRequest = z.infer<
   typeof updateBookMetadataRequestSchema
 >;
-export type CollectionRootResponse = z.infer<typeof collectionRootSchema>;
-export type CollectionRootCreateRequest = z.infer<
-  typeof collectionRootCreateRequestSchema
->;
-export type CollectionRootListResponse = z.infer<
-  typeof collectionRootListResponseSchema
+export type LibraryResponse = z.infer<typeof librarySchema>;
+export type LibraryCreateRequest = z.infer<typeof libraryCreateRequestSchema>;
+export type LibraryUpdateRequest = z.infer<typeof libraryUpdateRequestSchema>;
+export type LibraryListResponse = z.infer<typeof libraryListResponseSchema>;
+export type LibraryPreferenceResponse = z.infer<typeof libraryPreferenceSchema>;
+export type UpdateLibraryPreferenceRequest = z.infer<
+  typeof updateLibraryPreferenceRequestSchema
 >;
 export type BackgroundJobResponse = z.infer<typeof backgroundJobSchema>;
 export type BackgroundJobListResponse = z.infer<
@@ -221,6 +302,14 @@ export type BackgroundJobCreateManyResponse = z.infer<
   typeof backgroundJobCreateManyResponseSchema
 >;
 export type ScanJobCreateRequest = z.infer<typeof scanJobCreateRequestSchema>;
+export type ScanFailureCode = z.infer<typeof scanFailureCodeSchema>;
+export type ScanFailureResponse = z.infer<typeof scanFailureSchema>;
+export type ScanFailureListQuery = z.infer<typeof scanFailureListQuerySchema>;
+export type ScanFailureListResponse = z.infer<
+  typeof scanFailureListResponseSchema
+>;
+export type PageResponse = z.infer<typeof pageSchema>;
+export type PageListResponse = z.infer<typeof pageListResponseSchema>;
 
 /**
  * Creates a nullable string schema that trims non-empty values.

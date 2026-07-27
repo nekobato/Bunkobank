@@ -14,18 +14,18 @@ export interface BookStatusFilterOption {
 }
 
 export const readingStatusFilterOptions: ReadingStatusFilterOption[] = [
-  { value: "", label: "All" },
-  { value: "unread", label: "Unread" },
-  { value: "reading", label: "Reading" },
-  { value: "finished", label: "Finished" }
+  { value: "", label: "すべて" },
+  { value: "unread", label: "未読" },
+  { value: "reading", label: "読書中" },
+  { value: "finished", label: "読了" }
 ];
 
 export const bookStatusFilterOptions: BookStatusFilterOption[] = [
-  { value: "", label: "All" },
-  { value: "ready", label: "Ready" },
-  { value: "missing", label: "Missing" },
-  { value: "error", label: "Error" },
-  { value: "scanning", label: "Scanning" }
+  { value: "", label: "すべて" },
+  { value: "ready", label: "閲覧可能" },
+  { value: "missing", label: "見つかりません" },
+  { value: "error", label: "エラー" },
+  { value: "scanning", label: "スキャン中" }
 ];
 
 /**
@@ -37,7 +37,7 @@ export const formatLibraryResultSummary = (
   readingStatus: ReadingStatusFilter,
   bookStatus: BookStatusFilter
 ): string => {
-  const countLabel = bookCount === 1 ? "1 book" : `${bookCount} books`;
+  const countLabel = `蔵書 ${bookCount}冊`;
   const filterLabels = getActiveLibraryFilterLabels(
     searchText,
     readingStatus,
@@ -45,10 +45,10 @@ export const formatLibraryResultSummary = (
   );
 
   if (filterLabels.length < 1) {
-    return `${countLabel} in library`;
+    return countLabel;
   }
 
-  return `Showing ${countLabel} for ${filterLabels.join(", ")}`;
+  return `${countLabel}（${filterLabels.join("、")}）`;
 };
 
 /**
@@ -141,9 +141,9 @@ const getActiveLibraryFilterLabels = (
   const query = searchText.trim();
 
   return [
-    ...(query.length > 0 ? [`Search: ${query}`] : []),
-    ...getOptionLabel("Reading: ", readingStatus, readingStatusFilterOptions),
-    ...getOptionLabel("Book: ", bookStatus, bookStatusFilterOptions)
+    ...(query.length > 0 ? [`検索: ${query}`] : []),
+    ...getOptionLabel("読書状況: ", readingStatus, readingStatusFilterOptions),
+    ...getOptionLabel("元ファイル: ", bookStatus, bookStatusFilterOptions)
   ];
 };
 

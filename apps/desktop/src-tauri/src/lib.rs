@@ -34,11 +34,9 @@ struct ThumbnailSettings {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ServerConfig {
-    data_dir: String,
     host: String,
     port: u16,
     thumbnails: ThumbnailSettings,
-    setup_complete: bool,
 }
 
 /// Returns paths and platform facts resolved by Tauri's native path API.

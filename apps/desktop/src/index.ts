@@ -2,13 +2,7 @@
  * Shared planning surface for the future Tauri manager application.
  */
 
-import {
-  createServerUrl,
-  normalizeBindHost,
-  type AppConfig,
-  type BindHost,
-  type ThumbnailSettings
-} from "@bookcafe/config/shared";
+import { createServerUrl, type AppConfig } from "@bookcafe/config/shared";
 import { healthResponseSchema } from "@bookcafe/contracts";
 
 import type { InitialSetupRequest } from "@bookcafe/contracts";
@@ -16,11 +10,6 @@ import type { InitialSetupRequest } from "@bookcafe/contracts";
 export interface SetupDraft {
   username: string;
   password: string;
-  dataDir: string;
-  collectionRoots: string[];
-  host: BindHost;
-  port: number;
-  thumbnails: ThumbnailSettings;
 }
 
 export type ManagedServerStatusKind =
@@ -227,14 +216,9 @@ export const normalizePort = (port: number): number =>
 /**
  * Creates the default setup draft for the desktop manager setup form.
  */
-export const createDefaultSetupDraft = (dataDir = ""): SetupDraft => ({
+export const createDefaultSetupDraft = (): SetupDraft => ({
   username: "",
-  password: "",
-  dataDir,
-  collectionRoots: [],
-  host: "127.0.0.1",
-  port: 4510,
-  thumbnails: { enabled: true }
+  password: ""
 });
 
 /**
@@ -245,14 +229,7 @@ export const normalizeSetupDraft = (draft: Partial<SetupDraft>): SetupDraft => {
 
   return {
     username: (draft.username ?? defaults.username).trim(),
-    password: draft.password ?? defaults.password,
-    dataDir: (draft.dataDir ?? defaults.dataDir).trim(),
-    collectionRoots: normalizeCollectionRoots(
-      draft.collectionRoots ?? defaults.collectionRoots
-    ),
-    host: normalizeBindHost(draft.host),
-    port: normalizePort(draft.port ?? defaults.port),
-    thumbnails: draft.thumbnails ?? defaults.thumbnails
+    password: draft.password ?? defaults.password
   };
 };
 
@@ -266,12 +243,7 @@ export const createInitialSetupRequest = (
 
   return {
     username: normalized.username,
-    password: normalized.password,
-    dataDir: normalized.dataDir || undefined,
-    collectionRoots: normalized.collectionRoots,
-    host: normalized.host,
-    port: normalized.port,
-    thumbnails: normalized.thumbnails
+    password: normalized.password
   };
 };
 
@@ -732,14 +704,6 @@ const joinPosixPath = (...segments: string[]): string => {
 
   return joined || ".";
 };
-
-/**
- * Normalizes collection root values selected by the native directory picker.
- */
-const normalizeCollectionRoots = (paths: readonly string[]): string[] =>
-  Array.from(
-    new Set(paths.map((path) => path.trim()).filter((path) => path.length > 0))
-  );
 
 /**
  * Serializes a plist key line.

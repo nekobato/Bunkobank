@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { getApiErrorMessage } from "../utils/apiErrors";
+/**
+ * Searchable book list for the selected library.
+ *
+ * @module
+ */
+
+import type { BookSummary } from "@bookcafe/core";
+
+import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import {
   areLibraryFiltersEqual,
   bookStatusFilterOptions,
@@ -14,7 +22,13 @@ import {
 } from "../utils/libraryFilters";
 
 const route = useRoute();
-const { exportLibrary, listBooks } = useBookApi();
+const { archiveBook, createScanJob, listBooks } = useBookApi();
+const {
+  loaded: librariesLoaded,
+  loading: librariesLoading,
+  selectedLibrary,
+  selectedLibraryId
+} = useLibraries();
 const searchText = ref(getRouteSearch(route.query.q));
 const readingStatus = ref<ReadingStatusFilter>(
   getRouteReadingStatus(route.query.readingStatus)
@@ -22,8 +36,11 @@ const readingStatus = ref<ReadingStatusFilter>(
 const bookStatus = ref<BookStatusFilter>(
   getRouteBookStatus(route.query.bookStatus)
 );
-const exportMessage = ref("");
-const isExporting = ref(false);
+const bookToArchive = ref<BookSummary | null>(null);
+const isArchiving = ref(false);
+const isScanning = ref(false);
+const operationMessage = ref("");
+const operationSeverity = ref<"success" | "error">("success");
 const appliedSearch = computed(() => getRouteSearch(route.query.q));
 const appliedReadingStatus = computed(() =>
   getRouteReadingStatus(route.query.readingStatus)
@@ -32,16 +49,24 @@ const appliedBookStatus = computed(() =>
   getRouteBookStatus(route.query.bookStatus)
 );
 const { data, error, pending, refresh } = await useAsyncData(
-  "books",
+  "selected-library-books",
   () =>
-    listBooks({
-      q: appliedSearch.value || undefined,
-      readingStatus: appliedReadingStatus.value || undefined,
-      bookStatus: appliedBookStatus.value || undefined
-    }),
+    selectedLibraryId.value
+      ? listBooks(selectedLibraryId.value, {
+          q: appliedSearch.value || undefined,
+          readingStatus: appliedReadingStatus.value || undefined,
+          bookStatus: appliedBookStatus.value || undefined
+        })
+      : Promise.resolve({ books: [] }),
   {
+    default: () => ({ books: [] }),
     server: false,
-    watch: [appliedSearch, appliedReadingStatus, appliedBookStatus]
+    watch: [
+      selectedLibraryId,
+      appliedSearch,
+      appliedReadingStatus,
+      appliedBookStatus
+    ]
   }
 );
 const books = computed(() => data.value?.books ?? []);
@@ -71,24 +96,11 @@ const resultSummary = computed(() =>
 );
 const emptyMessage = computed(() =>
   hasAppliedFilters.value
-    ? "No books match the current filters"
-    : "No books found"
+    ? "条件に一致する本はありません。"
+    : "本は登録されていません。"
 );
-const actionLink = computed(() => {
-  if (statusCode.value === 409) {
-    return { label: "Setup", to: "/setup" };
-  }
-
-  if (statusCode.value === 401) {
-    return { label: "Login", to: "/login" };
-  }
-
-  return null;
-});
 const errorMessage = computed(() =>
-  statusCode.value === 409 || statusCode.value === 401
-    ? "Authentication required."
-    : "Failed to load books."
+  getAccessErrorMessage(statusCode.value, "蔵書を読み込めませんでした。")
 );
 
 watch(
@@ -100,9 +112,7 @@ watch(
   }
 );
 
-/**
- * Applies the current filters to the route query.
- */
+/** Applies the current filters to the route query. */
 const submitFilters = async (): Promise<void> => {
   if (
     areLibraryFiltersEqual(
@@ -131,19 +141,13 @@ const submitFilters = async (): Promise<void> => {
   );
 };
 
-/**
- * Clears the filters and refreshes the library.
- */
+/** Clears every book-list filter. */
 const clearFilters = async (): Promise<void> => {
   searchText.value = "";
   readingStatus.value = "";
   bookStatus.value = "";
 
-  if (
-    !appliedSearch.value &&
-    !appliedReadingStatus.value &&
-    !appliedBookStatus.value
-  ) {
+  if (!hasAppliedFilters.value) {
     await refresh();
     return;
   }
@@ -151,316 +155,366 @@ const clearFilters = async (): Promise<void> => {
   await navigateTo({ path: "/", query: {} }, { replace: true });
 };
 
-/**
- * Downloads the current library metadata as a versioned JSON file.
- */
-const downloadLibraryExport = async (): Promise<void> => {
-  if (isExporting.value) {
+/** Starts a scan for the selected library. */
+const scanSelectedLibrary = async (): Promise<void> => {
+  if (!selectedLibraryId.value) {
     return;
   }
 
-  isExporting.value = true;
-  exportMessage.value = "";
+  isScanning.value = true;
+  operationMessage.value = "";
 
   try {
-    const exportData = await exportLibrary();
-    triggerJsonDownload(
-      createLibraryExportFileName(exportData.exportedAt),
-      exportData
-    );
-    exportMessage.value = `Exported ${exportData.books.length} books`;
+    await createScanJob(selectedLibraryId.value);
+    operationSeverity.value = "success";
+    operationMessage.value = "スキャンを開始しました。";
   } catch (error) {
-    exportMessage.value = getApiErrorMessage(error, "Export failed");
+    operationSeverity.value = "error";
+    operationMessage.value = getApiErrorMessage(
+      error,
+      "スキャンを開始できませんでした。"
+    );
   } finally {
-    isExporting.value = false;
+    isScanning.value = false;
   }
 };
 
-/**
- * Builds the client-side filename matching the server export convention.
- */
-const createLibraryExportFileName = (exportedAt: string): string =>
-  `bookcafe-library-${exportedAt
-    .replaceAll("-", "")
-    .replaceAll(":", "")
-    .replace(/\.\d{3}Z$/, "Z")}.json`;
+/** Archives the confirmed book and refreshes the visible list. */
+const confirmArchive = async (): Promise<void> => {
+  if (!bookToArchive.value || !selectedLibraryId.value) {
+    return;
+  }
 
-/**
- * Creates a temporary object URL and clicks a synthetic download link.
- */
-const triggerJsonDownload = (fileName: string, payload: unknown): void => {
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
-    type: "application/json"
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = fileName;
+  isArchiving.value = true;
+  operationMessage.value = "";
 
   try {
-    document.body.append(link);
-    link.click();
+    await archiveBook(selectedLibraryId.value, bookToArchive.value.id);
+    bookToArchive.value = null;
+    await refresh();
+    operationSeverity.value = "success";
+    operationMessage.value = "アーカイブしました。";
+  } catch (error) {
+    operationSeverity.value = "error";
+    operationMessage.value = getApiErrorMessage(
+      error,
+      "アーカイブできませんでした。"
+    );
   } finally {
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    isArchiving.value = false;
   }
 };
 </script>
 
 <template>
   <section class="library">
-    <div class="heading">
-      <h1>Library</h1>
-      <div class="tools">
-        <form
-          class="search"
-          action="/"
-          method="get"
-          @submit.prevent="submitFilters"
-        >
-          <label class="field" for="library-search">
-            <span>Search</span>
-            <input
-              id="library-search"
-              v-model="searchText"
-              name="q"
-              type="search"
-              autocomplete="off"
-              maxlength="200"
-              enterkeyhint="search"
+    <header class="heading">
+      <div>
+        <p v-if="selectedLibrary" class="page-eyebrow">
+          {{ selectedLibrary.name }}
+        </p>
+        <h1 class="page-title">蔵書</h1>
+      </div>
+      <div class="commands" aria-label="ライブラリ操作">
+        <Button
+          label="更新"
+          icon="pi pi-refresh"
+          severity="secondary"
+          variant="outlined"
+          :disabled="!selectedLibraryId"
+          @click="() => refresh()"
+        />
+        <Button
+          label="スキャン"
+          icon="pi pi-sync"
+          :loading="isScanning"
+          :disabled="!selectedLibraryId"
+          @click="scanSelectedLibrary"
+        />
+      </div>
+    </header>
+
+    <Card v-if="selectedLibraryId" class="filter-card">
+      <template #content>
+        <form class="search" @submit.prevent="submitFilters">
+          <div class="search-field">
+            <label for="library-search">検索</label>
+            <IconField>
+              <InputIcon class="pi pi-search" />
+              <InputText
+                id="library-search"
+                v-model="searchText"
+                name="q"
+                type="search"
+                autocomplete="off"
+                maxlength="200"
+                enterkeyhint="search"
+                placeholder="タイトル、著者、タグ"
+                fluid
+              />
+            </IconField>
+          </div>
+          <div class="select-field">
+            <span id="reading-filter-label" class="control-label">
+              読書状況
+            </span>
+            <Select
+              v-model="readingStatus"
+              input-id="reading-filter"
+              :options="readingStatusFilterOptions"
+              option-label="label"
+              option-value="value"
+              aria-labelledby="reading-filter-label"
+              fluid
             />
-          </label>
-          <fieldset class="filter">
-            <legend>Reading status</legend>
-            <div class="choices">
-              <label
-                v-for="option in readingStatusFilterOptions"
-                :key="option.value || 'all'"
-                class="choice"
-              >
-                <input
-                  v-model="readingStatus"
-                  type="radio"
-                  name="readingStatus"
-                  :value="option.value"
-                  @change="submitFilters"
-                />
-                <span>{{ option.label }}</span>
-              </label>
-            </div>
-          </fieldset>
-          <fieldset class="filter">
-            <legend>Book status</legend>
-            <div class="choices">
-              <label
-                v-for="option in bookStatusFilterOptions"
-                :key="option.value || 'all'"
-                class="choice"
-              >
-                <input
-                  v-model="bookStatus"
-                  type="radio"
-                  name="bookStatus"
-                  :value="option.value"
-                  @change="submitFilters"
-                />
-                <span>{{ option.label }}</span>
-              </label>
-            </div>
-          </fieldset>
-          <div class="actions">
-            <button type="submit">Search</button>
-            <button v-if="hasActiveFilters" type="button" @click="clearFilters">
-              Clear
-            </button>
+          </div>
+          <div class="select-field">
+            <span id="source-filter-label" class="control-label">
+              元ファイル
+            </span>
+            <Select
+              v-model="bookStatus"
+              input-id="source-filter"
+              :options="bookStatusFilterOptions"
+              option-label="label"
+              option-value="value"
+              aria-labelledby="source-filter-label"
+              fluid
+            />
+          </div>
+          <div class="filter-actions">
+            <Button label="絞り込む" icon="pi pi-filter" type="submit" />
+            <Button
+              v-if="hasActiveFilters"
+              label="クリア"
+              icon="pi pi-times"
+              severity="secondary"
+              variant="text"
+              type="button"
+              @click="clearFilters"
+            />
           </div>
         </form>
-        <div class="commands">
-          <button type="button" @click="() => refresh()">Refresh</button>
-          <button
-            type="button"
-            :disabled="isExporting || Boolean(error)"
-            @click="downloadLibraryExport"
-          >
-            {{ isExporting ? "Exporting" : "Export JSON" }}
-          </button>
-        </div>
+      </template>
+    </Card>
+
+    <Message
+      v-if="operationMessage"
+      :severity="operationSeverity"
+      :closable="false"
+    >
+      {{ operationMessage }}
+    </Message>
+
+    <ClientOnly>
+      <div
+        v-if="librariesLoading || (!librariesLoaded && pending)"
+        class="status"
+        role="status"
+      >
+        <ProgressSpinner class="spinner" stroke-width="4" />
       </div>
-    </div>
-    <LibraryManager v-if="!error" @updated="() => refresh()" />
-    <p v-if="exportMessage" class="message" aria-live="polite">
-      {{ exportMessage }}
-    </p>
-    <p v-if="!pending && !error" class="summary" aria-live="polite">
-      {{ resultSummary }}
-    </p>
-    <p v-if="pending" class="status">Loading</p>
-    <p v-else-if="error" class="status is-error">
-      <span>{{ errorMessage }}</span>
-      <NuxtLink v-if="actionLink" :to="actionLink.to">
-        {{ actionLink.label }}
-      </NuxtLink>
-    </p>
-    <BookList v-else-if="books.length > 0" :books="books" />
-    <p v-else class="status">{{ emptyMessage }}</p>
+      <Card v-else-if="!selectedLibraryId" class="empty-card">
+        <template #content>
+          <i class="pi pi-folder-open" aria-hidden="true" />
+          <p>ライブラリは未登録です。</p>
+          <Button
+            as="router-link"
+            label="設定を開く"
+            icon="pi pi-cog"
+            to="/setup"
+          />
+        </template>
+      </Card>
+      <div v-else-if="pending" class="status" role="status">
+        <ProgressSpinner class="spinner" stroke-width="4" />
+      </div>
+      <Message v-else-if="error" severity="error" :closable="false">
+        {{ errorMessage }}
+      </Message>
+      <template v-else>
+        <p class="summary" aria-live="polite">{{ resultSummary }}</p>
+        <BookList
+          v-if="books.length > 0"
+          :books="books"
+          @archive="bookToArchive = $event"
+        />
+        <Card v-else class="empty-card">
+          <template #content>
+            <i class="pi pi-book" aria-hidden="true" />
+            <p>{{ emptyMessage }}</p>
+            <Button
+              v-if="hasActiveFilters"
+              label="絞り込みを解除"
+              severity="secondary"
+              variant="outlined"
+              @click="clearFilters"
+            />
+          </template>
+        </Card>
+      </template>
+    </ClientOnly>
+
+    <Dialog
+      :visible="bookToArchive !== null"
+      modal
+      header="アーカイブ"
+      :style="{ width: 'min(28rem, calc(100vw - 2rem))' }"
+      @update:visible="bookToArchive = null"
+    >
+      <p class="dialog-copy">
+        「{{ bookToArchive?.title }}」を非表示にします。
+      </p>
+      <template #footer>
+        <Button
+          label="キャンセル"
+          severity="secondary"
+          variant="text"
+          @click="bookToArchive = null"
+        />
+        <Button
+          label="アーカイブ"
+          icon="pi pi-inbox"
+          :loading="isArchiving"
+          @click="confirmArchive"
+        />
+      </template>
+    </Dialog>
   </section>
 </template>
 
 <style scoped>
 .library {
   display: grid;
-  gap: 1.25rem;
-  width: min(1100px, 100%);
-  padding: clamp(1rem, 4vw, 2rem);
+  gap: 1.4rem;
+  inline-size: min(82rem, 100%);
+  padding: clamp(1.25rem, 4vw, 3.5rem);
   margin: 0 auto;
 }
 
-.heading {
-  display: grid;
-  gap: 1rem;
-}
-
-.heading h1 {
-  margin: 0;
-  font-size: clamp(1.6rem, 5vw, 2.4rem);
-}
-
-.tools {
+.heading,
+.commands,
+.filter-actions {
   display: flex;
+}
+
+.heading {
   align-items: end;
   justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.heading h1,
+.page-eyebrow {
+  margin: 0;
+}
+
+.commands,
+.filter-actions {
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem;
+}
+
+.filter-card {
+  border-inline-start: 0.35rem solid var(--bc-ink-blue);
+}
+
+.filter-card :deep(.p-card-body) {
+  padding: 1rem;
+}
+
+.filter-card :deep(.p-card-content) {
+  padding: 0;
 }
 
 .search {
-  display: flex;
+  display: grid;
+  grid-template-columns:
+    minmax(14rem, 1.5fr) minmax(9rem, 0.6fr) minmax(9rem, 0.6fr)
+    auto;
   align-items: end;
-  flex: 1 1 30rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  min-width: min(100%, 18rem);
+  gap: 0.8rem;
 }
 
-.field {
+.search-field,
+.select-field {
   display: grid;
-  flex: 1 1 16rem;
-  gap: 0.35rem;
-  min-width: min(100%, 16rem);
+  gap: 0.38rem;
+  min-inline-size: 0;
 }
 
-.field span {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.field input {
-  width: 100%;
-  min-height: 2.5rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  font: inherit;
-}
-
-.filter {
-  display: grid;
-  gap: 0.35rem;
-  min-width: min(100%, 19rem);
-  padding: 0;
-  border: 0;
-  margin: 0;
-}
-
-.filter legend {
-  padding: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.choice {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 2.5rem;
-  padding: 0 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-
-.choice input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: var(--accent);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.commands {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.tools button {
-  min-height: 2.5rem;
-  padding: 0 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-
-.tools button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.message {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.95rem;
+.search label,
+.search .control-label {
+  color: var(--bc-ink-soft);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .summary {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.95rem;
+  color: var(--bc-ink-soft);
+  font-family: var(--bc-font-data);
+  font-size: 0.78rem;
 }
 
 .status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
+  display: grid;
+  min-block-size: 8rem;
+  place-items: center;
 }
 
-.status a {
-  color: var(--text);
+.spinner {
+  inline-size: 2rem;
+  block-size: 2rem;
 }
 
-.is-error {
-  color: var(--danger);
+.empty-card {
+  text-align: center;
+}
+
+.empty-card :deep(.p-card-content) {
+  display: grid;
+  justify-items: center;
+  gap: 0.85rem;
+  padding-block: 2.5rem;
+}
+
+.empty-card i {
+  color: var(--bc-patina);
+  font-size: 2rem;
+}
+
+.empty-card p,
+.dialog-copy {
+  margin: 0;
+  color: var(--bc-ink-soft);
+}
+
+@media (width <= 68rem) {
+  .search {
+    grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.6fr) minmax(
+        9rem,
+        0.6fr
+      );
+  }
+
+  .filter-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (width <= 44rem) {
+  .heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .search {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filter-actions {
+    grid-column: auto;
+  }
 }
 </style>

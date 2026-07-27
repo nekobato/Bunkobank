@@ -2,27 +2,63 @@
  * Node.js entrypoint for the BookCafe Hono server.
  */
 
-import { loadConfig } from "@bookcafe/config";
+import {
+  getDefaultStateDir,
+  loadConfig,
+  resolveStatePaths
+} from "@bookcafe/config";
 import { serve } from "@hono/node-server";
 
-import { createApp } from "./app.js";
+import { createApp } from "./library-app.js";
 import { parseServerCliOptions } from "./cli.js";
+import {
+  readInitializationState,
+  resolveEffectiveBindHost
+} from "./initialization.js";
+import { isPdfWorkerInvocation } from "./pdf-protocol.js";
+import { runPdfWorker } from "./pdf-worker.js";
 
-const cliOptions = parseServerCliOptions(process.argv.slice(2));
-const config = loadConfig(cliOptions.configPath);
-const app = createApp({
-  configPath: cliOptions.configPath
-});
+/**
+ * Starts the long-lived HTTP server when this process is not a PDF worker.
+ */
+const startServer = (): void => {
+  const cliOptions = parseServerCliOptions(process.argv.slice(2));
+  const config = loadConfig(cliOptions.configPath);
+  const stateDir = getDefaultStateDir();
+  const initializationState = readInitializationState(
+    resolveStatePaths(stateDir).databasePath
+  );
+  const hostname = resolveEffectiveBindHost(config.host, initializationState);
+  const app = createApp({
+    configPath: cliOptions.configPath,
+    stateDir
+  });
 
-serve(
-  {
-    fetch: app.fetch,
-    hostname: config.host,
-    port: config.port
-  },
-  (info) => {
-    console.log(
-      `BookCafe server listening on http://${info.address}:${info.port}`
+  if (initializationState.status === "unavailable") {
+    console.error(
+      "BookCafe data is unavailable. The server is restricted to loopback.",
+      initializationState.cause
     );
   }
-);
+
+  serve(
+    {
+      fetch: app.fetch,
+      hostname,
+      port: config.port
+    },
+    (info) => {
+      console.log(
+        `BookCafe server listening on http://${info.address}:${info.port}`
+      );
+    }
+  );
+};
+
+if (isPdfWorkerInvocation(process.argv.slice(2))) {
+  await runPdfWorker().catch(() => {
+    process.exitCode = 1;
+  });
+} else {
+  startServer();
+}

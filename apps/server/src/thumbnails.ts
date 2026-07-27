@@ -13,6 +13,7 @@ const thumbnailHeight = 480;
 
 export interface GenerateBookThumbnailOptions {
   database: BookCafeDatabase;
+  libraryId: string;
   bookId: string;
   sourcePath?: string;
   sourceData?: Uint8Array;
@@ -54,6 +55,7 @@ export const generateBookThumbnail = async (
   const height = info.height ?? thumbnailHeight;
 
   setBookThumbnail(options.database, {
+    libraryId: options.libraryId,
     bookId: options.bookId,
     path: thumbnailPath,
     page: options.page,
