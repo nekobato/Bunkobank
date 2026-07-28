@@ -5,6 +5,7 @@
 import { constants } from "node:fs";
 import { access, readFile, realpath, stat, unlink } from "node:fs/promises";
 import {
+  basename,
   dirname,
   extname,
   isAbsolute,
@@ -101,6 +102,7 @@ import { runLibraryScanJob } from "./library-scan-jobs.js";
 import { isLoopbackAddress } from "./loopback.js";
 import { getBookCafeClientOrigins } from "./origins.js";
 import { renderPdfPageImageInChildProcess } from "./pdf-process.js";
+import { createBufferResponse, createFileResponse } from "./byte-range.js";
 
 type Auth = ReturnType<typeof getAuth>;
 
@@ -194,8 +196,16 @@ export const createApp = (options: AppOptions = {}) => {
     "/api/*",
     cors({
       origin: getBookCafeClientOrigins(),
-      allowHeaders: ["Content-Type", "Authorization"],
-      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization", "Range", "If-Range"],
+      allowMethods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+      exposeHeaders: [
+        "Accept-Ranges",
+        "Content-Disposition",
+        "Content-Length",
+        "Content-Range",
+        "ETag",
+        "Last-Modified"
+      ],
       credentials: true
     })
   );
@@ -699,7 +709,55 @@ export const createApp = (options: AppOptions = {}) => {
       : c.json(createApiError("NOT_FOUND", "Book not found."), 404);
   });
 
-  app.get(
+  app.on(
+    ["GET", "HEAD"],
+    "/api/libraries/:libraryId/books/:bookId/source",
+    async (c) => {
+      const source = await withDatabase((database) => {
+        const library = findLibrary(database, c.req.param("libraryId"));
+        const book = findBookDetail(
+          database,
+          c.req.param("libraryId"),
+          c.req.param("bookId"),
+          requireUserId(c)
+        );
+        return library && book ? { library, book } : null;
+      });
+
+      if (
+        !source ||
+        source.book.status === "missing" ||
+        source.book.format === "image-folder"
+      ) {
+        return c.json(
+          createApiError("NOT_FOUND", "Book source not found."),
+          404
+        );
+      }
+
+      try {
+        const sourcePath = await resolveLibrarySource(
+          source.library.canonicalRootPath,
+          source.book.relativePath
+        );
+        return await createFileResponse({
+          request: c.req.raw,
+          filePath: sourcePath,
+          contentType: getBookSourceContentType(source.book.relativePath),
+          cacheControl: "private, no-cache",
+          dispositionFileName: basename(source.book.relativePath)
+        });
+      } catch {
+        return c.json(
+          createApiError("NOT_FOUND", "Book source not found."),
+          404
+        );
+      }
+    }
+  );
+
+  app.on(
+    ["GET", "HEAD"],
     "/api/libraries/:libraryId/books/:bookId/pages/:pageNumber/image",
     async (c) => {
       const pageNumber = Number(c.req.param("pageNumber"));
@@ -732,21 +790,38 @@ export const createApp = (options: AppOptions = {}) => {
         return c.json(createApiError("NOT_FOUND", "Page not found."), 404);
       }
 
+      if (source.page.sourceType === "file" && source.page.relativePath) {
+        try {
+          const sourcePath = await resolveLibrarySource(
+            source.library.canonicalRootPath,
+            source.page.relativePath
+          );
+          return await createFileResponse({
+            request: c.req.raw,
+            filePath: sourcePath,
+            contentType:
+              source.page.mimeType ??
+              getImageContentType(source.page.relativePath),
+            cacheControl: "private, max-age=60"
+          });
+        } catch {
+          return c.json(createApiError("NOT_FOUND", "Page not found."), 404);
+        }
+      }
+
       const image = await readPageImage(source, c.req.raw.signal);
 
       if (!image) {
         return c.json(createApiError("NOT_FOUND", "Page not found."), 404);
       }
 
-      return new Response(Uint8Array.from(image).buffer, {
-        headers: {
-          "Cache-Control": "private, max-age=60",
-          "Content-Type":
-            source.page.mimeType ??
-            getImageContentType(
-              source.page.entryPath ?? source.page.relativePath
-            )
-        }
+      return createBufferResponse({
+        request: c.req.raw,
+        data: image,
+        cacheControl: "private, max-age=60",
+        contentType:
+          source.page.mimeType ??
+          getImageContentType(source.page.entryPath ?? source.page.relativePath)
       });
     }
   );
@@ -1144,6 +1219,35 @@ const getImageContentType = (path: string | null): string => {
   }
 
   return "image/png";
+};
+
+/**
+ * Infers the response MIME type for every supported file-backed book format.
+ */
+const getBookSourceContentType = (path: string): string => {
+  const extension = extname(path).toLocaleLowerCase();
+
+  if (extension === ".pdf") {
+    return "application/pdf";
+  }
+
+  if (extension === ".epub") {
+    return "application/epub+zip";
+  }
+
+  if (extension === ".rar" || extension === ".cbr") {
+    return "application/vnd.rar";
+  }
+
+  if (extension === ".7z") {
+    return "application/x-7z-compressed";
+  }
+
+  if (extension === ".zip" || extension === ".cbz") {
+    return "application/zip";
+  }
+
+  return "application/octet-stream";
 };
 
 /**

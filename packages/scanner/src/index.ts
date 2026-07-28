@@ -562,10 +562,8 @@ const createEpubBook = async (
 ): Promise<ScannedBook | null> => {
   const normalizedEpubPath = resolve(epubPath);
   const relativePath = toLibraryRelativePath(rootPath, normalizedEpubPath);
-  const [pages, metadata] = await Promise.all([
-    listEpubPages(normalizedEpubPath),
-    readEpubMetadata(normalizedEpubPath)
-  ]);
+  const pages = await listEpubPages(normalizedEpubPath);
+  const metadata = await readEpubMetadata(normalizedEpubPath);
 
   if (pages.length === 0) {
     return null;

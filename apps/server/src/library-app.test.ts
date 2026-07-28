@@ -251,6 +251,195 @@ describe("single database Hono app", () => {
     expect(await leakedDetail.json()).toMatchObject({ code: "NOT_FOUND" });
   });
 
+  it("serves every file-backed book format with authenticated byte ranges", async () => {
+    const fixture = createFixture();
+    const app = createApp(fixture);
+    await initializeUser(app);
+    const cookie = await signInUser(app);
+    const rootPath = join(fixture.directory, "books");
+    mkdirSync(rootPath);
+    const library = await createLibrary(app, cookie, {
+      name: "Books",
+      rootPath
+    });
+    const cases = [
+      { extension: ".zip", format: "zip", contentType: "application/zip" },
+      { extension: ".cbz", format: "cbz", contentType: "application/zip" },
+      { extension: ".pdf", format: "pdf", contentType: "application/pdf" },
+      {
+        extension: ".epub",
+        format: "epub",
+        contentType: "application/epub+zip"
+      },
+      {
+        extension: ".rar",
+        format: "rar",
+        contentType: "application/vnd.rar"
+      },
+      {
+        extension: ".cbr",
+        format: "cbr",
+        contentType: "application/vnd.rar"
+      },
+      {
+        extension: ".7z",
+        format: "seven-zip",
+        contentType: "application/x-7z-compressed"
+      }
+    ] as const;
+    const database = openBookCafeDatabase(
+      resolveStatePaths(fixture.stateDir).databasePath
+    );
+    const sources = cases.map((testCase, index) => {
+      const relativePath = `Volume ${index + 1}${testCase.extension}`;
+      const data = Buffer.from(`source-${index}-0123456789`);
+      writeFileSync(join(rootPath, relativePath), data);
+      const book = persistScannedBook(database, {
+        libraryId: library.id,
+        relativePath,
+        title: relativePath,
+        format: testCase.format,
+        pageCount: 1,
+        pages: [
+          {
+            pageNumber: 1,
+            sourceType: "file",
+            relativePath
+          }
+        ]
+      });
+      return { ...testCase, book, data, relativePath };
+    });
+    closeDatabase(database);
+
+    for (const source of sources) {
+      const response = await app.request(
+        `/api/libraries/${library.id}/books/${source.book.id}/source`,
+        {
+          headers: {
+            Cookie: cookie,
+            Range: "bytes=2-5"
+          }
+        }
+      );
+
+      expect(response.status).toBe(206);
+      expect(response.headers.get("accept-ranges")).toBe("bytes");
+      expect(response.headers.get("content-type")).toBe(source.contentType);
+      expect(response.headers.get("content-length")).toBe("4");
+      expect(response.headers.get("content-range")).toBe(
+        `bytes 2-5/${source.data.byteLength}`
+      );
+      expect(response.headers.get("content-disposition")).toContain(
+        encodeURIComponent(source.relativePath)
+      );
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(
+        source.data.subarray(2, 6)
+      );
+    }
+
+    const first = sources[0];
+    const suffixHead = await app.request(
+      `/api/libraries/${library.id}/books/${first.book.id}/source`,
+      {
+        method: "HEAD",
+        headers: { Cookie: cookie, Range: "bytes=-3" }
+      }
+    );
+    const unsatisfiable = await app.request(
+      `/api/libraries/${library.id}/books/${first.book.id}/source`,
+      {
+        headers: {
+          Cookie: cookie,
+          Range: `bytes=${first.data.byteLength}-`
+        }
+      }
+    );
+
+    expect(suffixHead.status).toBe(206);
+    expect(suffixHead.headers.get("content-range")).toBe(
+      `bytes ${first.data.byteLength - 3}-${first.data.byteLength - 1}/${first.data.byteLength}`
+    );
+    expect((await suffixHead.arrayBuffer()).byteLength).toBe(0);
+    expect(unsatisfiable.status).toBe(416);
+    expect(unsatisfiable.headers.get("content-range")).toBe(
+      `bytes */${first.data.byteLength}`
+    );
+  });
+
+  it("streams ranged image-folder pages for every supported image extension", async () => {
+    const fixture = createFixture();
+    const app = createApp(fixture);
+    await initializeUser(app);
+    const cookie = await signInUser(app);
+    const rootPath = join(fixture.directory, "books");
+    const bookPath = join(rootPath, "Images");
+    mkdirSync(bookPath, { recursive: true });
+    const library = await createLibrary(app, cookie, {
+      name: "Books",
+      rootPath
+    });
+    const cases = [
+      { extension: ".jpg", contentType: "image/jpeg" },
+      { extension: ".jpeg", contentType: "image/jpeg" },
+      { extension: ".png", contentType: "image/png" },
+      { extension: ".webp", contentType: "image/webp" },
+      { extension: ".gif", contentType: "image/gif" },
+      { extension: ".avif", contentType: "image/avif" }
+    ] as const;
+    const pages = cases.map((testCase, index) => {
+      const relativePath = `Images/${index + 1}${testCase.extension}`;
+      const data = Buffer.from(`image-${index}-0123456789`);
+      writeFileSync(join(rootPath, relativePath), data);
+      return {
+        pageNumber: index + 1,
+        sourceType: "file" as const,
+        relativePath,
+        data,
+        contentType: testCase.contentType
+      };
+    });
+    const database = openBookCafeDatabase(
+      resolveStatePaths(fixture.stateDir).databasePath
+    );
+    const book = persistScannedBook(database, {
+      libraryId: library.id,
+      relativePath: "Images",
+      title: "Images",
+      format: "image-folder",
+      pageCount: pages.length,
+      pages
+    });
+    closeDatabase(database);
+
+    for (const page of pages) {
+      const response = await app.request(
+        `/api/libraries/${library.id}/books/${book.id}/pages/${page.pageNumber}/image`,
+        {
+          headers: {
+            Cookie: cookie,
+            Range: "bytes=1-3"
+          }
+        }
+      );
+
+      expect(response.status).toBe(206);
+      expect(response.headers.get("content-type")).toBe(page.contentType);
+      expect(response.headers.get("content-range")).toBe(
+        `bytes 1-3/${page.data.byteLength}`
+      );
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(
+        page.data.subarray(1, 4)
+      );
+    }
+
+    const folderSource = await app.request(
+      `/api/libraries/${library.id}/books/${book.id}/source`,
+      { headers: { Cookie: cookie } }
+    );
+    expect(folderSource.status).toBe(404);
+  });
+
   it("stores user progress and supports archive and restore without delete", async () => {
     const fixture = createFixture();
     const app = createApp(fixture);
