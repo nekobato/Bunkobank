@@ -7,6 +7,7 @@ const route = useRoute();
 const isNavigationOpen = ref(false);
 const { session, signOut } = useBookAuth();
 const {
+  error: libraryError,
   libraries,
   loading: librariesLoading,
   refreshLibraries,
@@ -22,6 +23,9 @@ const userLabel = computed(
     "ログイン中"
 );
 const isReader = computed(() => isReaderRoute(route.path));
+const libraryPlaceholder = computed(() =>
+  libraryError.value ? "読込エラー" : "未登録"
+);
 
 watch(
   hasSession,
@@ -106,7 +110,7 @@ const restoreNavigationFocus = (): void => {
             :options="libraries"
             option-label="name"
             option-value="id"
-            placeholder="未登録"
+            :placeholder="libraryPlaceholder"
             :loading="librariesLoading"
             :disabled="libraries.length === 0"
             aria-labelledby="application-library-label"

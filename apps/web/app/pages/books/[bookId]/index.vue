@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { updateBookMetadataRequestSchema } from "@bookcafe/contracts";
+
 import {
   getAccessErrorMessage,
   getApiErrorMessage
@@ -9,6 +11,10 @@ import {
   getBookSourceStatusTitle,
   isReadableBookStatus
 } from "../../../utils/bookAvailability";
+import {
+  createFieldErrorMap,
+  focusFormErrorSummary
+} from "../../../utils/formValidation";
 import {
   createEmptyMetadataForm,
   toMetadataForm,
@@ -37,6 +43,10 @@ const archiveDialogOpen = ref(false);
 const archiving = ref(false);
 const statusMessage = ref("");
 const formError = ref("");
+const fieldErrors = ref<Record<string, string>>({});
+const metadataErrorSummary = useTemplateRef<HTMLElement>(
+  "metadata-error-summary"
+);
 const sourceIssueId = "book-source-issue";
 const statusCode = computed(() => error.value?.statusCode);
 const canReadBook = computed(() =>
@@ -73,6 +83,35 @@ const errorMessage = computed(() =>
     getApiErrorMessage(error.value, "書籍を読み込めませんでした。")
   )
 );
+const metadataFieldTargets: Record<string, string> = {
+  title: "book-title",
+  authors: "book-authors",
+  publisher: "book-publisher",
+  isbn: "book-isbn",
+  purchasedAt: "book-purchased-at",
+  readingStatus: "reading-unread",
+  tags: "book-tags",
+  notes: "book-notes"
+};
+const metadataFieldLabels: Record<string, string> = {
+  title: "タイトル",
+  authors: "著者",
+  publisher: "出版社",
+  isbn: "ISBN",
+  purchasedAt: "購入日",
+  readingStatus: "読書状況",
+  tags: "タグ",
+  notes: "メモ",
+  form: "入力内容"
+};
+const fieldErrorEntries = computed(() =>
+  Object.entries(fieldErrors.value).map(([field, message]) => ({
+    field,
+    message,
+    label: metadataFieldLabels[field] ?? field,
+    target: metadataFieldTargets[field]
+  }))
+);
 
 watch(
   data,
@@ -101,10 +140,23 @@ const saveMetadata = async (): Promise<void> => {
       return;
     }
 
+    const validation = updateBookMetadataRequestSchema.safeParse(
+      toMetadataRequest(form.value)
+    );
+
+    if (!validation.success) {
+      fieldErrors.value = localizeMetadataFieldErrors(
+        createFieldErrorMap(validation.error.issues)
+      );
+      await focusFormErrorSummary(metadataErrorSummary.value);
+      return;
+    }
+
+    fieldErrors.value = {};
     const book = await updateBookMetadata(
       selectedLibraryId.value,
       bookId.value,
-      toMetadataRequest(form.value)
+      validation.data
     );
     data.value = book;
     form.value = toMetadataForm(book);
@@ -130,6 +182,7 @@ const resetMetadata = (): void => {
   form.value = toMetadataForm(data.value);
   statusMessage.value = "";
   formError.value = "";
+  fieldErrors.value = {};
 };
 
 /** Archives the current book and returns to the normal list. */
@@ -162,6 +215,35 @@ const preventUnavailableRead = (event: Event): void => {
 
   event.preventDefault();
 };
+
+/**
+ * Converts shared metadata schema issues into stable Japanese guidance.
+ */
+const localizeMetadataFieldErrors = (
+  errors: Record<string, string>
+): Record<string, string> => ({
+  ...(errors.title
+    ? { title: "タイトルを1〜300文字で入力してください。" }
+    : {}),
+  ...(errors.authors
+    ? { authors: "著者は1件200文字以内、50件までで入力してください。" }
+    : {}),
+  ...(errors.publisher
+    ? { publisher: "出版社は200文字以内で入力してください。" }
+    : {}),
+  ...(errors.isbn ? { isbn: "ISBNは32文字以内で入力してください。" } : {}),
+  ...(errors.purchasedAt
+    ? { purchasedAt: "購入日は有効な日付で入力してください。" }
+    : {}),
+  ...(errors.readingStatus
+    ? { readingStatus: "読書状況を選択してください。" }
+    : {}),
+  ...(errors.tags
+    ? { tags: "タグは1件64文字以内、50件までで入力してください。" }
+    : {}),
+  ...(errors.notes ? { notes: "メモは10000文字以内で入力してください。" } : {}),
+  ...(errors.form ? { form: "入力内容を確認してください。" } : {})
+});
 
 /** Warns before a browser unload would discard metadata edits. */
 const warnBeforeUnload = (event: BeforeUnloadEvent): void => {
@@ -250,6 +332,23 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
           :action="`/books/${data.id}`"
           @submit.prevent="saveMetadata"
         >
+          <div
+            v-if="fieldErrorEntries.length > 0"
+            ref="metadata-error-summary"
+            class="error-summary"
+            tabindex="-1"
+            role="alert"
+          >
+            <strong>入力内容を確認してください。</strong>
+            <ul>
+              <li v-for="entry in fieldErrorEntries" :key="entry.field">
+                <a v-if="entry.target" :href="`#${entry.target}`">
+                  {{ entry.label }}: {{ entry.message }}
+                </a>
+                <span v-else>{{ entry.message }}</span>
+              </li>
+            </ul>
+          </div>
           <fieldset class="group">
             <legend>書誌情報</legend>
             <label class="field" for="book-title">
@@ -262,7 +361,12 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                 required
                 maxlength="300"
                 autocomplete="off"
+                :aria-invalid="Boolean(fieldErrors.title)"
+                aria-describedby="book-title-error"
               />
+              <small v-if="fieldErrors.title" id="book-title-error">
+                {{ fieldErrors.title }}
+              </small>
             </label>
             <label class="field" for="book-authors">
               <span>著者</span>
@@ -273,9 +377,13 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                 rows="4"
                 maxlength="10000"
                 autocomplete="off"
-                aria-describedby="authors-help"
+                :aria-invalid="Boolean(fieldErrors.authors)"
+                aria-describedby="authors-help book-authors-error"
               />
               <small id="authors-help"> 1行またはカンマで区切ります。 </small>
+              <small v-if="fieldErrors.authors" id="book-authors-error">
+                {{ fieldErrors.authors }}
+              </small>
             </label>
             <div class="split">
               <label class="field" for="book-publisher">
@@ -287,7 +395,12 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                   type="text"
                   maxlength="200"
                   autocomplete="organization"
+                  :aria-invalid="Boolean(fieldErrors.publisher)"
+                  aria-describedby="book-publisher-error"
                 />
+                <small v-if="fieldErrors.publisher" id="book-publisher-error">
+                  {{ fieldErrors.publisher }}
+                </small>
               </label>
               <label class="field" for="book-isbn">
                 <span>ISBN</span>
@@ -299,7 +412,12 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                   maxlength="32"
                   autocomplete="off"
                   inputmode="numeric"
+                  :aria-invalid="Boolean(fieldErrors.isbn)"
+                  aria-describedby="book-isbn-error"
                 />
+                <small v-if="fieldErrors.isbn" id="book-isbn-error">
+                  {{ fieldErrors.isbn }}
+                </small>
               </label>
             </div>
             <label class="field" for="book-purchased-at">
@@ -310,13 +428,27 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                 name="purchasedAt"
                 type="date"
                 autocomplete="off"
+                :aria-invalid="Boolean(fieldErrors.purchasedAt)"
+                aria-describedby="book-purchased-at-error"
               />
+              <small
+                v-if="fieldErrors.purchasedAt"
+                id="book-purchased-at-error"
+              >
+                {{ fieldErrors.purchasedAt }}
+              </small>
             </label>
           </fieldset>
 
           <fieldset class="group">
             <legend>読書記録</legend>
-            <div class="choices" role="radiogroup" aria-label="読書状況">
+            <div
+              class="choices"
+              role="radiogroup"
+              aria-label="読書状況"
+              :aria-invalid="Boolean(fieldErrors.readingStatus)"
+              aria-describedby="reading-status-error"
+            >
               <label class="choice" for="reading-unread">
                 <input
                   id="reading-unread"
@@ -348,6 +480,9 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                 <span>読了</span>
               </label>
             </div>
+            <small v-if="fieldErrors.readingStatus" id="reading-status-error">
+              {{ fieldErrors.readingStatus }}
+            </small>
             <label class="field" for="book-tags">
               <span>タグ</span>
               <input
@@ -357,9 +492,13 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                 type="text"
                 maxlength="3200"
                 autocomplete="off"
-                aria-describedby="tags-help"
+                :aria-invalid="Boolean(fieldErrors.tags)"
+                aria-describedby="tags-help book-tags-error"
               />
               <small id="tags-help">カンマ区切り</small>
+              <small v-if="fieldErrors.tags" id="book-tags-error">
+                {{ fieldErrors.tags }}
+              </small>
             </label>
             <label class="field" for="book-notes">
               <span>メモ</span>
@@ -370,7 +509,12 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
                 rows="6"
                 maxlength="10000"
                 autocomplete="off"
+                :aria-invalid="Boolean(fieldErrors.notes)"
+                aria-describedby="book-notes-error"
               />
+              <small v-if="fieldErrors.notes" id="book-notes-error">
+                {{ fieldErrors.notes }}
+              </small>
             </label>
           </fieldset>
 
@@ -552,6 +696,35 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
 .form {
   display: grid;
   gap: 1rem;
+}
+
+.error-summary {
+  border-inline-start: 0.3rem solid var(--danger);
+  padding: 0.75rem 1rem;
+  color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 8%, var(--panel));
+}
+
+.error-summary:focus {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.error-summary ul {
+  margin-block: 0.5rem 0;
+}
+
+.error-summary a {
+  color: inherit;
+}
+
+.field [aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.field small[id$="-error"],
+#reading-status-error {
+  color: var(--danger);
 }
 
 .group {

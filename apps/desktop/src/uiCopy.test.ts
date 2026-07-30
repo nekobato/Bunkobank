@@ -1,18 +1,19 @@
-/** Desktop UI copy contract for the compact manager interface. */
+/** Desktop UI copy contract for the minimal server monitor. */
 
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-const desktopUiSource = [
+const renderedDesktopUiSource = [
   "./App.vue",
-  "./components/DesktopSetupPanel.vue",
-  "./components/DesktopStartupPanel.vue",
-  "./components/DesktopStatusRail.vue",
-  "./presentation.ts"
+  "./components/DesktopStatusRail.vue"
 ]
   .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
   .join("\n");
+const desktopUiSource = [
+  renderedDesktopUiSource,
+  readFileSync(new URL("./presentation.ts", import.meta.url), "utf8")
+].join("\n");
 
 const promotionalOrRedundantCopy = [
   "デスクトップマネージャー",
@@ -26,9 +27,17 @@ const promotionalOrRedundantCopy = [
 ] as const;
 
 const requiredOperationalCopy = [
-  "8文字以上で入力してください。",
-  "データベースを確認できません。",
+  "Web UIを開く",
+  "アカウント、ライブラリ、ネットワーク、サムネイルの設定はWeb UIで行います。",
   "外部で起動したBookCafeは、このアプリから停止できません。"
+] as const;
+
+const removedSettingControls = [
+  "DesktopSetupPanel",
+  "DesktopNetworkPanel",
+  "DesktopStartupPanel",
+  "ポートを保存",
+  "自動起動"
 ] as const;
 
 describe("desktop UI copy", () => {
@@ -43,6 +52,13 @@ describe("desktop UI copy", () => {
     "retains operational or safety copy: %s",
     (copy) => {
       expect(desktopUiSource).toContain(copy);
+    }
+  );
+
+  it.each(removedSettingControls)(
+    "does not render a duplicated setting control: %s",
+    (copy) => {
+      expect(renderedDesktopUiSource).not.toContain(copy);
     }
   );
 });

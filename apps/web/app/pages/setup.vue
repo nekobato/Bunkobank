@@ -5,7 +5,16 @@
  * @module
  */
 
+import {
+  initialSetupRequestSchema,
+  updateNetworkSettingsRequestSchema
+} from "@bookcafe/contracts";
+
 import { getApiErrorMessage } from "../utils/apiErrors";
+import {
+  createFieldErrorMap,
+  focusFormErrorSummary
+} from "../utils/formValidation";
 
 const {
   apiBase,
@@ -16,7 +25,7 @@ const {
   updateNetworkSettings,
   updateThumbnailSettings
 } = useBookApi();
-const { refreshLibraries } = useLibraries();
+const { error: libraryError, refreshLibraries } = useLibraries();
 const { session, signInWithUsername } = useBookAuth();
 const username = ref("");
 const password = ref("");
@@ -32,6 +41,12 @@ const thumbnailMessageSeverity = ref<"success" | "error">("success");
 const isSavingSetup = ref(false);
 const isSavingNetwork = ref(false);
 const isSavingThumbnails = ref(false);
+const setupFieldErrors = ref<Record<string, string>>({});
+const networkFieldErrors = ref<Record<string, string>>({});
+const setupErrorSummary = useTemplateRef<HTMLElement>("setup-error-summary");
+const networkErrorSummary = useTemplateRef<HTMLElement>(
+  "network-error-summary"
+);
 const {
   data: setupStatus,
   status: setupRequestStatus,
@@ -41,6 +56,9 @@ const {
   server: false
 });
 const authenticated = computed(() => Boolean(session.value.data?.user));
+const libraryErrorMessage = computed(() =>
+  getApiErrorMessage(libraryError.value, "ライブラリを読み込めませんでした。")
+);
 const canUseProtectedApi = computed(
   () => setupStatus.value?.setupComplete === true && authenticated.value
 );
@@ -88,18 +106,35 @@ watch(
 
 /** Creates the initial user and signs into the new account. */
 const submitSetup = async (): Promise<void> => {
+  const validation = initialSetupRequestSchema.safeParse({
+    username: username.value,
+    password: password.value
+  });
+
+  if (!validation.success) {
+    const errors = createFieldErrorMap(validation.error.issues);
+    setupFieldErrors.value = {
+      ...(errors.username
+        ? {
+            username:
+              "ユーザー名は3〜30文字の半角英数字、_、.で入力してください。"
+          }
+        : {}),
+      ...(errors.password
+        ? { password: "パスワードは8〜128文字で入力してください。" }
+        : {})
+    };
+    await focusFormErrorSummary(setupErrorSummary.value);
+    return;
+  }
+
   isSavingSetup.value = true;
   setupMessage.value = "";
+  setupFieldErrors.value = {};
 
   try {
-    await createInitialSetup({
-      username: username.value,
-      password: password.value
-    });
-    const signInResult = await signInWithUsername({
-      username: username.value,
-      password: password.value
-    });
+    await createInitialSetup(validation.data);
+    const signInResult = await signInWithUsername(validation.data);
 
     setupMessageSeverity.value = "success";
     setupMessage.value = signInResult.error
@@ -123,14 +158,29 @@ const submitSetup = async (): Promise<void> => {
 
 /** Saves persisted network settings. */
 const submitNetworkSettings = async (): Promise<void> => {
+  const validation = updateNetworkSettingsRequestSchema.safeParse({
+    host: host.value,
+    port: port.value
+  });
+
+  if (!validation.success) {
+    const errors = createFieldErrorMap(validation.error.issues);
+    networkFieldErrors.value = {
+      ...(errors.host ? { host: "待受アドレスを選択してください。" } : {}),
+      ...(errors.port
+        ? { port: "ポートは1〜65535の整数で入力してください。" }
+        : {})
+    };
+    await focusFormErrorSummary(networkErrorSummary.value);
+    return;
+  }
+
   isSavingNetwork.value = true;
   networkMessage.value = "";
+  networkFieldErrors.value = {};
 
   try {
-    const response = await updateNetworkSettings({
-      host: host.value,
-      port: port.value
-    });
+    const response = await updateNetworkSettings(validation.data);
     networkData.value = response;
     networkMessageSeverity.value = "success";
     networkMessage.value = response.restartRequired
@@ -210,6 +260,23 @@ const submitThumbnailSettings = async (): Promise<void> => {
             method="post"
             @submit.prevent="submitSetup"
           >
+            <div
+              v-if="Object.keys(setupFieldErrors).length > 0"
+              ref="setup-error-summary"
+              class="error-summary"
+              tabindex="-1"
+              role="alert"
+            >
+              <strong>入力内容を確認してください。</strong>
+              <ul>
+                <li v-if="setupFieldErrors.username">
+                  <a href="#setup-username">{{ setupFieldErrors.username }}</a>
+                </li>
+                <li v-if="setupFieldErrors.password">
+                  <a href="#setup-password">{{ setupFieldErrors.password }}</a>
+                </li>
+              </ul>
+            </div>
             <div class="field">
               <label for="setup-username">ユーザー名</label>
               <InputText
@@ -222,7 +289,17 @@ const submitThumbnailSettings = async (): Promise<void> => {
                 pattern="[A-Za-z0-9_.]+"
                 required
                 fluid
+                :invalid="Boolean(setupFieldErrors.username)"
+                :aria-invalid="Boolean(setupFieldErrors.username)"
+                aria-describedby="setup-username-error"
               />
+              <small
+                v-if="setupFieldErrors.username"
+                id="setup-username-error"
+                class="field-error"
+              >
+                {{ setupFieldErrors.username }}
+              </small>
             </div>
             <div class="field">
               <label for="setup-password">パスワード</label>
@@ -236,7 +313,17 @@ const submitThumbnailSettings = async (): Promise<void> => {
                 maxlength="128"
                 required
                 fluid
+                :invalid="Boolean(setupFieldErrors.password)"
+                :aria-invalid="Boolean(setupFieldErrors.password)"
+                aria-describedby="setup-password-error"
               />
+              <small
+                v-if="setupFieldErrors.password"
+                id="setup-password-error"
+                class="field-error"
+              >
+                {{ setupFieldErrors.password }}
+              </small>
             </div>
             <Button
               label="保存"
@@ -267,6 +354,16 @@ const submitThumbnailSettings = async (): Promise<void> => {
       </Card>
 
       <template v-else>
+        <Message v-if="libraryError" severity="error" :closable="false">
+          <span>{{ libraryErrorMessage }}</span>
+          <Button
+            label="再試行"
+            icon="pi pi-refresh"
+            size="small"
+            @click="refreshLibraries"
+          />
+        </Message>
+
         <Card>
           <template #content>
             <LibraryManager />
@@ -278,6 +375,23 @@ const submitThumbnailSettings = async (): Promise<void> => {
             <template #title>ネットワーク</template>
             <template #content>
               <form class="form" @submit.prevent="submitNetworkSettings">
+                <div
+                  v-if="Object.keys(networkFieldErrors).length > 0"
+                  ref="network-error-summary"
+                  class="error-summary"
+                  tabindex="-1"
+                  role="alert"
+                >
+                  <strong>入力内容を確認してください。</strong>
+                  <ul>
+                    <li v-if="networkFieldErrors.host">
+                      <a href="#network-host">{{ networkFieldErrors.host }}</a>
+                    </li>
+                    <li v-if="networkFieldErrors.port">
+                      <a href="#network-port">{{ networkFieldErrors.port }}</a>
+                    </li>
+                  </ul>
+                </div>
                 <div class="field">
                   <span id="network-host-label" class="control-label">
                     待受アドレス
@@ -292,8 +406,12 @@ const submitThumbnailSettings = async (): Promise<void> => {
                     option-label="label"
                     option-value="value"
                     aria-labelledby="network-host-label"
+                    :invalid="Boolean(networkFieldErrors.host)"
                     fluid
                   />
+                  <small v-if="networkFieldErrors.host" class="field-error">
+                    {{ networkFieldErrors.host }}
+                  </small>
                 </div>
                 <Message
                   v-if="host === '0.0.0.0'"
@@ -312,7 +430,19 @@ const submitThumbnailSettings = async (): Promise<void> => {
                     :use-grouping="false"
                     required
                     fluid
+                    :invalid="Boolean(networkFieldErrors.port)"
+                    :input-props="{
+                      'aria-invalid': Boolean(networkFieldErrors.port),
+                      'aria-describedby': 'network-port-error'
+                    }"
                   />
+                  <small
+                    v-if="networkFieldErrors.port"
+                    id="network-port-error"
+                    class="field-error"
+                  >
+                    {{ networkFieldErrors.port }}
+                  </small>
                 </div>
                 <Button
                   label="保存"
@@ -399,6 +529,31 @@ const submitThumbnailSettings = async (): Promise<void> => {
   color: var(--bc-ink-soft);
   font-size: 0.8rem;
   font-weight: 700;
+}
+
+.field-error {
+  color: var(--bc-danger);
+  font-size: 0.75rem;
+}
+
+.error-summary {
+  border-inline-start: 0.3rem solid var(--bc-danger);
+  padding: 0.75rem 1rem;
+  color: var(--bc-danger);
+  background: color-mix(in oklab, var(--bc-danger) 8%, var(--bc-panel));
+}
+
+.error-summary:focus {
+  outline: 2px solid var(--bc-danger);
+  outline-offset: 2px;
+}
+
+.error-summary ul {
+  margin-block: 0.5rem 0;
+}
+
+.error-summary a {
+  color: inherit;
 }
 
 .settings-grid {

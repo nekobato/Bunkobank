@@ -13,7 +13,7 @@ import {
   getSpreadAnchorPage,
   getVisibleReaderPages
 } from "@bookcafe/core";
-import { useElementSize, useSwipe } from "@vueuse/core";
+import { useElementSize, useLocalStorage, useSwipe } from "@vueuse/core";
 import {
   computed,
   nextTick,
@@ -32,6 +32,10 @@ import {
   getBookSourceStatusTitle,
   isReadableBookStatus
 } from "../utils/bookAvailability";
+import {
+  normalizeReaderPreferences,
+  type ReaderPreferences
+} from "../utils/readerPreferences";
 
 const { book } = defineProps<{
   book: BookDetail;
@@ -41,11 +45,24 @@ const emit = defineEmits<{
 }>();
 const { getPageImageUrl } = useBookApi();
 
+const defaultPreferences = normalizeReaderPreferences(
+  null,
+  book.readingDirection
+);
+const storedPreferences = useLocalStorage<ReaderPreferences>(
+  "bookcafe-reader-preferences",
+  defaultPreferences,
+  { mergeDefaults: true }
+);
+const initialPreferences = normalizeReaderPreferences(
+  storedPreferences.value,
+  book.readingDirection
+);
 const currentPage = ref(clampPage(book.currentPage, book.pageCount));
-const direction = ref(book.readingDirection);
-const mode = ref<"paged" | "vertical">("paged");
-const layout = ref<PageLayout>("single");
-const fit = ref<"contain" | "width" | "height" | "actual">("contain");
+const direction = ref(initialPreferences.direction);
+const mode = ref(initialPreferences.mode);
+const layout = ref<PageLayout>(initialPreferences.layout);
+const fit = ref(initialPreferences.fit);
 const scale = ref(1);
 const pageInput = ref(String(currentPage.value));
 const reader = useTemplateRef<HTMLElement>("reader");
@@ -463,6 +480,19 @@ watch(layout, (nextLayout) => {
 });
 
 watch(
+  [direction, mode, layout, fit],
+  ([nextDirection, nextMode, nextLayout, nextFit]) => {
+    storedPreferences.value = {
+      direction: nextDirection,
+      mode: nextMode,
+      layout: nextLayout,
+      fit: nextFit
+    };
+  },
+  { immediate: true }
+);
+
+watch(
   () => book.id,
   () => {
     pageElements.clear();
@@ -471,7 +501,6 @@ watch(
       mode.value === "paged" && layout.value === "spread"
         ? getSpreadAnchorPage(book.currentPage, book.pageCount)
         : clampPage(book.currentPage, book.pageCount);
-    direction.value = book.readingDirection;
     resetScale();
   }
 );

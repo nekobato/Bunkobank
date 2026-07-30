@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useDebounceFn } from "@vueuse/core";
+import { useDebounceFn, useEventListener } from "@vueuse/core";
 
 import {
   getAccessErrorMessage,
@@ -22,6 +22,7 @@ const { data, error, pending, refresh } = await useAsyncData(
   }
 );
 const lastSavedPage = ref(1);
+const pendingPage = ref<number | null>(null);
 const progressError = ref("");
 const statusCode = computed(() => error.value?.statusCode);
 const actionLink = computed(() => {
@@ -52,43 +53,102 @@ watch(
 /**
  * Persists the latest reader page without blocking page navigation.
  */
+const persistProgress = async (
+  currentPage: number,
+  keepalive = false
+): Promise<void> => {
+  if (
+    !data.value ||
+    !selectedLibraryId.value ||
+    currentPage === lastSavedPage.value
+  ) {
+    return;
+  }
+
+  try {
+    const book = await updateBookProgress(
+      selectedLibraryId.value,
+      bookId.value,
+      { currentPage },
+      { keepalive }
+    );
+    data.value = book;
+    lastSavedPage.value = book.currentPage;
+    progressError.value = "";
+  } catch (error) {
+    progressError.value = getApiErrorMessage(
+      error,
+      "読書位置を保存できませんでした。"
+    );
+  }
+};
+
+/**
+ * Persists the newest pending page after navigation settles.
+ */
 const saveProgress = useDebounceFn(
-  async (currentPage: number): Promise<void> => {
-    if (
-      !data.value ||
-      !selectedLibraryId.value ||
-      currentPage === lastSavedPage.value
-    ) {
+  async (): Promise<void> => {
+    const currentPage = pendingPage.value;
+
+    if (currentPage === null) {
       return;
     }
 
-    try {
-      const book = await updateBookProgress(
-        selectedLibraryId.value,
-        bookId.value,
-        { currentPage }
-      );
-      data.value = book;
-      lastSavedPage.value = book.currentPage;
-      progressError.value = "";
-    } catch (error) {
-      progressError.value = getApiErrorMessage(
-        error,
-        "読書位置を保存できませんでした。"
-      );
-    }
+    pendingPage.value = null;
+    await persistProgress(currentPage);
   },
   500,
   { maxWait: 2000 }
 );
 
 /**
+ * Flushes the newest pending page immediately before leaving the reader.
+ */
+const flushProgress = async (keepalive = false): Promise<void> => {
+  const currentPage = pendingPage.value;
+
+  if (currentPage === null) {
+    return;
+  }
+
+  pendingPage.value = null;
+  await persistProgress(currentPage, keepalive);
+};
+
+/**
  * Schedules current-page persistence for reader navigation.
  */
 const handlePageChange = (currentPage: number): void => {
   progressError.value = "";
-  void saveProgress(currentPage);
+  pendingPage.value = currentPage;
+  void saveProgress();
 };
+
+onBeforeRouteLeave(async () => {
+  await flushProgress();
+});
+
+useEventListener(
+  () => (import.meta.client ? document : null),
+  "visibilitychange",
+  () => {
+    if (document.visibilityState === "hidden") {
+      void flushProgress(true);
+    }
+  }
+);
+
+useEventListener(
+  () => (import.meta.client ? window : null),
+  "pagehide",
+  () => {
+    void flushProgress(true);
+  }
+);
+
+onBeforeUnmount(() => {
+  void flushProgress(true);
+});
 </script>
 
 <template>

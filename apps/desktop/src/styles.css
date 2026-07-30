@@ -22,16 +22,8 @@
 
   .desktop-app {
     display: grid;
-    grid-template-columns: minmax(17rem, 23rem) minmax(30rem, 1fr);
-    min-inline-size: 47.5rem;
     min-block-size: 100dvh;
-    background:
-      radial-gradient(
-        circle at 78% 4%,
-        color-mix(in oklab, var(--bc-patina) 16%, transparent),
-        transparent 30rem
-      ),
-      var(--bc-fog);
+    background: var(--bc-deep-shelf);
   }
 
   .skip-link {
@@ -50,52 +42,6 @@
 
   .skip-link:focus {
     translate: 0;
-  }
-
-  .manager-content {
-    container-name: manager-content;
-    container-type: inline-size;
-    inline-size: min(100%, 74rem);
-    min-inline-size: 0;
-    margin-inline: auto;
-    padding: clamp(2rem, 5vw, 4.5rem);
-  }
-
-  .page-heading {
-    margin-block-end: clamp(1.75rem, 4vw, 3rem);
-  }
-
-  .page-heading h1 {
-    margin: 0;
-    font-family: var(--bc-font-display);
-    font-size: clamp(2rem, 4vw, 3rem);
-    line-height: 1.1;
-    letter-spacing: -0.045em;
-    text-wrap: balance;
-  }
-
-  .error-summary {
-    margin-block-end: 1rem;
-  }
-
-  .error-summary ul {
-    margin: 0;
-    padding-inline-start: 1.2rem;
-  }
-
-  .panel-stack {
-    display: grid;
-    gap: 1rem;
-  }
-
-  .sr-only {
-    position: absolute;
-    inline-size: 1px;
-    block-size: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 
   @media (prefers-color-scheme: dark) {

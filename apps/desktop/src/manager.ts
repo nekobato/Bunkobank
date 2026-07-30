@@ -97,6 +97,17 @@ export interface ManagerStartupState {
   enabled: boolean;
 }
 
+export interface ManagerNetworkState {
+  phase: "idle" | "saving" | "saved" | "error";
+  portDraft: number | null;
+  fieldErrors: Record<string, string>;
+}
+
+/** Controls whether a server probe is announced as a foreground action. */
+export interface ServerRefreshOptions {
+  silent?: boolean;
+}
+
 export interface DesktopManagerState {
   phase: "booting" | "ready" | "error";
   environment: DesktopEnvironment | null;
@@ -105,6 +116,7 @@ export interface DesktopManagerState {
   server: ManagerServerState;
   setup: ManagerSetupState;
   startup: ManagerStartupState;
+  network: ManagerNetworkState;
   draft: SetupFormInput;
   announcement: string;
   processMessage: string;
@@ -126,13 +138,15 @@ export interface DesktopManagerController {
   getState: () => DesktopManagerState;
   subscribe: (listener: (state: DesktopManagerState) => void) => () => void;
   initialize: () => Promise<void>;
-  refreshServer: () => Promise<void>;
+  refreshServer: (options?: ServerRefreshOptions) => Promise<void>;
   startServer: () => Promise<boolean>;
   stopServer: () => Promise<boolean>;
   submitSetup: (input: SetupFormInput) => Promise<boolean>;
   updateDraft: (update: Partial<SetupFormInput>) => void;
+  updatePortDraft: (port: number | null) => void;
+  saveServerPort: () => Promise<boolean>;
   setStartupEnabled: (enabled: boolean) => Promise<void>;
-  openLibrary: () => Promise<boolean>;
+  openWebUi: () => Promise<boolean>;
 }
 
 const defaultActiveConfig = {
@@ -237,6 +251,35 @@ export const createDesktopManagerController = (
   };
 
   /**
+   * Reloads server-owned configuration persisted through the Web UI.
+   */
+  const refreshPersistedConfig = async (): Promise<void> => {
+    const persistedConfig =
+      await resolvedDependencies.runtime.readServerConfig();
+
+    if (!persistedConfig) {
+      return;
+    }
+
+    setState((current) => ({
+      ...current,
+      persistedConfig,
+      activeConfig: {
+        host: persistedConfig.host,
+        port: persistedConfig.port
+      },
+      network:
+        current.network.phase === "idle"
+          ? {
+              phase: "idle",
+              portDraft: persistedConfig.port,
+              fieldErrors: {}
+            }
+          : current.network
+    }));
+  };
+
+  /**
    * Reads setup status after BookCafe health has been confirmed.
    */
   const refreshSetupStatus = async (): Promise<void> => {
@@ -269,16 +312,31 @@ export const createDesktopManagerController = (
   /**
    * Probes server health and refreshes setup state when reachable.
    */
-  const refreshServer = async (): Promise<void> => {
+  const refreshServer = async (
+    options: ServerRefreshOptions = {}
+  ): Promise<void> => {
+    const previousPhase = state.server.phase;
     const generation = ++probeGeneration;
-    setState((current) => ({
-      ...current,
-      announcement: "Checking the BookCafe server…",
-      server: {
-        ...current.server,
-        phase: "checking"
-      }
-    }));
+
+    if (
+      !state.server.managedByDesktop &&
+      ["stopped", "crashed", "port-conflict", "unhealthy"].includes(
+        previousPhase
+      )
+    ) {
+      await refreshPersistedConfig();
+    }
+
+    if (!options.silent) {
+      setState((current) => ({
+        ...current,
+        announcement: "Checking the BookCafe server…",
+        server: {
+          ...current.server,
+          phase: "checking"
+        }
+      }));
+    }
 
     const status = await resolvedDependencies.readServerStatus(
       state.activeConfig
@@ -290,7 +348,9 @@ export const createDesktopManagerController = (
     }
 
     if (lifecycle.state === "running") {
-      await refreshSetupStatus();
+      if (!options.silent) {
+        await refreshSetupStatus();
+      }
     } else if (state.setup.phase !== "submitting") {
       setState((current) => ({
         ...current,
@@ -298,10 +358,12 @@ export const createDesktopManagerController = (
       }));
     }
 
-    setState((current) => ({
-      ...current,
-      announcement: getServerCheckAnnouncement(lifecycle.state)
-    }));
+    if (!options.silent) {
+      setState((current) => ({
+        ...current,
+        announcement: getServerCheckAnnouncement(lifecycle.state)
+      }));
+    }
   };
 
   /**
@@ -409,6 +471,16 @@ export const createDesktopManagerController = (
     const environment = state.environment;
 
     if (!environment || !state.server.canStart) {
+      return false;
+    }
+
+    try {
+      await refreshPersistedConfig();
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: toErrorMessage(error)
+      }));
       return false;
     }
 
@@ -730,6 +802,11 @@ export const createDesktopManagerController = (
         environment,
         persistedConfig,
         activeConfig,
+        network: {
+          phase: "idle",
+          portDraft: activeConfig.port,
+          fieldErrors: {}
+        },
         draft: {
           ...defaultDraft,
           confirmPassword: ""
@@ -775,15 +852,117 @@ export const createDesktopManagerController = (
   };
 
   /**
-   * Opens the browser library only after BookCafe health is confirmed.
+   * Updates the editable port and clears its previous field error.
    */
-  const openLibrary = async (): Promise<boolean> => {
-    const url = state.server.status?.url.replace(/\/api\/health$/, "/");
+  const updatePortDraft = (port: number | null): void => {
+    setState((current) => ({
+      ...current,
+      network: {
+        ...current.network,
+        phase: "idle",
+        portDraft: port,
+        fieldErrors: {}
+      }
+    }));
+  };
 
-    if (state.server.phase !== "running" || !url) {
+  /**
+   * Persists a valid port only while no server process is being tracked.
+   */
+  const saveServerPort = async (): Promise<boolean> => {
+    const port = state.network.portDraft;
+
+    if (port === null || !Number.isInteger(port) || port < 1 || port > 65535) {
+      setState((current) => ({
+        ...current,
+        network: {
+          ...current.network,
+          phase: "error",
+          fieldErrors: {
+            port: "Server port must be between 1 and 65535."
+          }
+        },
+        error: "Review the highlighted network fields."
+      }));
       return false;
     }
 
+    if (
+      state.server.phase === "running" ||
+      state.server.phase === "starting" ||
+      state.server.phase === "stopping"
+    ) {
+      setState((current) => ({
+        ...current,
+        network: {
+          ...current.network,
+          phase: "error",
+          fieldErrors: {
+            port: "Stop the BookCafe server before changing its port."
+          }
+        },
+        error: "Stop the BookCafe server before changing its port."
+      }));
+      return false;
+    }
+
+    setState((current) => ({
+      ...current,
+      network: {
+        ...current.network,
+        phase: "saving",
+        fieldErrors: {}
+      },
+      error: null,
+      announcement: "Saving BookCafe server port…"
+    }));
+
+    try {
+      const persistedConfig =
+        await resolvedDependencies.runtime.writeServerPort(port);
+
+      setState((current) => ({
+        ...current,
+        persistedConfig,
+        activeConfig: {
+          host: persistedConfig.host,
+          port: persistedConfig.port
+        },
+        network: {
+          phase: "saved",
+          portDraft: persistedConfig.port,
+          fieldErrors: {}
+        },
+        setup: { phase: "unknown", fieldErrors: {} },
+        announcement: "BookCafe server port saved."
+      }));
+      await refreshServer();
+      return true;
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        network: {
+          ...current.network,
+          phase: "error",
+          fieldErrors: {}
+        },
+        error: toErrorMessage(error)
+      }));
+      return false;
+    }
+  };
+
+  /**
+   * Opens the Web UI only after BookCafe health is confirmed.
+   */
+  const openWebUi = async (): Promise<boolean> => {
+    const rootUrl = state.server.status?.url.replace(/\/api\/health$/, "/");
+
+    if (state.server.phase !== "running" || !rootUrl) {
+      return false;
+    }
+
+    const url = state.setup.phase === "required" ? `${rootUrl}setup` : rootUrl;
     await resolvedDependencies.runtime.openUrl(url);
     return true;
   };
@@ -801,8 +980,10 @@ export const createDesktopManagerController = (
     stopServer,
     submitSetup,
     updateDraft,
+    updatePortDraft,
+    saveServerPort,
     setStartupEnabled,
-    openLibrary
+    openWebUi
   };
 };
 
@@ -824,6 +1005,11 @@ const createInitialManagerState = (): DesktopManagerState => ({
   },
   setup: { phase: "unknown", fieldErrors: {} },
   startup: { phase: "checking", enabled: false },
+  network: {
+    phase: "idle",
+    portDraft: defaultActiveConfig.port,
+    fieldErrors: {}
+  },
   draft: {
     ...createDefaultSetupDraft(),
     confirmPassword: ""

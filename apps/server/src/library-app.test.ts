@@ -103,7 +103,70 @@ describe("single database Hono app", () => {
 
     expect(unauthorized.status).toBe(401);
     expect(books.status).toBe(200);
-    expect(await books.json()).toEqual({ books: [] });
+    expect(await books.json()).toEqual({
+      books: [],
+      total: 0,
+      offset: 0,
+      limit: 100,
+      hasMore: false
+    });
+  });
+
+  it("returns book lists in bounded pages of one hundred", async () => {
+    const fixture = createFixture();
+    const app = createApp(fixture);
+    await initializeUser(app);
+    const cookie = await signInUser(app);
+    const rootPath = join(fixture.directory, "books");
+    mkdirSync(rootPath);
+    const library = await createLibrary(app, cookie, {
+      name: "Books",
+      rootPath
+    });
+    const database = openBookCafeDatabase(
+      resolveStatePaths(fixture.stateDir).databasePath
+    );
+
+    for (let index = 0; index < 105; index += 1) {
+      const title = `Book ${String(index + 1).padStart(3, "0")}`;
+      persistScannedBook(database, {
+        libraryId: library.id,
+        relativePath: title,
+        title,
+        format: "image-folder",
+        pageCount: 1,
+        pages: [
+          {
+            pageNumber: 1,
+            sourceType: "file",
+            relativePath: `${title}/001.jpg`
+          }
+        ]
+      });
+    }
+    closeDatabase(database);
+
+    const firstPage = await app.request(
+      `/api/libraries/${library.id}/books?limit=100`,
+      { headers: { Cookie: cookie } }
+    );
+    const secondPage = await app.request(
+      `/api/libraries/${library.id}/books?offset=100&limit=100`,
+      { headers: { Cookie: cookie } }
+    );
+
+    expect(await firstPage.json()).toMatchObject({
+      total: 105,
+      offset: 0,
+      limit: 100,
+      hasMore: true,
+      books: expect.arrayContaining([
+        expect.objectContaining({ title: "Book 001" })
+      ])
+    });
+    expect(
+      ((await secondPage.json()) as { books: unknown[] }).books
+    ).toHaveLength(5);
   });
 
   it("returns the stable API error shape for invalid JSON input", async () => {
@@ -339,7 +402,23 @@ describe("single database Hono app", () => {
     }
 
     const first = sources[0];
-    const suffixHead = await app.request(
+    const caseInsensitiveRange = await app.request(
+      `/api/libraries/${library.id}/books/${first.book.id}/source`,
+      {
+        headers: { Cookie: cookie, Range: "Bytes=2-5" }
+      }
+    );
+    const futureIfRange = await app.request(
+      `/api/libraries/${library.id}/books/${first.book.id}/source`,
+      {
+        headers: {
+          Cookie: cookie,
+          Range: "bytes=0-1",
+          "If-Range": "Fri, 31 Dec 9999 23:59:59 GMT"
+        }
+      }
+    );
+    const rangedHead = await app.request(
       `/api/libraries/${library.id}/books/${first.book.id}/source`,
       {
         method: "HEAD",
@@ -356,11 +435,25 @@ describe("single database Hono app", () => {
       }
     );
 
-    expect(suffixHead.status).toBe(206);
-    expect(suffixHead.headers.get("content-range")).toBe(
-      `bytes ${first.data.byteLength - 3}-${first.data.byteLength - 1}/${first.data.byteLength}`
+    expect(caseInsensitiveRange.status).toBe(206);
+    expect(caseInsensitiveRange.headers.get("content-range")).toBe(
+      `bytes 2-5/${first.data.byteLength}`
     );
-    expect((await suffixHead.arrayBuffer()).byteLength).toBe(0);
+    expect(Buffer.from(await caseInsensitiveRange.arrayBuffer())).toEqual(
+      first.data.subarray(2, 6)
+    );
+    expect(futureIfRange.status).toBe(200);
+    expect(futureIfRange.headers.get("content-range")).toBeNull();
+    expect(futureIfRange.headers.get("content-length")).toBe(
+      first.data.byteLength.toString()
+    );
+    expect(Buffer.from(await futureIfRange.arrayBuffer())).toEqual(first.data);
+    expect(rangedHead.status).toBe(200);
+    expect(rangedHead.headers.get("content-range")).toBeNull();
+    expect(rangedHead.headers.get("content-length")).toBe(
+      first.data.byteLength.toString()
+    );
+    expect((await rangedHead.arrayBuffer()).byteLength).toBe(0);
     expect(unsatisfiable.status).toBe(416);
     expect(unsatisfiable.headers.get("content-range")).toBe(
       `bytes */${first.data.byteLength}`
@@ -502,9 +595,19 @@ describe("single database Hono app", () => {
     expect(progress.status).toBe(200);
     expect(await progress.json()).toMatchObject({ currentPage: 2 });
     expect(archived.status).toBe(200);
-    expect(await normalList.json()).toEqual({ books: [] });
+    expect(await normalList.json()).toEqual({
+      books: [],
+      total: 0,
+      offset: 0,
+      limit: 100,
+      hasMore: false
+    });
     expect(await archiveList.json()).toEqual({
-      books: [expect.objectContaining({ id: book.id, currentPage: 2 })]
+      books: [expect.objectContaining({ id: book.id, currentPage: 2 })],
+      total: 1,
+      offset: 0,
+      limit: 100,
+      hasMore: false
     });
     expect(restored.status).toBe(200);
     expect(await restored.json()).toMatchObject({
@@ -629,7 +732,11 @@ describe("single database Hono app", () => {
             relativePath: "Volume 1",
             pageCount: 1
           })
-        ]
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+        hasMore: false
       });
       expect(deleted.status).toBe(204);
       expect(findLibrary(verified, library.id)).toBeNull();

@@ -9,9 +9,17 @@ import type {
   BackgroundJobResponse,
   LibraryResponse
 } from "@bookcafe/contracts";
+import {
+  libraryCreateRequestSchema,
+  libraryUpdateRequestSchema
+} from "@bookcafe/contracts";
 import { useIntervalFn } from "@vueuse/core";
 
 import { getApiErrorMessage } from "../utils/apiErrors";
+import {
+  createFieldErrorMap,
+  focusFormErrorSummary
+} from "../utils/formValidation";
 import {
   getJobStatusLabel,
   getJobTone,
@@ -35,7 +43,10 @@ const {
   updateLibrary
 } = useBookApi();
 const {
+  error: libraryError,
   libraries,
+  loaded: librariesLoaded,
+  loading: librariesLoading,
   refreshLibraries,
   selectCreatedLibrary,
   selectedLibrary,
@@ -60,6 +71,10 @@ const editName = ref("");
 const editRootPath = ref("");
 const isSavingEdit = ref(false);
 const isDeleting = ref(false);
+const createFieldErrors = ref<Record<string, string>>({});
+const editFieldErrors = ref<Record<string, string>>({});
+const createErrorSummary = useTemplateRef<HTMLElement>("create-error-summary");
+const editErrorSummary = useTemplateRef<HTMLElement>("edit-error-summary");
 const recentJobs = computed(() => listRecentJobs(jobs.value));
 const activeJobs = computed(() => hasActiveJobs(jobs.value));
 
@@ -97,14 +112,25 @@ watch(
 
 /** Registers a named library and makes it the active selection. */
 const submitLibrary = async (): Promise<void> => {
+  const validation = libraryCreateRequestSchema.safeParse({
+    name: name.value,
+    rootPath: rootPath.value
+  });
+
+  if (!validation.success) {
+    createFieldErrors.value = localizeLibraryFieldErrors(
+      createFieldErrorMap(validation.error.issues)
+    );
+    await focusFormErrorSummary(createErrorSummary.value);
+    return;
+  }
+
   isCreating.value = true;
   message.value = "";
+  createFieldErrors.value = {};
 
   try {
-    const library = await createLibrary({
-      name: name.value,
-      rootPath: rootPath.value
-    });
+    const library = await createLibrary(validation.data);
     name.value = "";
     rootPath.value = "";
     await selectCreatedLibrary(library.id);
@@ -127,6 +153,7 @@ const openEditDialog = (library: LibraryResponse): void => {
   editingLibrary.value = library;
   editName.value = library.name;
   editRootPath.value = library.rootPath;
+  editFieldErrors.value = {};
 };
 
 /** Saves the edited name and target directory. */
@@ -135,14 +162,25 @@ const submitLibraryEdit = async (): Promise<void> => {
     return;
   }
 
+  const validation = libraryUpdateRequestSchema.safeParse({
+    name: editName.value,
+    rootPath: editRootPath.value
+  });
+
+  if (!validation.success) {
+    editFieldErrors.value = localizeLibraryFieldErrors(
+      createFieldErrorMap(validation.error.issues)
+    );
+    await focusFormErrorSummary(editErrorSummary.value);
+    return;
+  }
+
   isSavingEdit.value = true;
   message.value = "";
+  editFieldErrors.value = {};
 
   try {
-    await updateLibrary(editingLibrary.value.id, {
-      name: editName.value,
-      rootPath: editRootPath.value
-    });
+    await updateLibrary(editingLibrary.value.id, validation.data);
     editingLibrary.value = null;
     await refreshLibraries();
     messageSeverity.value = "success";
@@ -280,6 +318,19 @@ const getJobSeverity = (
       return "secondary";
   }
 };
+
+/**
+ * Converts shared schema messages into stable Japanese library guidance.
+ */
+const localizeLibraryFieldErrors = (
+  errors: Record<string, string>
+): Record<string, string> => ({
+  ...(errors.name ? { name: "名前を1〜100文字で入力してください。" } : {}),
+  ...(errors.rootPath
+    ? { rootPath: "対象ディレクトリを入力してください。" }
+    : {}),
+  ...(errors.form ? { form: "入力内容を確認してください。" } : {})
+});
 </script>
 
 <template>
@@ -296,6 +347,21 @@ const getJobSeverity = (
     </header>
 
     <form class="create-form" @submit.prevent="submitLibrary">
+      <div
+        v-if="Object.keys(createFieldErrors).length > 0"
+        ref="create-error-summary"
+        class="error-summary"
+        tabindex="-1"
+        role="alert"
+      >
+        <strong>入力内容を確認してください。</strong>
+        <a v-if="createFieldErrors.name" href="#library-name">
+          {{ createFieldErrors.name }}
+        </a>
+        <a v-if="createFieldErrors.rootPath" href="#library-root-path">
+          {{ createFieldErrors.rootPath }}
+        </a>
+      </div>
       <div class="field">
         <label for="library-name">名前</label>
         <InputText
@@ -306,7 +372,17 @@ const getJobSeverity = (
           maxlength="100"
           required
           fluid
+          :invalid="Boolean(createFieldErrors.name)"
+          :aria-invalid="Boolean(createFieldErrors.name)"
+          aria-describedby="library-name-error"
         />
+        <small
+          v-if="createFieldErrors.name"
+          id="library-name-error"
+          class="field-error"
+        >
+          {{ createFieldErrors.name }}
+        </small>
       </div>
       <div class="field path-field">
         <label for="library-root-path">対象ディレクトリ</label>
@@ -317,7 +393,17 @@ const getJobSeverity = (
           autocomplete="off"
           required
           fluid
+          :invalid="Boolean(createFieldErrors.rootPath)"
+          :aria-invalid="Boolean(createFieldErrors.rootPath)"
+          aria-describedby="library-root-path-error"
         />
+        <small
+          v-if="createFieldErrors.rootPath"
+          id="library-root-path-error"
+          class="field-error"
+        >
+          {{ createFieldErrors.rootPath }}
+        </small>
       </div>
       <Button
         label="追加"
@@ -336,7 +422,15 @@ const getJobSeverity = (
       {{ message }}
     </Message>
 
-    <ul v-if="libraries.length > 0" class="library-list">
+    <Message v-if="libraryError" severity="error" :closable="false">
+      {{
+        getApiErrorMessage(libraryError, "ライブラリを読み込めませんでした。")
+      }}
+    </Message>
+    <div v-else-if="librariesLoading" class="loading" role="status">
+      <ProgressSpinner class="spinner" stroke-width="4" />
+    </div>
+    <ul v-else-if="libraries.length > 0" class="library-list">
       <li
         v-for="library in libraries"
         :key="library.id"
@@ -378,7 +472,7 @@ const getJobSeverity = (
         </div>
       </li>
     </ul>
-    <p v-else class="empty">ライブラリは未登録です。</p>
+    <p v-else-if="librariesLoaded" class="empty">ライブラリは未登録です。</p>
 
     <Card v-if="selectedLibrary" class="jobs">
       <template #title>
@@ -458,6 +552,21 @@ const getJobSeverity = (
         class="dialog-form"
         @submit.prevent="submitLibraryEdit"
       >
+        <div
+          v-if="Object.keys(editFieldErrors).length > 0"
+          ref="edit-error-summary"
+          class="error-summary"
+          tabindex="-1"
+          role="alert"
+        >
+          <strong>入力内容を確認してください。</strong>
+          <a v-if="editFieldErrors.name" href="#library-edit-name">
+            {{ editFieldErrors.name }}
+          </a>
+          <a v-if="editFieldErrors.rootPath" href="#library-edit-path">
+            {{ editFieldErrors.rootPath }}
+          </a>
+        </div>
         <div class="field">
           <label for="library-edit-name">名前</label>
           <InputText
@@ -468,7 +577,17 @@ const getJobSeverity = (
             maxlength="100"
             required
             fluid
+            :invalid="Boolean(editFieldErrors.name)"
+            :aria-invalid="Boolean(editFieldErrors.name)"
+            aria-describedby="library-edit-name-error"
           />
+          <small
+            v-if="editFieldErrors.name"
+            id="library-edit-name-error"
+            class="field-error"
+          >
+            {{ editFieldErrors.name }}
+          </small>
         </div>
         <div class="field">
           <label for="library-edit-path">対象ディレクトリ</label>
@@ -479,7 +598,17 @@ const getJobSeverity = (
             autocomplete="off"
             required
             fluid
+            :invalid="Boolean(editFieldErrors.rootPath)"
+            :aria-invalid="Boolean(editFieldErrors.rootPath)"
+            aria-describedby="library-edit-path-error"
           />
+          <small
+            v-if="editFieldErrors.rootPath"
+            id="library-edit-path-error"
+            class="field-error"
+          >
+            {{ editFieldErrors.rootPath }}
+          </small>
         </div>
       </form>
       <template #footer>
@@ -573,6 +702,10 @@ const getJobSeverity = (
   padding: 1rem;
 }
 
+.create-form .error-summary {
+  grid-column: 1 / -1;
+}
+
 .field,
 .dialog-form {
   display: grid;
@@ -587,6 +720,40 @@ const getJobSeverity = (
   color: var(--bc-ink-soft);
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.field-error {
+  color: var(--bc-danger);
+  font-size: 0.72rem;
+}
+
+.error-summary {
+  display: grid;
+  gap: 0.35rem;
+  border-inline-start: 0.3rem solid var(--bc-danger);
+  padding: 0.75rem 1rem;
+  color: var(--bc-danger);
+  background: color-mix(in oklab, var(--bc-danger) 8%, var(--bc-panel));
+}
+
+.error-summary:focus {
+  outline: 2px solid var(--bc-danger);
+  outline-offset: 2px;
+}
+
+.error-summary a {
+  color: inherit;
+}
+
+.loading {
+  display: grid;
+  min-block-size: 5rem;
+  place-items: center;
+}
+
+.spinner {
+  inline-size: 2rem;
+  block-size: 2rem;
 }
 
 .library-list,

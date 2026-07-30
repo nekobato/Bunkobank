@@ -195,7 +195,9 @@ describe("bookListQuerySchema", () => {
     ).toEqual({
       q: "manga",
       readingStatus: "finished",
-      bookStatus: "missing"
+      bookStatus: "missing",
+      offset: 0,
+      limit: 100
     });
   });
 
@@ -209,8 +211,20 @@ describe("bookListQuerySchema", () => {
     ).toEqual({
       q: "",
       readingStatus: undefined,
-      bookStatus: undefined
+      bookStatus: undefined,
+      offset: 0,
+      limit: 100
     });
+  });
+
+  it("coerces bounded book-list pagination", () => {
+    expect(bookListQuerySchema.parse({ offset: "100", limit: "50" })).toEqual({
+      readingStatus: undefined,
+      bookStatus: undefined,
+      offset: 100,
+      limit: 50
+    });
+    expect(() => bookListQuerySchema.parse({ limit: "101" })).toThrow();
   });
 });
 

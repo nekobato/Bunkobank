@@ -21,6 +21,7 @@ import {
   hasActiveLibraryJobs,
   listArchivedBookSummaries,
   listBookPages,
+  listBookSummaryPage,
   listBookSummaries,
   listJobs,
   listLibraries,
@@ -228,6 +229,57 @@ describe("single database library model", () => {
       expect(
         findBookDetail(database, second.id, firstBook.id, "user-1")
       ).toBeNull();
+    } finally {
+      closeDatabase(database);
+    }
+  });
+
+  it("filters and limits book summary pages inside SQLite", () => {
+    const { database, directory } = createTestDatabase();
+
+    try {
+      const library = createLibrary(database, {
+        name: "Books",
+        rootPath: join(directory, "Books"),
+        canonicalRootPath: join(directory, "Books")
+      });
+      createBook(database, library.id, "Alpha");
+      const beta = createBook(database, library.id, "Beta");
+      createBook(database, library.id, "Gamma");
+      updateBookMetadata(database, library.id, beta.id, {
+        title: "Beta",
+        authors: ["Author"],
+        publisher: null,
+        isbn: null,
+        purchasedAt: null,
+        readingStatus: "finished",
+        tags: ["Favorite"],
+        notes: null
+      });
+
+      expect(
+        listBookSummaryPage(database, library.id, {
+          query: "a",
+          bookStatus: "ready",
+          offset: 1,
+          limit: 1,
+          userId: "user-1"
+        })
+      ).toMatchObject({
+        total: 3,
+        offset: 1,
+        limit: 1,
+        hasMore: true,
+        books: [expect.objectContaining({ title: "Beta" })]
+      });
+      expect(
+        listBookSummaryPage(database, library.id, {
+          readingStatus: "finished"
+        })
+      ).toMatchObject({
+        total: 1,
+        books: [expect.objectContaining({ id: beta.id })]
+      });
     } finally {
       closeDatabase(database);
     }

@@ -61,15 +61,13 @@ import {
   findJob,
   findLibrary,
   getLibraryPreference,
-  listArchivedBookSummaries,
-  listBookSummaries,
+  listBookSummaryPage,
   listJobs,
   listLibraries,
   listScanFailures,
   markInterruptedJobsFailed,
   openBookCafeDatabase,
   restoreBook,
-  searchBookSummaries,
   setLibraryPreference,
   updateBookMetadata,
   updateLibrary,
@@ -591,16 +589,30 @@ export const createApp = (options: AppOptions = {}) => {
   );
 
   app.get("/api/libraries/:libraryId/books/archived", async (c) => {
+    const query = bookListQuerySchema.safeParse(c.req.query());
+
+    if (!query.success) {
+      return c.json(
+        createApiError("INVALID_INPUT", "Book pagination is invalid."),
+        400
+      );
+    }
+
     const result = await withScopedLibrary(
       c,
       withDatabase,
       (database, library) =>
-        listArchivedBookSummaries(database, library.id, requireUserId(c))
+        listBookSummaryPage(database, library.id, {
+          archived: true,
+          offset: query.data.offset,
+          limit: query.data.limit,
+          userId: requireUserId(c)
+        })
     );
 
     return result instanceof Response
       ? result
-      : c.json(bookListResponseSchema.parse({ books: result }));
+      : c.json(bookListResponseSchema.parse(result));
   });
 
   app.get("/api/libraries/:libraryId/books", async (c) => {
@@ -616,28 +628,20 @@ export const createApp = (options: AppOptions = {}) => {
     const result = await withScopedLibrary(
       c,
       withDatabase,
-      (database, library) => {
-        const books = query.data.q
-          ? searchBookSummaries(
-              database,
-              library.id,
-              query.data.q,
-              requireUserId(c)
-            )
-          : listBookSummaries(database, library.id, requireUserId(c));
-
-        return books.filter(
-          (book) =>
-            (!query.data.readingStatus ||
-              book.readingStatus === query.data.readingStatus) &&
-            (!query.data.bookStatus || book.status === query.data.bookStatus)
-        );
-      }
+      (database, library) =>
+        listBookSummaryPage(database, library.id, {
+          query: query.data.q,
+          readingStatus: query.data.readingStatus,
+          bookStatus: query.data.bookStatus,
+          offset: query.data.offset,
+          limit: query.data.limit,
+          userId: requireUserId(c)
+        })
     );
 
     return result instanceof Response
       ? result
-      : c.json(bookListResponseSchema.parse({ books: result }));
+      : c.json(bookListResponseSchema.parse(result));
   });
 
   app.get("/api/libraries/:libraryId/books/:bookId", async (c) => {

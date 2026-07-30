@@ -2,6 +2,7 @@ import type { BookStatus, ReadingStatus } from "@bookcafe/core";
 
 export type ReadingStatusFilter = "" | ReadingStatus;
 export type BookStatusFilter = "" | BookStatus;
+export const BOOK_LIST_PAGE_SIZE = 100;
 
 export interface ReadingStatusFilterOption {
   value: ReadingStatusFilter;
@@ -85,19 +86,31 @@ export const getRouteBookStatus = (value: unknown): BookStatusFilter => {
 };
 
 /**
+ * Reads a positive one-based page number from a route query field.
+ */
+export const getRoutePage = (value: unknown): number => {
+  const rawPage = getRouteSearch(value);
+  const page = /^\d+$/u.test(rawPage) ? Number(rawPage) : Number.NaN;
+
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+};
+
+/**
  * Creates the route query for the library filters.
  */
 export const createLibraryQuery = (
   searchText: string,
   readingStatus: ReadingStatusFilter,
-  bookStatus: BookStatusFilter
+  bookStatus: BookStatusFilter,
+  page = 1
 ): Record<string, string> => {
   const query = searchText.trim();
 
   return {
     ...(query.length > 0 ? { q: query } : {}),
     ...(readingStatus.length > 0 ? { readingStatus } : {}),
-    ...(bookStatus.length > 0 ? { bookStatus } : {})
+    ...(bookStatus.length > 0 ? { bookStatus } : {}),
+    ...(page > 1 ? { page: String(page) } : {})
   };
 };
 

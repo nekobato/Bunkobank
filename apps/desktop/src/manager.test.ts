@@ -42,6 +42,92 @@ describe("desktop manager controller", () => {
     });
   });
 
+  it("persists a valid port while the server is stopped", async () => {
+    const runtime = createRuntime({
+      writeServerPort: vi.fn(async (port) => ({
+        host: "127.0.0.1" as const,
+        port,
+        thumbnails: { enabled: true }
+      }))
+    });
+    const manager = createDesktopManagerController({
+      runtime,
+      readServerStatus: vi.fn(async () => createStatus("unreachable")),
+      readSetupStatus: vi.fn(),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    manager.updatePortDraft(4511);
+    await expect(manager.saveServerPort()).resolves.toBe(true);
+
+    expect(runtime.writeServerPort).toHaveBeenCalledWith(4511);
+    expect(manager.getState()).toMatchObject({
+      activeConfig: { host: "127.0.0.1", port: 4511 },
+      network: { phase: "saved", portDraft: 4511, fieldErrors: {} }
+    });
+  });
+
+  it("rejects an invalid port before native persistence", async () => {
+    const runtime = createRuntime();
+    const manager = createDesktopManagerController({
+      runtime,
+      readServerStatus: vi.fn(async () => createStatus("unreachable")),
+      readSetupStatus: vi.fn(),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    manager.updatePortDraft(null);
+    await expect(manager.saveServerPort()).resolves.toBe(false);
+
+    expect(runtime.writeServerPort).not.toHaveBeenCalled();
+    expect(manager.getState().network).toMatchObject({
+      phase: "error",
+      fieldErrors: { port: expect.any(String) }
+    });
+  });
+
+  it("reloads a Web-saved port before probing a stopped server", async () => {
+    const readServerConfig = vi
+      .fn()
+      .mockResolvedValueOnce({
+        host: "127.0.0.1" as const,
+        port: 4510,
+        thumbnails: { enabled: true }
+      })
+      .mockResolvedValueOnce({
+        host: "127.0.0.1" as const,
+        port: 4511,
+        thumbnails: { enabled: true }
+      });
+    const readServerStatus = vi.fn(async () => createStatus("unreachable"));
+    const manager = createDesktopManagerController({
+      runtime: createRuntime({ readServerConfig }),
+      readServerStatus,
+      readSetupStatus: vi.fn(),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    await manager.refreshServer({ silent: true });
+
+    expect(readServerStatus).toHaveBeenLastCalledWith({
+      host: "127.0.0.1",
+      port: 4511
+    });
+    expect(manager.getState().activeConfig).toEqual({
+      host: "127.0.0.1",
+      port: 4511
+    });
+  });
+
   it("reports a reachable external server without offering Stop", async () => {
     const runtime = createRuntime();
     const manager = createDesktopManagerController({
@@ -73,6 +159,58 @@ describe("desktop manager controller", () => {
     });
     await expect(manager.stopServer()).resolves.toBe(false);
     expect(runtime.stopManagedServer).not.toHaveBeenCalled();
+  });
+
+  it("opens initial setup in the Web UI when no account exists", async () => {
+    const runtime = createRuntime();
+    const manager = createDesktopManagerController({
+      runtime,
+      readServerStatus: vi.fn(async () => createStatus("reachable")),
+      readSetupStatus: vi.fn(async () => ({
+        url: "http://127.0.0.1:4510/api/setup/status",
+        status: {
+          setupComplete: false,
+          host: "127.0.0.1" as const,
+          port: 4510,
+          thumbnails: { enabled: true }
+        }
+      })),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    await expect(manager.openWebUi()).resolves.toBe(true);
+
+    expect(runtime.openUrl).toHaveBeenCalledWith("http://127.0.0.1:4510/setup");
+  });
+
+  it("keeps background health probes silent", async () => {
+    const readSetupStatus = vi.fn(async () => ({
+      url: "http://127.0.0.1:4510/api/setup/status",
+      status: {
+        setupComplete: true,
+        host: "127.0.0.1" as const,
+        port: 4510,
+        thumbnails: { enabled: true }
+      }
+    }));
+    const manager = createDesktopManagerController({
+      runtime: createRuntime(),
+      readServerStatus: vi.fn(async () => createStatus("reachable")),
+      readSetupStatus,
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+    const announcement = manager.getState().announcement;
+    await manager.refreshServer({ silent: true });
+
+    expect(readSetupStatus).toHaveBeenCalledTimes(1);
+    expect(manager.getState().announcement).toBe(announcement);
   });
 
   it("does not offer initial setup when the database is unavailable", async () => {
@@ -445,6 +583,11 @@ const createRuntime = (
 ): TauriDesktopRuntime => ({
   readEnvironment: vi.fn(async () => environment),
   readServerConfig: vi.fn(async () => null),
+  writeServerPort: vi.fn(async (port) => ({
+    host: "127.0.0.1" as const,
+    port,
+    thumbnails: { enabled: true }
+  })),
   pickDirectory: vi.fn(async () => null),
   pickDirectories: vi.fn(async () => []),
   spawnManagedServer: vi.fn(async () => ({ pid: 4312 })),

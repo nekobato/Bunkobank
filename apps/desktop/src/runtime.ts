@@ -84,6 +84,7 @@ export type ManagedServerRuntimeEvent =
 export interface TauriDesktopRuntime {
   readEnvironment: () => Promise<DesktopEnvironment>;
   readServerConfig: () => Promise<AppConfig | null>;
+  writeServerPort: (port: number) => Promise<AppConfig>;
   pickDirectory: () => Promise<string | null>;
   pickDirectories: () => Promise<string[]>;
   spawnManagedServer: (
@@ -182,6 +183,7 @@ export const createTauriDesktopRuntime = (
   return {
     readEnvironment: () => bindings.invoke("get_desktop_environment"),
     readServerConfig: () => bindings.invoke("read_server_config"),
+    writeServerPort: (port) => bindings.invoke("write_server_port", { port }),
     pickDirectory: async () =>
       getSingleDirectory(await bindings.openDirectory(false)),
     pickDirectories: async () =>

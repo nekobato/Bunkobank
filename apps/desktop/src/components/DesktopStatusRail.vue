@@ -1,8 +1,9 @@
 <script setup lang="ts">
-/** Server lifecycle and primary controls for Desktop Manager. */
+/** Server lifecycle monitor and essential native controls. */
 
 import { getShelfmarkToneMeta } from "@bookcafe/ui";
 import Button from "primevue/button";
+import Message from "primevue/message";
 import Tag from "primevue/tag";
 import { computed } from "vue";
 
@@ -13,12 +14,14 @@ const {
   state,
   endpoint,
   presentation,
-  processMessage = ""
+  processMessage = "",
+  errorMessage = ""
 } = defineProps<{
   state: DesktopManagerState;
   endpoint: string;
   presentation: ServerPresentation;
   processMessage?: string;
+  errorMessage?: string;
 }>();
 
 defineEmits<{
@@ -32,16 +35,24 @@ const statusMeta = computed(() => getShelfmarkToneMeta(presentation.tone));
 const isBusy = computed(() =>
   ["checking", "starting", "stopping"].includes(state.server.phase)
 );
+const webGuidance =
+  "アカウント、ライブラリ、ネットワーク、サムネイルの設定はWeb UIで行います。";
 </script>
 
 <template>
-  <aside class="status-rail" aria-labelledby="server-state">
-    <div class="brand">
+  <main
+    id="server-monitor"
+    class="server-monitor"
+    aria-labelledby="product-name"
+    tabindex="-1"
+  >
+    <header class="brand">
       <span class="brand-mark" aria-hidden="true">BC</span>
       <div>
-        <p class="brand-name">BookCafe</p>
+        <h1 id="product-name" class="brand-name">BookCafe</h1>
+        <p class="product-kind">Server Monitor</p>
       </div>
-    </div>
+    </header>
 
     <section
       class="server-status status-spine"
@@ -60,15 +71,27 @@ const isBusy = computed(() =>
         {{ presentation.detail }}
       </p>
       <code class="endpoint">{{ endpoint }}</code>
-      <p v-if="processMessage" class="process-message">
-        {{ processMessage }}
-      </p>
     </section>
 
-    <div class="rail-actions" aria-label="サーバー操作">
+    <Message v-if="errorMessage" severity="error" :closable="false">
+      {{ errorMessage }}
+    </Message>
+
+    <p class="web-guidance">{{ webGuidance }}</p>
+
+    <div class="monitor-actions" aria-label="サーバー操作">
+      <Button
+        label="Web UIを開く"
+        icon="pi pi-external-link"
+        :disabled="state.server.phase !== 'running'"
+        fluid
+        @click="$emit('open')"
+      />
       <Button
         label="起動"
         icon="pi pi-play"
+        severity="secondary"
+        variant="outlined"
         :loading="state.server.phase === 'starting'"
         :disabled="!state.server.canStart || isBusy"
         fluid
@@ -85,15 +108,7 @@ const isBusy = computed(() =>
         @click="$emit('stop')"
       />
       <Button
-        label="ライブラリを開く"
-        icon="pi pi-external-link"
-        severity="secondary"
-        :disabled="state.server.phase !== 'running'"
-        fluid
-        @click="$emit('open')"
-      />
-      <Button
-        label="再確認"
+        label="状態を再確認"
         icon="pi pi-refresh"
         severity="secondary"
         variant="text"
@@ -104,26 +119,31 @@ const isBusy = computed(() =>
       />
     </div>
 
-    <div class="config-path">
-      <span>設定ファイル</span>
-      <code>{{ state.environment?.configPath ?? "確認中…" }}</code>
-    </div>
-  </aside>
+    <details class="diagnostics">
+      <summary>診断情報</summary>
+      <div class="diagnostic-content">
+        <div class="config-path">
+          <span>設定ファイル</span>
+          <code>{{ state.environment?.configPath ?? "確認中…" }}</code>
+        </div>
+        <p v-if="processMessage" class="process-message">
+          {{ processMessage }}
+        </p>
+      </div>
+    </details>
+  </main>
 </template>
 
 <style scoped>
-.status-rail {
-  position: sticky;
-  inset-block-start: 0;
-  display: flex;
-  flex-direction: column;
+.server-monitor {
+  display: grid;
+  align-content: start;
+  inline-size: min(100%, 34rem);
   min-block-size: 100dvh;
-  max-block-size: 100dvh;
-  overflow-y: auto;
-  border-inline-end: 1px solid rgb(255 255 255 / 14%);
+  margin-inline: auto;
   background: var(--bc-deep-shelf);
   color: #f7f9f8;
-  padding: clamp(1.25rem, 2.8vw, 2.25rem);
+  padding: clamp(1.5rem, 7vw, 3rem);
 }
 
 .brand {
@@ -148,8 +168,10 @@ const isBusy = computed(() =>
 }
 
 .brand-name,
+.product-kind,
 .server-heading,
 .server-detail,
+.web-guidance,
 .process-message {
   margin: 0;
 }
@@ -161,8 +183,17 @@ const isBusy = computed(() =>
   letter-spacing: -0.025em;
 }
 
+.product-kind {
+  margin-block-start: 0.15rem;
+  color: rgb(247 249 248 / 58%);
+  font-family: var(--bc-font-data);
+  font-size: 0.68rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
 .server-status {
-  margin-block: clamp(2.5rem, 7vh, 4.5rem) 2rem;
+  margin-block: clamp(2.5rem, 8vh, 4.5rem) 1.5rem;
   padding-inline-start: 1.25rem;
 }
 
@@ -202,8 +233,15 @@ const isBusy = computed(() =>
   font-size: 0.72rem;
 }
 
+.web-guidance {
+  margin-block: 1.5rem;
+  color: rgb(247 249 248 / 68%);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
 .process-message {
-  margin-block-start: 1rem;
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 0.55rem;
   background: rgb(255 255 255 / 7%);
@@ -214,16 +252,26 @@ const isBusy = computed(() =>
   overflow-wrap: anywhere;
 }
 
-.rail-actions {
+.monitor-actions {
   display: grid;
   gap: 0.65rem;
-  margin-block-start: auto;
 }
 
-.config-path {
-  margin-block-start: 1.5rem;
+.diagnostics {
+  margin-block-start: 2rem;
   color: rgb(247 249 248 / 50%);
   font-size: 0.68rem;
+}
+
+.diagnostics summary {
+  inline-size: fit-content;
+  cursor: pointer;
+}
+
+.diagnostic-content {
+  display: grid;
+  gap: 0.85rem;
+  margin-block-start: 0.85rem;
 }
 
 .config-path code {
@@ -232,10 +280,6 @@ const isBusy = computed(() =>
 }
 
 @media (forced-colors: active) {
-  .status-rail {
-    border-inline-end-color: CanvasText;
-  }
-
   .brand-mark {
     border: 1px solid CanvasText;
     box-shadow: none;

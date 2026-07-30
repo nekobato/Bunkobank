@@ -1,5 +1,11 @@
 <script setup lang="ts">
+import { initialSetupRequestSchema } from "@bookcafe/contracts";
+
 import { getApiErrorMessage } from "../utils/apiErrors";
+import {
+  createFieldErrorMap,
+  focusFormErrorSummary
+} from "../utils/formValidation";
 
 const route = useRoute();
 const { apiBase } = useBookApi();
@@ -7,24 +13,51 @@ const { session, signInWithUsername } = useBookAuth();
 const username = ref("");
 const password = ref("");
 const message = ref("");
+const fieldErrors = ref<Record<string, string>>({});
+const errorSummary = useTemplateRef<HTMLElement>("login-error-summary");
 const isSubmitting = ref(false);
-const redirectTo = computed(() =>
-  typeof route.query.redirect === "string" ? route.query.redirect : "/"
-);
+const redirectTo = computed(() => {
+  const redirect =
+    typeof route.query.redirect === "string" ? route.query.redirect : "/";
+
+  return redirect.startsWith("/") && !redirect.startsWith("//")
+    ? redirect
+    : "/";
+});
 const hasSession = computed(() => Boolean(session.value.data?.user));
 
 /**
  * Signs in through Better Auth with the username plugin.
  */
 const submitLogin = async (): Promise<void> => {
+  const validation = initialSetupRequestSchema.safeParse({
+    username: username.value,
+    password: password.value
+  });
+
+  if (!validation.success) {
+    const errors = createFieldErrorMap(validation.error.issues);
+    fieldErrors.value = {
+      ...(errors.username
+        ? {
+            username:
+              "ユーザー名は3〜30文字の半角英数字、_、.で入力してください。"
+          }
+        : {}),
+      ...(errors.password
+        ? { password: "パスワードは8〜128文字で入力してください。" }
+        : {})
+    };
+    await focusFormErrorSummary(errorSummary.value);
+    return;
+  }
+
   isSubmitting.value = true;
   message.value = "";
+  fieldErrors.value = {};
 
   try {
-    const result = await signInWithUsername({
-      username: username.value,
-      password: password.value
-    });
+    const result = await signInWithUsername(validation.data);
 
     if (result.error) {
       message.value = "ユーザー名またはパスワードが正しくありません。";
@@ -60,8 +93,24 @@ const submitLogin = async (): Promise<void> => {
           class="form"
           :action="`${apiBase}/auth/sign-in/username`"
           method="post"
+          novalidate
           @submit.prevent="submitLogin"
         >
+          <div
+            v-if="Object.keys(fieldErrors).length > 0"
+            ref="login-error-summary"
+            class="error-summary"
+            tabindex="-1"
+            role="alert"
+          >
+            <strong>入力内容を確認してください。</strong>
+            <a v-if="fieldErrors.username" href="#username">
+              {{ fieldErrors.username }}
+            </a>
+            <a v-if="fieldErrors.password" href="#current-password">
+              {{ fieldErrors.password }}
+            </a>
+          </div>
           <div class="field">
             <label for="username">ユーザー名</label>
             <InputText
@@ -75,7 +124,13 @@ const submitLogin = async (): Promise<void> => {
               maxlength="30"
               required
               fluid
+              :invalid="Boolean(fieldErrors.username)"
+              :aria-invalid="Boolean(fieldErrors.username)"
+              aria-describedby="login-username-error"
             />
+            <small v-if="fieldErrors.username" id="login-username-error">
+              {{ fieldErrors.username }}
+            </small>
           </div>
 
           <div class="field">
@@ -90,8 +145,12 @@ const submitLogin = async (): Promise<void> => {
               fluid
               :input-props="{
                 autocomplete: 'current-password',
-                maxlength: 128
+                minlength: 8,
+                maxlength: 128,
+                'aria-invalid': Boolean(fieldErrors.password),
+                'aria-describedby': 'login-password-error'
               }"
+              :invalid="Boolean(fieldErrors.password)"
             >
               <template #unmaskicon="{ toggleCallback }">
                 <button
@@ -114,6 +173,9 @@ const submitLogin = async (): Promise<void> => {
                 </button>
               </template>
             </Password>
+            <small v-if="fieldErrors.password" id="login-password-error">
+              {{ fieldErrors.password }}
+            </small>
           </div>
 
           <Message v-if="message" severity="error" :closable="false">
@@ -156,6 +218,28 @@ const submitLogin = async (): Promise<void> => {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--panel);
+}
+
+.error-summary {
+  display: grid;
+  gap: 0.35rem;
+  border-inline-start: 0.3rem solid var(--bc-danger);
+  padding: 0.75rem 1rem;
+  color: var(--bc-danger);
+  background: color-mix(in oklab, var(--bc-danger) 8%, var(--bc-panel));
+}
+
+.error-summary:focus {
+  outline: 2px solid var(--bc-danger);
+  outline-offset: 2px;
+}
+
+.error-summary a {
+  color: inherit;
+}
+
+.field small {
+  color: var(--bc-danger);
 }
 
 .field {

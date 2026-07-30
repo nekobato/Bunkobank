@@ -5,6 +5,7 @@ import {
   createLibraryQuery,
   formatLibraryResultSummary,
   getRouteBookStatus,
+  getRoutePage,
   getRouteReadingStatus,
   getRouteSearch
 } from "./libraryFilters";
@@ -28,6 +29,14 @@ describe("library filter helpers", () => {
     expect(getRouteBookStatus("archived")).toBe("");
   });
 
+  it("reads only positive one-based page numbers", () => {
+    expect(getRoutePage("2")).toBe(2);
+    expect(getRoutePage(["3"])).toBe(3);
+    expect(getRoutePage("0")).toBe(1);
+    expect(getRoutePage("2x")).toBe(1);
+    expect(getRoutePage("invalid")).toBe(1);
+  });
+
   it("creates a compact route query from active filters", () => {
     expect(createLibraryQuery("  manga  ", "finished", "missing")).toEqual({
       q: "manga",
@@ -35,6 +44,10 @@ describe("library filter helpers", () => {
       bookStatus: "missing"
     });
     expect(createLibraryQuery("", "", "")).toEqual({});
+    expect(createLibraryQuery("manga", "", "", 2)).toEqual({
+      q: "manga",
+      page: "2"
+    });
   });
 
   it("compares filter states by their normalized route query", () => {

@@ -96,6 +96,11 @@ const localizedMessages: Record<string, string> = {
   "BookCafe server did not become ready in time.":
     "BookCafeサーバーの起動を時間内に確認できませんでした。",
   "Review the highlighted setup fields.": "入力内容を確認してください。",
+  "Review the highlighted network fields.": "ポートを確認してください。",
+  "Stop the BookCafe server before changing its port.":
+    "ポートを変更する前にBookCafeサーバーを停止してください。",
+  "Saving BookCafe server port…": "ポートを保存しています。",
+  "BookCafe server port saved.": "ポートを保存しました。",
   "BookCafe data is unavailable.": "データベースを確認できません。",
   "Initial setup input is invalid.": "入力内容を確認してください。",
   "Username or password is invalid.":
@@ -121,6 +126,7 @@ const localizedFieldErrors: Record<string, string> = {
   username: "ユーザー名は3〜30文字の半角英数字、_、.で入力してください。",
   password: "パスワードは8文字以上で入力してください。",
   confirmPassword: "確認用パスワードが一致しません。",
+  port: "ポートは1〜65535の整数で入力してください。",
   form: "入力内容を確認してください。"
 };
 

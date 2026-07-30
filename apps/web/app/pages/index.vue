@@ -6,14 +6,17 @@
  */
 
 import type { BookSummary } from "@bookcafe/core";
+import { useIntervalFn } from "@vueuse/core";
 
 import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import {
   areLibraryFiltersEqual,
   bookStatusFilterOptions,
+  BOOK_LIST_PAGE_SIZE,
   createLibraryQuery,
   formatLibraryResultSummary,
   getRouteBookStatus,
+  getRoutePage,
   getRouteReadingStatus,
   getRouteSearch,
   readingStatusFilterOptions,
@@ -22,10 +25,12 @@ import {
 } from "../utils/libraryFilters";
 
 const route = useRoute();
-const { archiveBook, createScanJob, listBooks } = useBookApi();
+const { archiveBook, createScanJob, getJob, listBooks } = useBookApi();
 const {
+  error: libraryError,
   loaded: librariesLoaded,
   loading: librariesLoading,
+  refreshLibraries,
   selectedLibrary,
   selectedLibraryId
 } = useLibraries();
@@ -39,6 +44,7 @@ const bookStatus = ref<BookStatusFilter>(
 const bookToArchive = ref<BookSummary | null>(null);
 const isArchiving = ref(false);
 const isScanning = ref(false);
+const activeScanJobId = ref<string | null>(null);
 const operationMessage = ref("");
 const operationSeverity = ref<"success" | "error">("success");
 const appliedSearch = computed(() => getRouteSearch(route.query.q));
@@ -48,6 +54,7 @@ const appliedReadingStatus = computed(() =>
 const appliedBookStatus = computed(() =>
   getRouteBookStatus(route.query.bookStatus)
 );
+const appliedPage = computed(() => getRoutePage(route.query.page));
 const { data, error, pending, refresh } = await useAsyncData(
   "selected-library-books",
   () =>
@@ -55,21 +62,40 @@ const { data, error, pending, refresh } = await useAsyncData(
       ? listBooks(selectedLibraryId.value, {
           q: appliedSearch.value || undefined,
           readingStatus: appliedReadingStatus.value || undefined,
-          bookStatus: appliedBookStatus.value || undefined
+          bookStatus: appliedBookStatus.value || undefined,
+          offset: (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE,
+          limit: BOOK_LIST_PAGE_SIZE
         })
-      : Promise.resolve({ books: [] }),
+      : Promise.resolve({
+          books: [],
+          total: 0,
+          offset: 0,
+          limit: BOOK_LIST_PAGE_SIZE,
+          hasMore: false
+        }),
   {
-    default: () => ({ books: [] }),
+    default: () => ({
+      books: [],
+      total: 0,
+      offset: 0,
+      limit: BOOK_LIST_PAGE_SIZE,
+      hasMore: false
+    }),
     server: false,
     watch: [
       selectedLibraryId,
       appliedSearch,
       appliedReadingStatus,
-      appliedBookStatus
+      appliedBookStatus,
+      appliedPage
     ]
   }
 );
 const books = computed(() => data.value?.books ?? []);
+const totalBooks = computed(() => data.value?.total ?? 0);
+const firstBookOffset = computed(
+  () => (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE
+);
 const statusCode = computed(() => error.value?.statusCode);
 const hasActiveFilters = computed(() =>
   Boolean(
@@ -88,11 +114,14 @@ const hasAppliedFilters = computed(() =>
 );
 const resultSummary = computed(() =>
   formatLibraryResultSummary(
-    books.value.length,
+    totalBooks.value,
     appliedSearch.value,
     appliedReadingStatus.value,
     appliedBookStatus.value
   )
+);
+const libraryErrorMessage = computed(() =>
+  getApiErrorMessage(libraryError.value, "ライブラリを読み込めませんでした。")
 );
 const emptyMessage = computed(() =>
   hasAppliedFilters.value
@@ -102,6 +131,18 @@ const emptyMessage = computed(() =>
 const errorMessage = computed(() =>
   getAccessErrorMessage(statusCode.value, "蔵書を読み込めませんでした。")
 );
+
+const { pause: pauseScanPolling, resume: resumeScanPolling } = useIntervalFn(
+  refreshActiveScan,
+  1500,
+  { immediate: false }
+);
+
+watch(selectedLibraryId, () => {
+  activeScanJobId.value = null;
+  isScanning.value = false;
+  pauseScanPolling();
+});
 
 watch(
   [appliedSearch, appliedReadingStatus, appliedBookStatus],
@@ -165,18 +206,78 @@ const scanSelectedLibrary = async (): Promise<void> => {
   operationMessage.value = "";
 
   try {
-    await createScanJob(selectedLibraryId.value);
+    const job = await createScanJob(selectedLibraryId.value);
+    activeScanJobId.value = job.id;
+    resumeScanPolling();
     operationSeverity.value = "success";
     operationMessage.value = "スキャンを開始しました。";
+    await refreshActiveScan();
   } catch (error) {
     operationSeverity.value = "error";
     operationMessage.value = getApiErrorMessage(
       error,
       "スキャンを開始できませんでした。"
     );
-  } finally {
     isScanning.value = false;
   }
+};
+
+/**
+ * Polls the active scan and refreshes books when it reaches a terminal state.
+ */
+async function refreshActiveScan(): Promise<void> {
+  const libraryId = selectedLibraryId.value;
+  const jobId = activeScanJobId.value;
+
+  if (!libraryId || !jobId) {
+    pauseScanPolling();
+    return;
+  }
+
+  try {
+    const job = await getJob(libraryId, jobId);
+
+    if (job.status === "queued" || job.status === "running") {
+      return;
+    }
+
+    activeScanJobId.value = null;
+    isScanning.value = false;
+    pauseScanPolling();
+    await refresh();
+    operationSeverity.value = job.status === "completed" ? "success" : "error";
+    operationMessage.value =
+      job.status === "completed"
+        ? "スキャンが完了し、蔵書を更新しました。"
+        : (job.error ?? "スキャンは完了しませんでした。");
+  } catch (error) {
+    activeScanJobId.value = null;
+    isScanning.value = false;
+    pauseScanPolling();
+    operationSeverity.value = "error";
+    operationMessage.value = getApiErrorMessage(
+      error,
+      "スキャン状況を確認できませんでした。"
+    );
+  }
+}
+
+/**
+ * Moves to a one-based page while retaining the active filters.
+ */
+const changePage = async (event: { page: number }): Promise<void> => {
+  await navigateTo(
+    {
+      path: "/",
+      query: createLibraryQuery(
+        appliedSearch.value,
+        appliedReadingStatus.value,
+        appliedBookStatus.value,
+        event.page + 1
+      )
+    },
+    { replace: true }
+  );
 };
 
 /** Archives the confirmed book and refreshes the visible list. */
@@ -314,6 +415,15 @@ const confirmArchive = async (): Promise<void> => {
       >
         <ProgressSpinner class="spinner" stroke-width="4" />
       </div>
+      <Message v-else-if="libraryError" severity="error" :closable="false">
+        <span>{{ libraryErrorMessage }}</span>
+        <Button
+          label="再試行"
+          icon="pi pi-refresh"
+          size="small"
+          @click="refreshLibraries"
+        />
+      </Message>
       <Card v-else-if="!selectedLibraryId" class="empty-card">
         <template #content>
           <i class="pi pi-folder-open" aria-hidden="true" />
@@ -338,6 +448,16 @@ const confirmArchive = async (): Promise<void> => {
           v-if="books.length > 0"
           :books="books"
           @archive="bookToArchive = $event"
+        />
+        <Paginator
+          v-if="totalBooks > BOOK_LIST_PAGE_SIZE"
+          :first="firstBookOffset"
+          :rows="BOOK_LIST_PAGE_SIZE"
+          :total-records="totalBooks"
+          template="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
+          current-page-report-template="{currentPage} / {totalPages}"
+          aria-label="蔵書ページ"
+          @page="changePage"
         />
         <Card v-else class="empty-card">
           <template #content>

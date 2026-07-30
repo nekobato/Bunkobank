@@ -62,7 +62,11 @@ export const bookDetailSchema = bookSummarySchema.extend({
 });
 
 export const bookListResponseSchema = z.object({
-  books: z.array(bookSummarySchema)
+  books: z.array(bookSummarySchema),
+  total: z.number().int().min(0),
+  offset: z.number().int().min(0),
+  limit: z.number().int().min(1).max(100),
+  hasMore: z.boolean()
 });
 
 export const bookListQuerySchema = z.object({
@@ -76,7 +80,9 @@ export const bookListQuerySchema = z.object({
     (value) =>
       typeof value === "string" && value.trim().length < 1 ? undefined : value,
     bookStatusSchema.optional()
-  )
+  ),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(100)
 });
 
 export const updateBookProgressRequestSchema = z.object({
@@ -265,7 +271,7 @@ export const pageListResponseSchema = z.object({
 });
 
 export type BookListResponse = z.infer<typeof bookListResponseSchema>;
-export type BookListQuery = z.infer<typeof bookListQuerySchema>;
+export type BookListQuery = z.input<typeof bookListQuerySchema>;
 export type BookDetailResponse = z.infer<typeof bookDetailSchema>;
 export type InitialSetupRequest = z.infer<typeof initialSetupRequestSchema>;
 export type SetupStatusResponse = z.infer<typeof setupStatusSchema>;

@@ -8,6 +8,10 @@ describe("HTTP byte ranges", () => {
       kind: "partial",
       range: { start: 2, end: 5 }
     });
+    expect(parseByteRange("Bytes=2-5", 10)).toEqual({
+      kind: "partial",
+      range: { start: 2, end: 5 }
+    });
     expect(parseByteRange("bytes=7-", 10)).toEqual({
       kind: "partial",
       range: { start: 7, end: 9 }
@@ -50,5 +54,21 @@ describe("HTTP byte ranges", () => {
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(
       new Uint8Array([20, 30, 40])
     );
+  });
+
+  it("ignores byte ranges for HEAD requests", async () => {
+    const response = createBufferResponse({
+      request: new Request("http://bookcafe.local/page", {
+        method: "HEAD",
+        headers: { Range: "bytes=1-3" }
+      }),
+      data: new Uint8Array([10, 20, 30, 40, 50]),
+      contentType: "image/png"
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-range")).toBeNull();
+    expect(response.headers.get("content-length")).toBe("5");
+    expect((await response.arrayBuffer()).byteLength).toBe(0);
   });
 });

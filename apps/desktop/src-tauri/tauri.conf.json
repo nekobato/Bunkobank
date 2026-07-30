@@ -14,11 +14,11 @@
     "windows": [
       {
         "label": "main",
-        "title": "BookCafe Manager",
-        "width": 1100,
-        "height": 780,
-        "minWidth": 760,
-        "minHeight": 620,
+        "title": "BookCafe Server Monitor",
+        "width": 520,
+        "height": 720,
+        "minWidth": 420,
+        "minHeight": 560,
         "resizable": true,
         "fullscreen": false
       }
@@ -43,7 +43,7 @@
       "signingIdentity": "Developer ID Application: Hayato Koriyama (N5BWSDK26P)"
     },
     "category": "Productivity",
-    "shortDescription": "Manage the local BookCafe server",
-    "longDescription": "Configure, start, and monitor the local BookCafe library server."
+    "shortDescription": "Monitor the local BookCafe server",
+    "longDescription": "Start, stop, and monitor the local BookCafe library server."
   }
 }

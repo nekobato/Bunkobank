@@ -108,12 +108,15 @@ export const useBookApi = () => {
         query: {
           q: query.q || undefined,
           readingStatus: query.readingStatus || undefined,
-          bookStatus: query.bookStatus || undefined
+          bookStatus: query.bookStatus || undefined,
+          offset: query.offset,
+          limit: query.limit
         }
       }
     );
 
     return {
+      ...response,
       books: response.books.map(resolveBookAssets)
     };
   };
@@ -123,8 +126,8 @@ export const useBookApi = () => {
     fetchBookList(libraryId, ["books"], query);
 
   /** Fetches archived books for one library. */
-  const listArchivedBooks = (libraryId: string) =>
-    fetchBookList(libraryId, ["books", "archived"]);
+  const listArchivedBooks = (libraryId: string, query: BookListQuery = {}) =>
+    fetchBookList(libraryId, ["books", "archived"], query);
 
   /** Fetches one book by its library and book identifiers. */
   const getBook = async (
@@ -142,7 +145,8 @@ export const useBookApi = () => {
   const updateBookProgress = async (
     libraryId: string,
     bookId: string,
-    body: UpdateBookProgressRequest
+    body: UpdateBookProgressRequest,
+    options: { keepalive?: boolean } = {}
   ): Promise<BookDetailResponse> =>
     resolveBookAssets(
       await $fetch<BookDetailResponse>(
@@ -151,6 +155,7 @@ export const useBookApi = () => {
           ...requestOptions,
           method: "PATCH",
           priority: "low",
+          keepalive: options.keepalive,
           body
         }
       )
@@ -266,6 +271,13 @@ export const useBookApi = () => {
       requestOptions
     );
 
+  /** Fetches one background job for scan-completion monitoring. */
+  const getJob = (libraryId: string, jobId: string) =>
+    $fetch<BackgroundJobResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["jobs", jobId]),
+      requestOptions
+    );
+
   /** Fetches one bounded page of path-safe failures for a scan job. */
   const listScanFailures = (
     libraryId: string,
@@ -310,6 +322,7 @@ export const useBookApi = () => {
     createScanJob,
     deleteLibrary,
     getBook,
+    getJob,
     getLibraryPreference,
     getNetworkSettings,
     getPageImageUrl,

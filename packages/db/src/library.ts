@@ -170,6 +170,24 @@ export interface ScanFailurePage {
   hasMore: boolean;
 }
 
+export interface ListBookSummaryPageOptions {
+  archived?: boolean;
+  query?: string;
+  readingStatus?: ReadingStatus;
+  bookStatus?: BookStatus;
+  offset?: number;
+  limit?: number;
+  userId?: string;
+}
+
+export interface BookSummaryPage {
+  books: BookSummary[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 export interface ThumbnailRecord {
   id: string;
   libraryId: string;
@@ -875,6 +893,72 @@ export const listArchivedBookSummaries = (
   listBookRows(database, libraryId, true).map((row) =>
     toBookSummary(database, row, userId)
   );
+
+/**
+ * Lists one database-bounded page of filtered book summaries.
+ */
+export const listBookSummaryPage = (
+  database: BookCafeDatabase,
+  libraryId: string,
+  options: ListBookSummaryPageOptions = {}
+): BookSummaryPage => {
+  const offset = Math.max(Math.trunc(options.offset ?? 0), 0);
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 100);
+  const conditions = [
+    "library_id = @libraryId",
+    `archived_at IS ${options.archived ? "NOT NULL" : "NULL"}`
+  ];
+  const parameters: Record<string, string | number> = { libraryId };
+  const normalizedQuery = options.query?.trim() ?? "";
+
+  if (normalizedQuery) {
+    conditions.push(
+      `(
+        title LIKE @query
+        OR authors_json LIKE @query
+        OR publisher LIKE @query
+        OR isbn LIKE @query
+        OR tags_json LIKE @query
+        OR notes LIKE @query
+        OR relative_path LIKE @query
+      )`
+    );
+    parameters.query = `%${normalizedQuery}%`;
+  }
+
+  if (options.readingStatus) {
+    conditions.push("reading_status = @readingStatus");
+    parameters.readingStatus = options.readingStatus;
+  }
+
+  if (options.bookStatus) {
+    conditions.push("status = @bookStatus");
+    parameters.bookStatus = options.bookStatus;
+  }
+
+  const whereClause = conditions.join("\n AND ");
+  const totalRow = database.sqlite
+    .prepare(`SELECT COUNT(*) AS total FROM books WHERE ${whereClause}`)
+    .get(parameters) as { total: number };
+  const rows = database.sqlite
+    .prepare(
+      `SELECT *
+       FROM books
+       WHERE ${whereClause}
+       ORDER BY title COLLATE NOCASE, relative_path
+       LIMIT @limit OFFSET @offset`
+    )
+    .all({ ...parameters, limit, offset }) as BookRow[];
+  const total = totalRow.total;
+
+  return {
+    books: rows.map((row) => toBookSummary(database, row, options.userId)),
+    total,
+    offset,
+    limit,
+    hasMore: offset + limit < total
+  };
+};
 
 /**
  * Lists archived source locators so scanners can skip them before parsing.

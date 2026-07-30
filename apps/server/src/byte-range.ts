@@ -45,7 +45,7 @@ export const parseByteRange = (
   rangeHeader: string | null,
   size: number
 ): ByteRangeResult => {
-  if (!rangeHeader || !rangeHeader.startsWith("bytes=")) {
+  if (!rangeHeader || !/^bytes=/i.test(rangeHeader)) {
     return { kind: "full" };
   }
 
@@ -132,9 +132,10 @@ export const createFileResponse = async ({
   const etag = createFileEtag(fileStat.size, fileStat.mtimeMs);
   headers.set("ETag", etag);
   headers.set("Last-Modified", fileStat.mtime.toUTCString());
-  const range = shouldApplyRange(request, etag, fileStat.mtime)
-    ? parseByteRange(request.headers.get("Range"), fileStat.size)
-    : ({ kind: "full" } satisfies ByteRangeResult);
+  const range =
+    request.method === "GET" && shouldApplyRange(request, etag, fileStat.mtime)
+      ? parseByteRange(request.headers.get("Range"), fileStat.size)
+      : ({ kind: "full" } satisfies ByteRangeResult);
 
   if (range.kind === "unsatisfiable") {
     return createUnsatisfiableResponse(headers, fileStat.size);
@@ -178,7 +179,10 @@ export const createBufferResponse = ({
     cacheControl,
     dispositionFileName
   });
-  const range = parseByteRange(request.headers.get("Range"), data.byteLength);
+  const range =
+    request.method === "GET"
+      ? parseByteRange(request.headers.get("Range"), data.byteLength)
+      : ({ kind: "full" } satisfies ByteRangeResult);
 
   if (range.kind === "unsatisfiable") {
     return createUnsatisfiableResponse(headers, data.byteLength);
@@ -274,7 +278,7 @@ const shouldApplyRange = (
   const ifRangeTime = Date.parse(ifRange);
   return (
     Number.isFinite(ifRangeTime) &&
-    Math.trunc(lastModified.getTime() / 1000) <= Math.trunc(ifRangeTime / 1000)
+    Math.trunc(lastModified.getTime() / 1000) === Math.trunc(ifRangeTime / 1000)
   );
 };
 
