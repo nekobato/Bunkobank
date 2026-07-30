@@ -5,24 +5,31 @@
  * @module
  */
 
+import type { BookSort, SortOrder } from "@bookcafe/contracts";
 import type { BookSummary } from "@bookcafe/core";
 import { useIntervalFn } from "@vueuse/core";
 
 import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import {
   areLibraryFiltersEqual,
+  bookSortOptions,
   bookStatusFilterOptions,
   BOOK_LIST_PAGE_SIZE,
   createLibraryQuery,
   formatLibraryResultSummary,
   getRouteBookStatus,
+  getRouteBookSort,
   getRoutePage,
   getRouteReadingStatus,
   getRouteSearch,
+  getRouteSortOrder,
   readingStatusFilterOptions,
+  sortOrderOptions,
   type BookStatusFilter,
   type ReadingStatusFilter
 } from "../utils/libraryFilters";
+
+useHead({ title: "蔵書" });
 
 const route = useRoute();
 const { archiveBook, createScanJob, getJob, listBooks } = useBookApi();
@@ -41,6 +48,8 @@ const readingStatus = ref<ReadingStatusFilter>(
 const bookStatus = ref<BookStatusFilter>(
   getRouteBookStatus(route.query.bookStatus)
 );
+const sort = ref<BookSort>(getRouteBookSort(route.query.sort));
+const order = ref<SortOrder>(getRouteSortOrder(route.query.order));
 const bookToArchive = ref<BookSummary | null>(null);
 const isArchiving = ref(false);
 const isScanning = ref(false);
@@ -54,6 +63,8 @@ const appliedReadingStatus = computed(() =>
 const appliedBookStatus = computed(() =>
   getRouteBookStatus(route.query.bookStatus)
 );
+const appliedSort = computed(() => getRouteBookSort(route.query.sort));
+const appliedOrder = computed(() => getRouteSortOrder(route.query.order));
 const appliedPage = computed(() => getRoutePage(route.query.page));
 const { data, error, pending, refresh } = await useAsyncData(
   "selected-library-books",
@@ -63,6 +74,8 @@ const { data, error, pending, refresh } = await useAsyncData(
           q: appliedSearch.value || undefined,
           readingStatus: appliedReadingStatus.value || undefined,
           bookStatus: appliedBookStatus.value || undefined,
+          sort: appliedSort.value,
+          order: appliedOrder.value,
           offset: (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE,
           limit: BOOK_LIST_PAGE_SIZE
         })
@@ -87,6 +100,8 @@ const { data, error, pending, refresh } = await useAsyncData(
       appliedSearch,
       appliedReadingStatus,
       appliedBookStatus,
+      appliedSort,
+      appliedOrder,
       appliedPage
     ]
   }
@@ -145,11 +160,19 @@ watch(selectedLibraryId, () => {
 });
 
 watch(
-  [appliedSearch, appliedReadingStatus, appliedBookStatus],
-  ([nextSearch, nextReadingStatus, nextBookStatus]) => {
+  [
+    appliedSearch,
+    appliedReadingStatus,
+    appliedBookStatus,
+    appliedSort,
+    appliedOrder
+  ],
+  ([nextSearch, nextReadingStatus, nextBookStatus, nextSort, nextOrder]) => {
     searchText.value = nextSearch;
     readingStatus.value = nextReadingStatus;
     bookStatus.value = nextBookStatus;
+    sort.value = nextSort;
+    order.value = nextOrder;
   }
 );
 
@@ -162,7 +185,11 @@ const submitFilters = async (): Promise<void> => {
       bookStatus.value,
       appliedSearch.value,
       appliedReadingStatus.value,
-      appliedBookStatus.value
+      appliedBookStatus.value,
+      sort.value,
+      order.value,
+      appliedSort.value,
+      appliedOrder.value
     )
   ) {
     await refresh();
@@ -175,7 +202,10 @@ const submitFilters = async (): Promise<void> => {
       query: createLibraryQuery(
         searchText.value,
         readingStatus.value,
-        bookStatus.value
+        bookStatus.value,
+        1,
+        sort.value,
+        order.value
       )
     },
     { replace: true }
@@ -193,7 +223,20 @@ const clearFilters = async (): Promise<void> => {
     return;
   }
 
-  await navigateTo({ path: "/", query: {} }, { replace: true });
+  await navigateTo(
+    {
+      path: "/",
+      query: createLibraryQuery(
+        "",
+        "",
+        "",
+        1,
+        appliedSort.value,
+        appliedOrder.value
+      )
+    },
+    { replace: true }
+  );
 };
 
 /** Starts a scan for the selected library. */
@@ -273,7 +316,9 @@ const changePage = async (event: { page: number }): Promise<void> => {
         appliedSearch.value,
         appliedReadingStatus.value,
         appliedBookStatus.value,
-        event.page + 1
+        event.page + 1,
+        appliedSort.value,
+        appliedOrder.value
       )
     },
     { replace: true }
@@ -380,6 +425,30 @@ const confirmArchive = async (): Promise<void> => {
               option-label="label"
               option-value="value"
               aria-labelledby="source-filter-label"
+              fluid
+            />
+          </div>
+          <div class="select-field">
+            <span id="book-sort-label" class="control-label">並び順</span>
+            <Select
+              v-model="sort"
+              input-id="book-sort"
+              :options="bookSortOptions"
+              option-label="label"
+              option-value="value"
+              aria-labelledby="book-sort-label"
+              fluid
+            />
+          </div>
+          <div class="select-field">
+            <span id="book-order-label" class="control-label">方向</span>
+            <Select
+              v-model="order"
+              input-id="book-order"
+              :options="sortOrderOptions"
+              option-label="label"
+              option-value="value"
+              aria-labelledby="book-order-label"
               fluid
             />
           </div>
@@ -549,9 +618,10 @@ const confirmArchive = async (): Promise<void> => {
 
 .search {
   display: grid;
-  grid-template-columns:
-    minmax(14rem, 1.5fr) minmax(9rem, 0.6fr) minmax(9rem, 0.6fr)
-    auto;
+  grid-template-columns: minmax(14rem, 1.5fr) repeat(
+      4,
+      minmax(8.5rem, 0.6fr)
+    ) auto;
   align-items: end;
   gap: 0.8rem;
 }

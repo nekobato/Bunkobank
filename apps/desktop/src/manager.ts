@@ -147,6 +147,7 @@ export interface DesktopManagerController {
   saveServerPort: () => Promise<boolean>;
   setStartupEnabled: (enabled: boolean) => Promise<void>;
   openWebUi: () => Promise<boolean>;
+  openLogDirectory: () => Promise<boolean>;
 }
 
 const defaultActiveConfig = {
@@ -967,6 +968,26 @@ export const createDesktopManagerController = (
     return true;
   };
 
+  /**
+   * Opens the fixed native log directory after environment initialization.
+   */
+  const openLogDirectory = async (): Promise<boolean> => {
+    if (!state.environment) {
+      return false;
+    }
+
+    try {
+      await resolvedDependencies.runtime.openLogDirectory();
+      return true;
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        error: toErrorMessage(error)
+      }));
+      return false;
+    }
+  };
+
   return {
     getState: () => state,
     subscribe: (listener) => {
@@ -983,7 +1004,8 @@ export const createDesktopManagerController = (
     updatePortDraft,
     saveServerPort,
     setStartupEnabled,
-    openWebUi
+    openWebUi,
+    openLogDirectory
   };
 };
 
@@ -1101,6 +1123,7 @@ const setupApiErrorMessages = {
   LIBRARY_BUSY: "Library is busy.",
   LIBRARY_NAME_CONFLICT: "Library name is already in use.",
   LIBRARY_PATH_CONFLICT: "Library path overlaps another library.",
+  COLLECTION_NAME_CONFLICT: "Collection name is already in use.",
   NOT_FOUND: "The requested item was not found.",
   UNAUTHORIZED: "Authentication required.",
   INTERNAL_ERROR: "Internal server error."

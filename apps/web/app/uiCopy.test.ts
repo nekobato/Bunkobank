@@ -13,6 +13,8 @@ const webUiSource = [
   "./components/ReaderView.vue",
   "./pages/books/[bookId]/index.vue",
   "./pages/books/[bookId]/read.vue",
+  "./pages/collections/[collectionId].vue",
+  "./pages/collections/index.vue",
   "./pages/index.vue",
   "./pages/login.vue",
   "./pages/setup.vue",

@@ -5,14 +5,17 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  addBookToCollection,
   archiveBook,
   cancelJob,
   closeDatabase,
   connectDatabase,
+  createCollection,
   createJob,
   createLibrary,
   createScanFailure,
   deleteLibrary,
+  findCollectionDetail,
   findBookDetail,
   findBookPage,
   findJob,
@@ -23,6 +26,7 @@ import {
   listBookPages,
   listBookSummaryPage,
   listBookSummaries,
+  listCollections,
   listJobs,
   listLibraries,
   listScanFailures,
@@ -35,6 +39,8 @@ import {
   openBookCafeDatabase,
   persistScannedBook,
   restoreBook,
+  reorderCollectionBooks,
+  removeBookFromCollection,
   setBookThumbnail,
   setLibraryPreference,
   updateBookMetadata,
@@ -280,6 +286,144 @@ describe("single database library model", () => {
         total: 1,
         books: [expect.objectContaining({ id: beta.id })]
       });
+    } finally {
+      closeDatabase(database);
+    }
+  });
+
+  it("sorts paginated books with stable user-specific reading order", () => {
+    const { database, directory } = createTestDatabase();
+
+    try {
+      const library = createLibrary(database, {
+        name: "Books",
+        rootPath: join(directory, "Books"),
+        canonicalRootPath: join(directory, "Books")
+      });
+      const alpha = createBook(database, library.id, "Alpha");
+      const beta = createBook(database, library.id, "Beta");
+
+      updateReadingProgress(database, "user-1", library.id, beta.id, 2);
+
+      expect(
+        listBookSummaryPage(database, library.id, {
+          userId: "user-1",
+          sort: "lastReadAt",
+          order: "desc"
+        }).books.map(({ id }) => id)
+      ).toEqual([beta.id, alpha.id]);
+      expect(
+        listBookSummaryPage(database, library.id, {
+          sort: "title",
+          order: "desc",
+          limit: 1
+        })
+      ).toMatchObject({
+        total: 2,
+        hasMore: true,
+        books: [expect.objectContaining({ id: beta.id })]
+      });
+    } finally {
+      closeDatabase(database);
+    }
+  });
+
+  it("keeps user collections library-scoped, ordered, and visibility-aware", () => {
+    const { database, directory } = createTestDatabase();
+
+    try {
+      const firstLibrary = createLibrary(database, {
+        name: "First",
+        rootPath: join(directory, "First"),
+        canonicalRootPath: join(directory, "First")
+      });
+      const secondLibrary = createLibrary(database, {
+        name: "Second",
+        rootPath: join(directory, "Second"),
+        canonicalRootPath: join(directory, "Second")
+      });
+      const alpha = createBook(database, firstLibrary.id, "Alpha");
+      const beta = createBook(database, firstLibrary.id, "Beta");
+      const otherLibraryBook = createBook(
+        database,
+        secondLibrary.id,
+        "Elsewhere"
+      );
+      const collection = createCollection(
+        database,
+        "user-1",
+        firstLibrary.id,
+        "Favorites"
+      );
+
+      expect(
+        addBookToCollection(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id,
+          alpha.id
+        )
+      ).toBe("added");
+      expect(
+        addBookToCollection(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id,
+          beta.id
+        )
+      ).toBe("added");
+      expect(
+        addBookToCollection(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id,
+          otherLibraryBook.id
+        )
+      ).toBe("book-unavailable");
+      expect(
+        reorderCollectionBooks(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id,
+          [beta.id, alpha.id]
+        )
+      ).toBe("updated");
+      expect(
+        findCollectionDetail(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id
+        )?.books.map(({ id }) => id)
+      ).toEqual([beta.id, alpha.id]);
+      expect(listCollections(database, "user-2", firstLibrary.id)).toEqual([]);
+
+      archiveBook(database, firstLibrary.id, beta.id);
+      expect(
+        findCollectionDetail(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id
+        )?.books.map(({ id }) => id)
+      ).toEqual([alpha.id]);
+
+      expect(
+        removeBookFromCollection(
+          database,
+          "user-1",
+          firstLibrary.id,
+          collection.id,
+          alpha.id
+        )
+      ).toBe(true);
+      expect(
+        listCollections(database, "user-1", firstLibrary.id)[0]?.bookCount
+      ).toBe(0);
     } finally {
       closeDatabase(database);
     }

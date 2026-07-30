@@ -40,6 +40,10 @@ const errorMessage = computed(() =>
   getAccessErrorMessage(statusCode.value, "書籍を読み込めませんでした。")
 );
 
+useHead({
+  title: () => data.value?.title ?? "ビューワー"
+});
+
 watch(
   data,
   (book) => {

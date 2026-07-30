@@ -29,6 +29,13 @@ import {
   bookDetailSchema,
   bookListQuerySchema,
   bookListResponseSchema,
+  collectionBookCreateRequestSchema,
+  collectionBookOrderRequestSchema,
+  collectionCreateRequestSchema,
+  collectionDetailSchema,
+  collectionListResponseSchema,
+  collectionSchema,
+  collectionUpdateRequestSchema,
   healthResponseSchema,
   initialSetupRequestSchema,
   libraryCreateRequestSchema,
@@ -49,12 +56,16 @@ import {
   type ApiErrorCode
 } from "@bookcafe/contracts";
 import {
+  addBookToCollection,
   archiveBook,
   cancelJob,
   closeDatabase,
+  createCollection,
   createJob,
   createLibrary,
   deleteLibrary,
+  deleteCollection,
+  findCollectionDetail,
   findBookDetail,
   findBookPage,
   findBookThumbnail,
@@ -62,18 +73,23 @@ import {
   findLibrary,
   getLibraryPreference,
   listBookSummaryPage,
+  listCollections,
   listJobs,
   listLibraries,
   listScanFailures,
   markInterruptedJobsFailed,
   openBookCafeDatabase,
+  removeBookFromCollection,
+  reorderCollectionBooks,
   restoreBook,
   setLibraryPreference,
   updateBookMetadata,
+  updateCollection,
   updateLibrary,
   updateReadingProgress,
   type BookCafeDatabase,
   type BookCafeDomainError,
+  type CollectionRecord,
   type JobRecord,
   type LibraryRecord,
   type ScanFailureRecord
@@ -588,6 +604,233 @@ export const createApp = (options: AppOptions = {}) => {
     }
   );
 
+  app.get("/api/libraries/:libraryId/collections", async (c) => {
+    const result = await withScopedLibrary(
+      c,
+      withDatabase,
+      (database, library) => ({
+        collections: listCollections(
+          database,
+          requireUserId(c),
+          library.id
+        ).map(toCollectionResponse)
+      })
+    );
+
+    return result instanceof Response
+      ? result
+      : c.json(collectionListResponseSchema.parse(result));
+  });
+
+  app.post(
+    "/api/libraries/:libraryId/collections",
+    zValidator("json", collectionCreateRequestSchema, invalidInputHook),
+    async (c) => {
+      try {
+        const result = await withScopedLibrary(
+          c,
+          withDatabase,
+          (database, library) =>
+            createCollection(
+              database,
+              requireUserId(c),
+              library.id,
+              c.req.valid("json").name
+            )
+        );
+
+        return result instanceof Response
+          ? result
+          : c.json(collectionSchema.parse(toCollectionResponse(result)), 201);
+      } catch (error) {
+        return handleCollectionDomainError(c, error);
+      }
+    }
+  );
+
+  app.get("/api/libraries/:libraryId/collections/:collectionId", async (c) => {
+    const collection = await withDatabase((database) =>
+      findCollectionDetail(
+        database,
+        requireUserId(c),
+        c.req.param("libraryId"),
+        c.req.param("collectionId")
+      )
+    );
+
+    return collection
+      ? c.json(
+          collectionDetailSchema.parse({
+            ...toCollectionResponse(collection),
+            books: collection.books
+          })
+        )
+      : c.json(createApiError("NOT_FOUND", "Collection not found."), 404);
+  });
+
+  app.patch(
+    "/api/libraries/:libraryId/collections/:collectionId",
+    zValidator("json", collectionUpdateRequestSchema, invalidInputHook),
+    async (c) => {
+      try {
+        const collection = await withDatabase((database) =>
+          updateCollection(
+            database,
+            requireUserId(c),
+            c.req.param("libraryId"),
+            c.req.param("collectionId"),
+            c.req.valid("json").name
+          )
+        );
+
+        return collection
+          ? c.json(collectionSchema.parse(toCollectionResponse(collection)))
+          : c.json(createApiError("NOT_FOUND", "Collection not found."), 404);
+      } catch (error) {
+        return handleCollectionDomainError(c, error);
+      }
+    }
+  );
+
+  app.delete(
+    "/api/libraries/:libraryId/collections/:collectionId",
+    async (c) => {
+      const deleted = await withDatabase((database) =>
+        deleteCollection(
+          database,
+          requireUserId(c),
+          c.req.param("libraryId"),
+          c.req.param("collectionId")
+        )
+      );
+
+      return deleted
+        ? c.body(null, 204)
+        : c.json(createApiError("NOT_FOUND", "Collection not found."), 404);
+    }
+  );
+
+  app.post(
+    "/api/libraries/:libraryId/collections/:collectionId/books",
+    zValidator("json", collectionBookCreateRequestSchema, invalidInputHook),
+    async (c) => {
+      const libraryId = c.req.param("libraryId");
+      const collectionId = c.req.param("collectionId");
+      const result = await withDatabase((database) =>
+        addBookToCollection(
+          database,
+          requireUserId(c),
+          libraryId,
+          collectionId,
+          c.req.valid("json").bookId
+        )
+      );
+
+      if (result === "not-found") {
+        return c.json(
+          createApiError("NOT_FOUND", "Collection not found."),
+          404
+        );
+      }
+
+      if (result === "book-unavailable") {
+        return c.json(
+          createApiError(
+            "INVALID_INPUT",
+            "The book is unavailable or belongs to another library."
+          ),
+          409
+        );
+      }
+
+      const collection = await withDatabase((database) =>
+        findCollectionDetail(
+          database,
+          requireUserId(c),
+          libraryId,
+          collectionId
+        )
+      );
+      return c.json(
+        collectionDetailSchema.parse({
+          ...toCollectionResponse(collection as CollectionRecord),
+          books: collection?.books ?? []
+        }),
+        result === "added" ? 201 : 200
+      );
+    }
+  );
+
+  app.delete(
+    "/api/libraries/:libraryId/collections/:collectionId/books/:bookId",
+    async (c) => {
+      const removed = await withDatabase((database) =>
+        removeBookFromCollection(
+          database,
+          requireUserId(c),
+          c.req.param("libraryId"),
+          c.req.param("collectionId"),
+          c.req.param("bookId")
+        )
+      );
+
+      return removed
+        ? c.body(null, 204)
+        : c.json(
+            createApiError("NOT_FOUND", "Collection book not found."),
+            404
+          );
+    }
+  );
+
+  app.patch(
+    "/api/libraries/:libraryId/collections/:collectionId/books/order",
+    zValidator("json", collectionBookOrderRequestSchema, invalidInputHook),
+    async (c) => {
+      const result = await withDatabase((database) =>
+        reorderCollectionBooks(
+          database,
+          requireUserId(c),
+          c.req.param("libraryId"),
+          c.req.param("collectionId"),
+          c.req.valid("json").bookIds
+        )
+      );
+
+      if (result === "not-found") {
+        return c.json(
+          createApiError("NOT_FOUND", "Collection not found."),
+          404
+        );
+      }
+
+      if (result === "order-mismatch") {
+        return c.json(
+          createApiError(
+            "INVALID_INPUT",
+            "Collection members changed before the order was saved."
+          ),
+          409
+        );
+      }
+
+      const collection = await withDatabase((database) =>
+        findCollectionDetail(
+          database,
+          requireUserId(c),
+          c.req.param("libraryId"),
+          c.req.param("collectionId")
+        )
+      );
+      return c.json(
+        collectionDetailSchema.parse({
+          ...toCollectionResponse(collection as CollectionRecord),
+          books: collection?.books ?? []
+        })
+      );
+    }
+  );
+
   app.get("/api/libraries/:libraryId/books/archived", async (c) => {
     const query = bookListQuerySchema.safeParse(c.req.query());
 
@@ -606,7 +849,9 @@ export const createApp = (options: AppOptions = {}) => {
           archived: true,
           offset: query.data.offset,
           limit: query.data.limit,
-          userId: requireUserId(c)
+          userId: requireUserId(c),
+          sort: query.data.sort,
+          order: query.data.order
         })
     );
 
@@ -635,7 +880,9 @@ export const createApp = (options: AppOptions = {}) => {
           bookStatus: query.data.bookStatus,
           offset: query.data.offset,
           limit: query.data.limit,
-          userId: requireUserId(c)
+          userId: requireUserId(c),
+          sort: query.data.sort,
+          order: query.data.order
         })
     );
 
@@ -1043,6 +1290,18 @@ const toLibraryResponse = (library: LibraryRecord) => ({
 });
 
 /**
+ * Converts a user-owned collection without exposing its user identifier.
+ */
+const toCollectionResponse = (collection: CollectionRecord) => ({
+  id: collection.id,
+  libraryId: collection.libraryId,
+  name: collection.name,
+  bookCount: collection.bookCount,
+  createdAt: collection.createdAt.toISOString(),
+  updatedAt: collection.updatedAt.toISOString()
+});
+
+/**
  * Converts a background job to its API representation.
  */
 const toJobResponse = (job: JobRecord) => ({
@@ -1308,6 +1567,31 @@ const handleLibraryDomainError = (
       createApiError(
         "LIBRARY_PATH_CONFLICT",
         "Library path overlaps another library."
+      ),
+      409
+    );
+  }
+
+  throw error;
+};
+
+/**
+ * Maps collection name conflicts to a stable API response.
+ */
+const handleCollectionDomainError = (
+  context: Context,
+  error: unknown
+): Response => {
+  const code =
+    error instanceof Error && "code" in error
+      ? (error as BookCafeDomainError).code
+      : null;
+
+  if (code === "COLLECTION_NAME_CONFLICT") {
+    return context.json(
+      createApiError(
+        "COLLECTION_NAME_CONFLICT",
+        "A collection with the same name already exists."
       ),
       409
     );

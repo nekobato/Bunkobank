@@ -17,6 +17,7 @@ describe("app navigation", () => {
     expect(appNavigationItems.map(({ label, to }) => ({ label, to }))).toEqual([
       { label: "ライブラリ", to: "/" },
       { label: "アーカイブ", to: "/archived" },
+      { label: "コレクション", to: "/collections" },
       { label: "設定", to: "/setup" }
     ]);
   });
@@ -36,7 +37,7 @@ describe("app navigation", () => {
   });
 
   it("selects setup only within the setup route", () => {
-    const setupItem = appNavigationItems[2];
+    const setupItem = appNavigationItems[3];
 
     expect(isAppNavigationItemActive(setupItem, "/setup", "")).toBe(true);
     expect(isAppNavigationItemActive(setupItem, "/login", "")).toBe(false);

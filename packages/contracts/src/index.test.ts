@@ -5,6 +5,9 @@ import {
   backgroundJobSchema,
   bookDetailSchema,
   bookListQuerySchema,
+  collectionBookOrderRequestSchema,
+  collectionCreateRequestSchema,
+  collectionDetailSchema,
   initialSetupRequestSchema,
   libraryCreateRequestSchema,
   librarySchema,
@@ -184,6 +187,34 @@ describe("library schemas", () => {
   });
 });
 
+describe("collection schemas", () => {
+  it("describes library-scoped manual collections and bounded order updates", () => {
+    expect(
+      collectionCreateRequestSchema.parse({ name: " Favorites " })
+    ).toEqual({ name: "Favorites" });
+    expect(
+      collectionBookOrderRequestSchema.parse({
+        bookIds: ["book-2", "book-1"]
+      })
+    ).toEqual({ bookIds: ["book-2", "book-1"] });
+    expect(
+      collectionDetailSchema.parse({
+        id: "collection-1",
+        libraryId: "library-1",
+        name: "Favorites",
+        bookCount: 0,
+        books: [],
+        createdAt: "2026-07-30T00:00:00.000Z",
+        updatedAt: "2026-07-30T00:00:00.000Z"
+      })
+    ).toMatchObject({
+      libraryId: "library-1",
+      name: "Favorites",
+      books: []
+    });
+  });
+});
+
 describe("bookListQuerySchema", () => {
   it("accepts optional reading and book status filters", () => {
     expect(
@@ -196,6 +227,8 @@ describe("bookListQuerySchema", () => {
       q: "manga",
       readingStatus: "finished",
       bookStatus: "missing",
+      sort: "title",
+      order: "asc",
       offset: 0,
       limit: 100
     });
@@ -212,6 +245,8 @@ describe("bookListQuerySchema", () => {
       q: "",
       readingStatus: undefined,
       bookStatus: undefined,
+      sort: "title",
+      order: "asc",
       offset: 0,
       limit: 100
     });
@@ -221,6 +256,8 @@ describe("bookListQuerySchema", () => {
     expect(bookListQuerySchema.parse({ offset: "100", limit: "50" })).toEqual({
       readingStatus: undefined,
       bookStatus: undefined,
+      sort: "title",
+      order: "asc",
       offset: 100,
       limit: 50
     });

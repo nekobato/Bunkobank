@@ -169,6 +169,135 @@ describe("single database Hono app", () => {
     ).toHaveLength(5);
   });
 
+  it("keeps manual collections user-owned and inside one library", async () => {
+    const fixture = createFixture();
+    const app = createApp(fixture);
+    await initializeUser(app);
+    const cookie = await signInUser(app);
+    const firstRoot = join(fixture.directory, "first");
+    const secondRoot = join(fixture.directory, "second");
+    mkdirSync(firstRoot);
+    mkdirSync(secondRoot);
+    const firstLibrary = await createLibrary(app, cookie, {
+      name: "First",
+      rootPath: firstRoot
+    });
+    const secondLibrary = await createLibrary(app, cookie, {
+      name: "Second",
+      rootPath: secondRoot
+    });
+    const database = openBookCafeDatabase(
+      resolveStatePaths(fixture.stateDir).databasePath
+    );
+    const alpha = persistScannedBook(database, {
+      libraryId: firstLibrary.id,
+      relativePath: "Alpha",
+      title: "Alpha",
+      format: "image-folder",
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          sourceType: "file",
+          relativePath: "Alpha/001.jpg"
+        }
+      ]
+    });
+    const beta = persistScannedBook(database, {
+      libraryId: firstLibrary.id,
+      relativePath: "Beta",
+      title: "Beta",
+      format: "image-folder",
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          sourceType: "file",
+          relativePath: "Beta/001.jpg"
+        }
+      ]
+    });
+    const other = persistScannedBook(database, {
+      libraryId: secondLibrary.id,
+      relativePath: "Elsewhere",
+      title: "Elsewhere",
+      format: "image-folder",
+      pageCount: 1,
+      pages: [
+        {
+          pageNumber: 1,
+          sourceType: "file",
+          relativePath: "Elsewhere/001.jpg"
+        }
+      ]
+    });
+    closeDatabase(database);
+
+    const created = await app.request(
+      `/api/libraries/${firstLibrary.id}/collections`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ name: "Favorites" })
+      }
+    );
+    const collection = (await created.json()) as { id: string };
+    const addAlpha = await app.request(
+      `/api/libraries/${firstLibrary.id}/collections/${collection.id}/books`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ bookId: alpha.id })
+      }
+    );
+    await app.request(
+      `/api/libraries/${firstLibrary.id}/collections/${collection.id}/books`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ bookId: beta.id })
+      }
+    );
+    const crossLibrary = await app.request(
+      `/api/libraries/${firstLibrary.id}/collections/${collection.id}/books`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ bookId: other.id })
+      }
+    );
+    const reordered = await app.request(
+      `/api/libraries/${firstLibrary.id}/collections/${collection.id}/books/order`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Cookie: cookie },
+        body: JSON.stringify({ bookIds: [beta.id, alpha.id] })
+      }
+    );
+    await app.request(
+      `/api/libraries/${firstLibrary.id}/books/${beta.id}/archive`,
+      { method: "POST", headers: { Cookie: cookie } }
+    );
+    const hiddenArchived = await app.request(
+      `/api/libraries/${firstLibrary.id}/collections/${collection.id}`,
+      { headers: { Cookie: cookie } }
+    );
+
+    expect(created.status).toBe(201);
+    expect(addAlpha.status).toBe(201);
+    expect(crossLibrary.status).toBe(409);
+    expect(await reordered.json()).toMatchObject({
+      books: [
+        expect.objectContaining({ id: beta.id }),
+        expect.objectContaining({ id: alpha.id })
+      ]
+    });
+    expect(await hiddenArchived.json()).toMatchObject({
+      bookCount: 1,
+      books: [expect.objectContaining({ id: alpha.id })]
+    });
+  });
+
   it("returns the stable API error shape for invalid JSON input", async () => {
     const fixture = createFixture();
     const app = createApp(fixture);

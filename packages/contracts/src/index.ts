@@ -27,6 +27,15 @@ export const bookStatusSchema = z.enum([
 
 export const readingStatusSchema = z.enum(["unread", "reading", "finished"]);
 
+export const bookSortSchema = z.enum([
+  "title",
+  "purchasedAt",
+  "updatedAt",
+  "lastReadAt"
+]);
+
+export const sortOrderSchema = z.enum(["asc", "desc"]);
+
 export const readerModeSchema = z.enum(["paged", "vertical"]);
 
 export const readingDirectionSchema = z.enum(["rtl", "ltr"]);
@@ -81,6 +90,8 @@ export const bookListQuerySchema = z.object({
       typeof value === "string" && value.trim().length < 1 ? undefined : value,
     bookStatusSchema.optional()
   ),
+  sort: bookSortSchema.default("title"),
+  order: sortOrderSchema.default("asc"),
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(100)
 });
@@ -117,6 +128,7 @@ export const apiErrorCodeSchema = z.enum([
   "LIBRARY_BUSY",
   "LIBRARY_NAME_CONFLICT",
   "LIBRARY_PATH_CONFLICT",
+  "COLLECTION_NAME_CONFLICT",
   "NOT_FOUND",
   "UNAUTHORIZED",
   "INTERNAL_ERROR"
@@ -177,6 +189,37 @@ export const libraryUpdateRequestSchema = libraryCreateRequestSchema
 
 export const libraryListResponseSchema = z.object({
   libraries: z.array(librarySchema)
+});
+
+export const collectionSchema = z.object({
+  id: z.string(),
+  libraryId: z.string(),
+  name: z.string(),
+  bookCount: z.number().int().min(0),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
+export const collectionDetailSchema = collectionSchema.extend({
+  books: z.array(bookSummarySchema)
+});
+
+export const collectionListResponseSchema = z.object({
+  collections: z.array(collectionSchema)
+});
+
+export const collectionCreateRequestSchema = z.object({
+  name: z.string().trim().min(1).max(100)
+});
+
+export const collectionUpdateRequestSchema = collectionCreateRequestSchema;
+
+export const collectionBookCreateRequestSchema = z.object({
+  bookId: z.string().trim().min(1)
+});
+
+export const collectionBookOrderRequestSchema = z.object({
+  bookIds: z.array(z.string().trim().min(1)).max(10000)
 });
 
 export const libraryPreferenceSchema = z.object({
@@ -272,6 +315,8 @@ export const pageListResponseSchema = z.object({
 
 export type BookListResponse = z.infer<typeof bookListResponseSchema>;
 export type BookListQuery = z.input<typeof bookListQuerySchema>;
+export type BookSort = z.infer<typeof bookSortSchema>;
+export type SortOrder = z.infer<typeof sortOrderSchema>;
 export type BookDetailResponse = z.infer<typeof bookDetailSchema>;
 export type InitialSetupRequest = z.infer<typeof initialSetupRequestSchema>;
 export type SetupStatusResponse = z.infer<typeof setupStatusSchema>;
@@ -296,6 +341,23 @@ export type LibraryResponse = z.infer<typeof librarySchema>;
 export type LibraryCreateRequest = z.infer<typeof libraryCreateRequestSchema>;
 export type LibraryUpdateRequest = z.infer<typeof libraryUpdateRequestSchema>;
 export type LibraryListResponse = z.infer<typeof libraryListResponseSchema>;
+export type CollectionResponse = z.infer<typeof collectionSchema>;
+export type CollectionDetailResponse = z.infer<typeof collectionDetailSchema>;
+export type CollectionListResponse = z.infer<
+  typeof collectionListResponseSchema
+>;
+export type CollectionCreateRequest = z.infer<
+  typeof collectionCreateRequestSchema
+>;
+export type CollectionUpdateRequest = z.infer<
+  typeof collectionUpdateRequestSchema
+>;
+export type CollectionBookCreateRequest = z.infer<
+  typeof collectionBookCreateRequestSchema
+>;
+export type CollectionBookOrderRequest = z.infer<
+  typeof collectionBookOrderRequestSchema
+>;
 export type LibraryPreferenceResponse = z.infer<typeof libraryPreferenceSchema>;
 export type UpdateLibraryPreferenceRequest = z.infer<
   typeof updateLibraryPreferenceRequestSchema

@@ -24,6 +24,11 @@ export const appNavigationItems = [
     group: "browse"
   },
   {
+    label: "コレクション",
+    to: "/collections",
+    group: "browse"
+  },
+  {
     label: "設定",
     to: "/setup",
     group: "manage"

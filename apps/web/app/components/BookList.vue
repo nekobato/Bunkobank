@@ -7,15 +7,22 @@ import {
   isReadableBookStatus
 } from "../utils/bookAvailability";
 import { createBookCoverPlaceholder } from "../utils/bookCover";
+import {
+  getBookProgressPercent,
+  getBookProgressValue
+} from "../utils/bookProgress";
 
 const { mode = "normal", busyBookId = null } = defineProps<{
   books: BookSummary[];
-  mode?: "normal" | "archived";
+  mode?: "normal" | "archived" | "collection";
   busyBookId?: string | null;
 }>();
 const emit = defineEmits<{
   archive: [book: BookSummary];
   restore: [book: BookSummary];
+  moveUp: [book: BookSummary];
+  moveDown: [book: BookSummary];
+  remove: [book: BookSummary];
 }>();
 
 /**
@@ -33,7 +40,9 @@ const canReadBook = (book: BookSummary): boolean =>
  * Creates the reader route only when the source can be opened.
  */
 const getReadRoute = (book: BookSummary): string | undefined =>
-  mode === "normal" && canReadBook(book) ? `/books/${book.id}/read` : undefined;
+  mode !== "archived" && canReadBook(book)
+    ? `/books/${book.id}/read`
+    : undefined;
 
 /**
  * Formats the persisted reading status for library cards.
@@ -106,10 +115,20 @@ const getAvailabilityId = (book: BookSummary): string =>
   `book-${book.id}-availability`;
 
 /**
+ * Creates the visible and assistive reading-progress label for one book.
+ */
+const getProgressLabel = (book: BookSummary): string =>
+  `${book.title}の読書進捗: ${getBookProgressPercent(
+    book.readingStatus,
+    book.currentPage,
+    book.pageCount
+  )}%`;
+
+/**
  * Stops reader navigation while keeping unavailable read links discoverable.
  */
 const preventUnavailableRead = (event: Event, book: BookSummary): void => {
-  if (mode === "normal" && canReadBook(book)) {
+  if (mode !== "archived" && canReadBook(book)) {
     return;
   }
 
@@ -119,7 +138,7 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 
 <template>
   <ul class="book-list" aria-label="蔵書">
-    <li v-for="book in books" :key="book.id" class="item">
+    <li v-for="(book, index) in books" :key="book.id" class="item">
       <div
         class="book status-spine"
         :class="{
@@ -130,7 +149,7 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
         }"
       >
         <NuxtLink
-          v-if="mode === 'normal'"
+          v-if="mode !== 'archived'"
           class="cover-link"
           :class="{ 'is-disabled': !canReadBook(book) }"
           :to="getReadRoute(book)"
@@ -158,6 +177,18 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
                 <span>{{ getCoverPlaceholder(book).pageLabel }}</span>
               </span>
             </span>
+            <progress
+              class="reading-progress"
+              :max="book.pageCount"
+              :value="
+                getBookProgressValue(
+                  book.readingStatus,
+                  book.currentPage,
+                  book.pageCount
+                )
+              "
+              :aria-label="getProgressLabel(book)"
+            />
           </span>
         </NuxtLink>
         <span v-else class="cover-link">
@@ -176,11 +207,23 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
                 <span>{{ getCoverPlaceholder(book).pageLabel }}</span>
               </span>
             </span>
+            <progress
+              class="reading-progress"
+              :max="book.pageCount"
+              :value="
+                getBookProgressValue(
+                  book.readingStatus,
+                  book.currentPage,
+                  book.pageCount
+                )
+              "
+              :aria-label="getProgressLabel(book)"
+            />
           </span>
         </span>
         <div class="info">
           <NuxtLink
-            v-if="mode === 'normal'"
+            v-if="mode !== 'archived'"
             class="title"
             :class="{ 'is-disabled': !canReadBook(book) }"
             :to="getReadRoute(book)"
@@ -251,6 +294,46 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
               @click="emit('archive', book)"
             />
           </span>
+          <span v-else-if="mode === 'collection'" class="actions">
+            <NuxtLink
+              class="action"
+              :class="{ 'is-disabled': !canReadBook(book) }"
+              :to="getReadRoute(book)"
+              :aria-disabled="canReadBook(book) ? undefined : 'true'"
+              @click="preventUnavailableRead($event, book)"
+            >
+              読む
+            </NuxtLink>
+            <NuxtLink class="action" :to="`/books/${book.id}`">詳細</NuxtLink>
+            <Button
+              label="上へ"
+              icon="pi pi-arrow-up"
+              size="small"
+              severity="secondary"
+              variant="text"
+              :disabled="index === 0 || busyBookId !== null"
+              @click="emit('moveUp', book)"
+            />
+            <Button
+              label="下へ"
+              icon="pi pi-arrow-down"
+              size="small"
+              severity="secondary"
+              variant="text"
+              :disabled="index === books.length - 1 || busyBookId !== null"
+              @click="emit('moveDown', book)"
+            />
+            <Button
+              label="外す"
+              icon="pi pi-times"
+              size="small"
+              severity="danger"
+              variant="text"
+              :loading="busyBookId === book.id"
+              :disabled="busyBookId !== null && busyBookId !== book.id"
+              @click="emit('remove', book)"
+            />
+          </span>
           <span v-else class="actions">
             <Button
               label="元に戻す"
@@ -304,12 +387,38 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 }
 
 .cover {
+  position: relative;
   display: grid;
   aspect-ratio: 2 / 3;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 0.55rem;
   background: var(--panel);
+}
+
+.reading-progress {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  inline-size: 100%;
+  block-size: 0.38rem;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+  background: color-mix(in oklab, var(--bc-line-soft) 78%, transparent);
+}
+
+.reading-progress::-webkit-progress-bar {
+  background: color-mix(in oklab, var(--bc-line-soft) 78%, transparent);
+}
+
+.reading-progress::-webkit-progress-value {
+  background: var(--bc-ink-blue);
+}
+
+.reading-progress::-moz-progress-bar {
+  background: var(--bc-ink-blue);
 }
 
 .cover img {

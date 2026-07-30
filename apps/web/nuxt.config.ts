@@ -3,7 +3,6 @@ import { shelfmarkJapaneseLocale, webShelfmarkTheme } from "@bookcafe/ui";
 export default defineNuxtConfig({
   app: {
     head: {
-      title: "BookCafe",
       meta: [{ name: "theme-color", content: "#EEF2F2" }],
       htmlAttrs: {
         lang: "ja"

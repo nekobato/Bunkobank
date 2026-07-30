@@ -83,6 +83,11 @@ const errorMessage = computed(() =>
     getApiErrorMessage(error.value, "書籍を読み込めませんでした。")
   )
 );
+
+useHead({
+  title: () => data.value?.title ?? "書籍詳細"
+});
+
 const metadataFieldTargets: Record<string, string> = {
   title: "book-title",
   authors: "book-authors",

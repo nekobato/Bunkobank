@@ -3,6 +3,10 @@
 
 import { isReaderRoute } from "./utils/appNavigation";
 
+useHead({
+  titleTemplate: (title) => (title ? `BookCafe - ${title}` : "BookCafe")
+});
+
 const route = useRoute();
 const isNavigationOpen = ref(false);
 const { session, signOut } = useBookAuth();

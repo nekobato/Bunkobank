@@ -24,6 +24,10 @@ export type JobStatus =
 
 export type JobType = "scan-library";
 
+export type BookSort = "title" | "purchasedAt" | "updatedAt" | "lastReadAt";
+
+export type SortOrder = "asc" | "desc";
+
 export type CancelJobResult = "cancelled" | "not-found" | "not-cancellable";
 
 export type BookPageSourceType =
@@ -41,6 +45,25 @@ export interface LibraryRecord {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface CollectionRecord {
+  id: string;
+  libraryId: string;
+  name: string;
+  bookCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CollectionDetailRecord extends CollectionRecord {
+  books: BookSummary[];
+}
+
+export type AddCollectionBookResult =
+  "added" | "already-present" | "book-unavailable" | "not-found";
+
+export type ReorderCollectionBooksResult =
+  "updated" | "order-mismatch" | "not-found";
 
 export interface CreateLibraryInput {
   name: string;
@@ -178,6 +201,8 @@ export interface ListBookSummaryPageOptions {
   offset?: number;
   limit?: number;
   userId?: string;
+  sort?: BookSort;
+  order?: SortOrder;
 }
 
 export interface BookSummaryPage {
@@ -204,6 +229,7 @@ export interface BookCafeDomainError extends Error {
     | "LEGACY_DATABASE_UNSUPPORTED"
     | "LIBRARY_NAME_CONFLICT"
     | "LIBRARY_PATH_CONFLICT"
+    | "COLLECTION_NAME_CONFLICT"
     | "INVALID_RELATIVE_PATH";
 }
 
@@ -286,6 +312,15 @@ interface ScanFailureRow {
   format: string;
   code: string;
   created_at: number;
+}
+
+interface CollectionRow {
+  id: string;
+  library_id: string;
+  name: string;
+  book_count: number;
+  created_at: number;
+  updated_at: number;
 }
 
 /**
@@ -470,6 +505,25 @@ export const migrateDatabase = (database: BookCafeDatabase): void => {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS collections (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+      library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+      name TEXT NOT NULL COLLATE NOCASE,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE (user_id, library_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS collection_books (
+      collection_id TEXT NOT NULL
+        REFERENCES collections(id) ON DELETE CASCADE,
+      book_id TEXT NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL CHECK (position >= 0),
+      added_at INTEGER NOT NULL,
+      PRIMARY KEY (collection_id, book_id)
+    );
+
     CREATE INDEX IF NOT EXISTS books_library_id_idx
       ON books(library_id);
     CREATE INDEX IF NOT EXISTS books_library_archive_idx
@@ -484,6 +538,12 @@ export const migrateDatabase = (database: BookCafeDatabase): void => {
       ON jobs(library_id, status);
     CREATE INDEX IF NOT EXISTS scan_failures_job_path_idx
       ON scan_failures(job_id, relative_path, kind);
+    CREATE INDEX IF NOT EXISTS collections_user_library_idx
+      ON collections(user_id, library_id, name);
+    CREATE INDEX IF NOT EXISTS collection_books_order_idx
+      ON collection_books(collection_id, position);
+    CREATE INDEX IF NOT EXISTS collection_books_book_idx
+      ON collection_books(book_id);
   `);
 
   addColumnIfMissing(database, "books", "last_seen_scan_id", "TEXT");
@@ -654,6 +714,359 @@ export const deleteLibrary = (
     status: "deleted",
     thumbnailPaths: transaction.immediate()
   };
+};
+
+/**
+ * Creates a user-owned collection inside one library.
+ */
+export const createCollection = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  name: string
+): CollectionRecord => {
+  const normalizedName = normalizeRequiredText(name);
+  assertCollectionNameAvailable(database, userId, libraryId, normalizedName);
+  const id = randomUUID();
+  const now = Date.now();
+
+  database.sqlite
+    .prepare(
+      `INSERT INTO collections (
+        id,
+        user_id,
+        library_id,
+        name,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .run(id, userId, libraryId, normalizedName, now, now);
+
+  return findCollection(database, userId, libraryId, id) as CollectionRecord;
+};
+
+/**
+ * Lists the current user's collections for one selected library.
+ */
+export const listCollections = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string
+): CollectionRecord[] =>
+  (
+    database.sqlite
+      .prepare(
+        `SELECT
+          collections.*,
+          COUNT(
+            CASE
+              WHEN books.archived_at IS NULL AND books.status <> 'missing'
+              THEN 1
+            END
+          ) AS book_count
+         FROM collections
+         LEFT JOIN collection_books
+           ON collection_books.collection_id = collections.id
+         LEFT JOIN books ON books.id = collection_books.book_id
+         WHERE collections.user_id = ? AND collections.library_id = ?
+         GROUP BY collections.id
+         ORDER BY collections.name COLLATE NOCASE, collections.id`
+      )
+      .all(userId, libraryId) as CollectionRow[]
+  ).map(toCollectionRecord);
+
+/**
+ * Finds one collection only inside its user and library ownership boundary.
+ */
+export const findCollection = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string
+): CollectionRecord | null => {
+  const row = database.sqlite
+    .prepare(
+      `SELECT
+        collections.*,
+        COUNT(
+          CASE
+            WHEN books.archived_at IS NULL AND books.status <> 'missing'
+            THEN 1
+          END
+        ) AS book_count
+       FROM collections
+       LEFT JOIN collection_books
+         ON collection_books.collection_id = collections.id
+       LEFT JOIN books ON books.id = collection_books.book_id
+       WHERE collections.id = ?
+         AND collections.user_id = ?
+         AND collections.library_id = ?
+       GROUP BY collections.id`
+    )
+    .get(collectionId, userId, libraryId) as CollectionRow | undefined;
+
+  return row ? toCollectionRecord(row) : null;
+};
+
+/**
+ * Returns a collection with only currently visible member books.
+ */
+export const findCollectionDetail = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string
+): CollectionDetailRecord | null => {
+  const collection = findCollection(database, userId, libraryId, collectionId);
+
+  if (!collection) {
+    return null;
+  }
+
+  const rows = database.sqlite
+    .prepare(
+      `SELECT books.*
+       FROM collection_books
+       INNER JOIN books ON books.id = collection_books.book_id
+       WHERE collection_books.collection_id = ?
+         AND books.library_id = ?
+         AND books.archived_at IS NULL
+         AND books.status <> 'missing'
+       ORDER BY collection_books.position, collection_books.added_at, books.id`
+    )
+    .all(collectionId, libraryId) as BookRow[];
+
+  return {
+    ...collection,
+    books: rows.map((row) => toBookSummary(database, row, userId))
+  };
+};
+
+/**
+ * Renames one user-owned collection.
+ */
+export const updateCollection = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string,
+  name: string
+): CollectionRecord | null => {
+  const existing = findCollection(database, userId, libraryId, collectionId);
+
+  if (!existing) {
+    return null;
+  }
+
+  const normalizedName = normalizeRequiredText(name);
+  assertCollectionNameAvailable(
+    database,
+    userId,
+    libraryId,
+    normalizedName,
+    collectionId
+  );
+  database.sqlite
+    .prepare(
+      `UPDATE collections
+       SET name = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND library_id = ?`
+    )
+    .run(normalizedName, Date.now(), collectionId, userId, libraryId);
+
+  return findCollection(database, userId, libraryId, collectionId);
+};
+
+/**
+ * Deletes one collection without changing its source books.
+ */
+export const deleteCollection = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string
+): boolean =>
+  database.sqlite
+    .prepare(
+      `DELETE FROM collections
+       WHERE id = ? AND user_id = ? AND library_id = ?`
+    )
+    .run(collectionId, userId, libraryId).changes > 0;
+
+/**
+ * Adds one available, same-library book at the end of a collection.
+ */
+export const addBookToCollection = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string,
+  bookId: string
+): AddCollectionBookResult => {
+  if (!findCollection(database, userId, libraryId, collectionId)) {
+    return "not-found";
+  }
+
+  const book = database.sqlite
+    .prepare(
+      `SELECT id
+       FROM books
+       WHERE id = ?
+         AND library_id = ?
+         AND archived_at IS NULL
+         AND status <> 'missing'`
+    )
+    .get(bookId, libraryId) as { id: string } | undefined;
+
+  if (!book) {
+    return "book-unavailable";
+  }
+
+  const existing = database.sqlite
+    .prepare(
+      `SELECT 1
+       FROM collection_books
+       WHERE collection_id = ? AND book_id = ?`
+    )
+    .get(collectionId, bookId);
+
+  if (existing) {
+    return "already-present";
+  }
+
+  const transaction = database.sqlite.transaction(() => {
+    const last = database.sqlite
+      .prepare(
+        `SELECT COALESCE(MAX(position), -1) AS position
+         FROM collection_books
+         WHERE collection_id = ?`
+      )
+      .get(collectionId) as { position: number };
+    const now = Date.now();
+
+    database.sqlite
+      .prepare(
+        `INSERT INTO collection_books (
+          collection_id,
+          book_id,
+          position,
+          added_at
+        ) VALUES (?, ?, ?, ?)`
+      )
+      .run(collectionId, bookId, last.position + 1, now);
+    database.sqlite
+      .prepare("UPDATE collections SET updated_at = ? WHERE id = ?")
+      .run(now, collectionId);
+  });
+
+  transaction.immediate();
+  return "added";
+};
+
+/**
+ * Removes one book membership and compacts the remaining manual order.
+ */
+export const removeBookFromCollection = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string,
+  bookId: string
+): boolean => {
+  if (!findCollection(database, userId, libraryId, collectionId)) {
+    return false;
+  }
+
+  const transaction = database.sqlite.transaction(() => {
+    const removed = database.sqlite
+      .prepare(
+        `DELETE FROM collection_books
+         WHERE collection_id = ? AND book_id = ?`
+      )
+      .run(collectionId, bookId);
+
+    if (removed.changes < 1) {
+      return false;
+    }
+
+    compactCollectionBookPositions(database, collectionId);
+    database.sqlite
+      .prepare("UPDATE collections SET updated_at = ? WHERE id = ?")
+      .run(Date.now(), collectionId);
+    return true;
+  });
+
+  return transaction.immediate();
+};
+
+/**
+ * Replaces the visible member order while retaining hidden memberships.
+ */
+export const reorderCollectionBooks = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  collectionId: string,
+  bookIds: readonly string[]
+): ReorderCollectionBooksResult => {
+  if (!findCollection(database, userId, libraryId, collectionId)) {
+    return "not-found";
+  }
+
+  const rows = database.sqlite
+    .prepare(
+      `SELECT
+        collection_books.book_id,
+        books.archived_at,
+        books.status
+       FROM collection_books
+       INNER JOIN books ON books.id = collection_books.book_id
+       WHERE collection_books.collection_id = ?
+       ORDER BY collection_books.position, collection_books.added_at`
+    )
+    .all(collectionId) as Array<{
+    book_id: string;
+    archived_at: number | null;
+    status: string;
+  }>;
+  const visibleBookIds = rows
+    .filter(
+      ({ archived_at, status }) => archived_at === null && status !== "missing"
+    )
+    .map(({ book_id }) => book_id);
+  const requestedIds = new Set(bookIds);
+
+  if (
+    requestedIds.size !== bookIds.length ||
+    bookIds.length !== visibleBookIds.length ||
+    visibleBookIds.some((bookId) => !requestedIds.has(bookId))
+  ) {
+    return "order-mismatch";
+  }
+
+  const hiddenBookIds = rows
+    .filter(
+      ({ archived_at, status }) => archived_at !== null || status === "missing"
+    )
+    .map(({ book_id }) => book_id);
+  const transaction = database.sqlite.transaction(() => {
+    const updatePosition = database.sqlite.prepare(
+      `UPDATE collection_books
+       SET position = ?
+       WHERE collection_id = ? AND book_id = ?`
+    );
+
+    [...bookIds, ...hiddenBookIds].forEach((bookId, position) =>
+      updatePosition.run(position, collectionId, bookId)
+    );
+    database.sqlite
+      .prepare("UPDATE collections SET updated_at = ? WHERE id = ?")
+      .run(Date.now(), collectionId);
+  });
+
+  transaction.immediate();
+  return "updated";
 };
 
 /**
@@ -905,47 +1318,57 @@ export const listBookSummaryPage = (
   const offset = Math.max(Math.trunc(options.offset ?? 0), 0);
   const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 100);
   const conditions = [
-    "library_id = @libraryId",
-    `archived_at IS ${options.archived ? "NOT NULL" : "NULL"}`
+    "books.library_id = @libraryId",
+    `books.archived_at IS ${options.archived ? "NOT NULL" : "NULL"}`
   ];
-  const parameters: Record<string, string | number> = { libraryId };
+  const parameters: Record<string, string | number> = {
+    libraryId,
+    userId: options.userId ?? ""
+  };
   const normalizedQuery = options.query?.trim() ?? "";
 
   if (normalizedQuery) {
     conditions.push(
       `(
-        title LIKE @query
-        OR authors_json LIKE @query
-        OR publisher LIKE @query
-        OR isbn LIKE @query
-        OR tags_json LIKE @query
-        OR notes LIKE @query
-        OR relative_path LIKE @query
+        books.title LIKE @query
+        OR books.authors_json LIKE @query
+        OR books.publisher LIKE @query
+        OR books.isbn LIKE @query
+        OR books.tags_json LIKE @query
+        OR books.notes LIKE @query
+        OR books.relative_path LIKE @query
       )`
     );
     parameters.query = `%${normalizedQuery}%`;
   }
 
   if (options.readingStatus) {
-    conditions.push("reading_status = @readingStatus");
+    conditions.push("books.reading_status = @readingStatus");
     parameters.readingStatus = options.readingStatus;
   }
 
   if (options.bookStatus) {
-    conditions.push("status = @bookStatus");
+    conditions.push("books.status = @bookStatus");
     parameters.bookStatus = options.bookStatus;
   }
 
   const whereClause = conditions.join("\n AND ");
+  const fromClause = `books
+    LEFT JOIN reading_progress AS progress
+      ON progress.book_id = books.id AND progress.user_id = @userId`;
+  const orderClause = getBookOrderClause(
+    options.sort ?? "title",
+    options.order ?? "asc"
+  );
   const totalRow = database.sqlite
-    .prepare(`SELECT COUNT(*) AS total FROM books WHERE ${whereClause}`)
+    .prepare(`SELECT COUNT(*) AS total FROM ${fromClause} WHERE ${whereClause}`)
     .get(parameters) as { total: number };
   const rows = database.sqlite
     .prepare(
-      `SELECT *
-       FROM books
+      `SELECT books.*
+       FROM ${fromClause}
        WHERE ${whereClause}
-       ORDER BY title COLLATE NOCASE, relative_path
+       ORDER BY ${orderClause}
        LIMIT @limit OFFSET @offset`
     )
     .all({ ...parameters, limit, offset }) as BookRow[];
@@ -1679,6 +2102,68 @@ const assertLibraryNameAvailable = (
 };
 
 /**
+ * Rejects duplicate collection names inside one user's selected library.
+ */
+const assertCollectionNameAvailable = (
+  database: BookCafeDatabase,
+  userId: string,
+  libraryId: string,
+  name: string,
+  ignoredCollectionId?: string
+): void => {
+  const row = database.sqlite
+    .prepare(
+      `SELECT id
+       FROM collections
+       WHERE user_id = ?
+         AND library_id = ?
+         AND name = ? COLLATE NOCASE
+         AND (? IS NULL OR id <> ?)
+       LIMIT 1`
+    )
+    .get(
+      userId,
+      libraryId,
+      name,
+      ignoredCollectionId ?? null,
+      ignoredCollectionId ?? null
+    );
+
+  if (row) {
+    throw createDomainError(
+      "COLLECTION_NAME_CONFLICT",
+      "A collection with the same name already exists."
+    );
+  }
+};
+
+/**
+ * Rewrites one collection's positions to a contiguous zero-based sequence.
+ */
+const compactCollectionBookPositions = (
+  database: BookCafeDatabase,
+  collectionId: string
+): void => {
+  const rows = database.sqlite
+    .prepare(
+      `SELECT book_id
+       FROM collection_books
+       WHERE collection_id = ?
+       ORDER BY position, added_at, book_id`
+    )
+    .all(collectionId) as Array<{ book_id: string }>;
+  const updatePosition = database.sqlite.prepare(
+    `UPDATE collection_books
+     SET position = ?
+     WHERE collection_id = ? AND book_id = ?`
+  );
+
+  rows.forEach(({ book_id }, position) =>
+    updatePosition.run(position, collectionId, book_id)
+  );
+};
+
+/**
  * Rejects duplicate, parent, and child canonical roots.
  */
 const assertLibraryPathAvailable = (
@@ -1878,6 +2363,32 @@ const listBookRows = (
     .all(libraryId) as BookRow[];
 
 /**
+ * Maps validated sort options to a stable SQL ordering for offset pagination.
+ */
+const getBookOrderClause = (sort: BookSort, order: SortOrder): string => {
+  const direction = order === "desc" ? "DESC" : "ASC";
+
+  switch (sort) {
+    case "purchasedAt":
+      return `books.purchased_at IS NULL,
+        books.purchased_at ${direction},
+        books.title COLLATE NOCASE ASC,
+        books.id ASC`;
+    case "updatedAt":
+      return `books.updated_at ${direction}, books.id ${direction}`;
+    case "lastReadAt":
+      return `progress.updated_at IS NULL,
+        progress.updated_at ${direction},
+        books.title COLLATE NOCASE ASC,
+        books.id ASC`;
+    default:
+      return `books.title COLLATE NOCASE ${direction},
+        books.relative_path COLLATE NOCASE ${direction},
+        books.id ${direction}`;
+  }
+};
+
+/**
  * Reads one user's saved position or defaults to page one.
  */
 const getCurrentPage = (
@@ -1906,6 +2417,18 @@ const toLibraryRecord = (row: LibraryRow): LibraryRecord => ({
   name: row.name,
   rootPath: row.root_path,
   canonicalRootPath: row.canonical_root_path,
+  createdAt: new Date(row.created_at),
+  updatedAt: new Date(row.updated_at)
+});
+
+/**
+ * Converts an aggregate collection row into the domain record.
+ */
+const toCollectionRecord = (row: CollectionRow): CollectionRecord => ({
+  id: row.id,
+  libraryId: row.library_id,
+  name: row.name,
+  bookCount: row.book_count,
   createdAt: new Date(row.created_at),
   updatedAt: new Date(row.updated_at)
 });

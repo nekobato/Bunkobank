@@ -17,6 +17,7 @@ const localizedApiErrors: Record<ApiErrorCode, string> = {
   LIBRARY_BUSY: "ライブラリを処理中です。",
   LIBRARY_NAME_CONFLICT: "同じ名前のライブラリがあります。",
   LIBRARY_PATH_CONFLICT: "対象ディレクトリが別のライブラリと重複しています。",
+  COLLECTION_NAME_CONFLICT: "同じ名前のコレクションがあります。",
   NOT_FOUND: "対象が見つかりません。",
   UNAUTHORIZED: "ログインが必要です。",
   INTERNAL_ERROR: "サーバーエラーが発生しました。"

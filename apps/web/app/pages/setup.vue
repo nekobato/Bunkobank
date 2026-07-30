@@ -16,6 +16,8 @@ import {
   focusFormErrorSummary
 } from "../utils/formValidation";
 
+useHead({ title: "設定" });
+
 const {
   apiBase,
   createInitialSetup,

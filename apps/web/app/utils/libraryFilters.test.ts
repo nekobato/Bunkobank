@@ -4,10 +4,12 @@ import {
   areLibraryFiltersEqual,
   createLibraryQuery,
   formatLibraryResultSummary,
+  getRouteBookSort,
   getRouteBookStatus,
   getRoutePage,
   getRouteReadingStatus,
-  getRouteSearch
+  getRouteSearch,
+  getRouteSortOrder
 } from "./libraryFilters";
 
 describe("library filter helpers", () => {
@@ -29,6 +31,13 @@ describe("library filter helpers", () => {
     expect(getRouteBookStatus("archived")).toBe("");
   });
 
+  it("reads only supported sort query values", () => {
+    expect(getRouteBookSort("lastReadAt")).toBe("lastReadAt");
+    expect(getRouteBookSort("unknown")).toBe("title");
+    expect(getRouteSortOrder("desc")).toBe("desc");
+    expect(getRouteSortOrder("sideways")).toBe("asc");
+  });
+
   it("reads only positive one-based page numbers", () => {
     expect(getRoutePage("2")).toBe(2);
     expect(getRoutePage(["3"])).toBe(3);
@@ -47,6 +56,10 @@ describe("library filter helpers", () => {
     expect(createLibraryQuery("manga", "", "", 2)).toEqual({
       q: "manga",
       page: "2"
+    });
+    expect(createLibraryQuery("", "", "", 1, "lastReadAt", "desc")).toEqual({
+      sort: "lastReadAt",
+      order: "desc"
     });
   });
 

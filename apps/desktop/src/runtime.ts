@@ -93,6 +93,7 @@ export interface TauriDesktopRuntime {
   ) => Promise<ManagedServerSpawnResult>;
   stopManagedServer: (pid: number) => Promise<void>;
   openUrl: (url: string) => Promise<void>;
+  openLogDirectory: () => Promise<void>;
   readMacLaunchAgentPlist: () => Promise<string | null>;
   installMacLaunchAgent: (plist: string) => Promise<void>;
   removeMacLaunchAgent: () => Promise<void>;
@@ -191,6 +192,7 @@ export const createTauriDesktopRuntime = (
     spawnManagedServer,
     stopManagedServer,
     openUrl: bindings.openUrl,
+    openLogDirectory: () => bindings.invoke("open_log_directory"),
     readMacLaunchAgentPlist: () =>
       bindings.invoke("read_mac_launch_agent_plist"),
     installMacLaunchAgent: (plist) =>

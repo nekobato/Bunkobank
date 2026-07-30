@@ -10,6 +10,8 @@ import type { BookSummary } from "@bookcafe/core";
 import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import { BOOK_LIST_PAGE_SIZE, getRoutePage } from "../utils/libraryFilters";
 
+useHead({ title: "アーカイブ" });
+
 const route = useRoute();
 const { listArchivedBooks, restoreBook } = useBookApi();
 const {

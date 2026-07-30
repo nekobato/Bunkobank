@@ -186,6 +186,24 @@ describe("desktop manager controller", () => {
     expect(runtime.openUrl).toHaveBeenCalledWith("http://127.0.0.1:4510/setup");
   });
 
+  it("opens only the runtime-owned log directory after initialization", async () => {
+    const runtime = createRuntime();
+    const manager = createDesktopManagerController({
+      runtime,
+      readServerStatus: vi.fn(async () => createStatus("unreachable")),
+      readSetupStatus: vi.fn(),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await expect(manager.openLogDirectory()).resolves.toBe(false);
+    await manager.initialize();
+    await expect(manager.openLogDirectory()).resolves.toBe(true);
+
+    expect(runtime.openLogDirectory).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps background health probes silent", async () => {
     const readSetupStatus = vi.fn(async () => ({
       url: "http://127.0.0.1:4510/api/setup/status",
@@ -593,6 +611,7 @@ const createRuntime = (
   spawnManagedServer: vi.fn(async () => ({ pid: 4312 })),
   stopManagedServer: vi.fn(async () => undefined),
   openUrl: vi.fn(async () => undefined),
+  openLogDirectory: vi.fn(async () => undefined),
   readMacLaunchAgentPlist: vi.fn(async () => null),
   installMacLaunchAgent: vi.fn(async () => undefined),
   removeMacLaunchAgent: vi.fn(async () => undefined),

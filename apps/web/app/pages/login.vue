@@ -7,6 +7,8 @@ import {
   focusFormErrorSummary
 } from "../utils/formValidation";
 
+useHead({ title: "ログイン" });
+
 const route = useRoute();
 const { apiBase } = useBookApi();
 const { session, signInWithUsername } = useBookAuth();
@@ -200,117 +202,6 @@ const submitLogin = async (): Promise<void> => {
 <style scoped>
 .login {
   display: grid;
-  place-items: start center;
-  min-height: calc(100dvh - var(--app-topbar-height, 4rem));
-  padding: clamp(1rem, 4vw, 2rem);
-}
-
-.panel {
-  display: grid;
-  gap: 1rem;
-  width: min(420px, 100%);
-}
-
-.form {
-  display: grid;
-  gap: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-}
-
-.error-summary {
-  display: grid;
-  gap: 0.35rem;
-  border-inline-start: 0.3rem solid var(--bc-danger);
-  padding: 0.75rem 1rem;
-  color: var(--bc-danger);
-  background: color-mix(in oklab, var(--bc-danger) 8%, var(--bc-panel));
-}
-
-.error-summary:focus {
-  outline: 2px solid var(--bc-danger);
-  outline-offset: 2px;
-}
-
-.error-summary a {
-  color: inherit;
-}
-
-.field small {
-  color: var(--bc-danger);
-}
-
-.field {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.field span,
-.toggle {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.field input {
-  min-height: 2.5rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.toggle input {
-  width: 1rem;
-  height: 1rem;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.actions button {
-  min-height: 2.5rem;
-  padding: 0 1rem;
-  border: 0;
-  border-radius: 6px;
-  color: #fff;
-  background: var(--accent);
-  cursor: pointer;
-}
-
-.actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.actions a {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.message {
-  margin: 0;
-  color: var(--muted);
-}
-
-.is-error {
-  color: var(--danger);
-}
-</style>
-
-<style scoped>
-.login {
-  display: grid;
   grid-template-columns: minmax(12rem, 0.75fr) minmax(20rem, 1fr);
   place-items: center;
   gap: clamp(2rem, 8vw, 7rem);
@@ -372,15 +263,44 @@ const submitLogin = async (): Promise<void> => {
 }
 
 .form {
+  display: grid;
+  gap: 1rem;
   padding: 0;
   border: 0;
   background: transparent;
+}
+
+.error-summary {
+  display: grid;
+  gap: 0.35rem;
+  border-inline-start: 0.3rem solid var(--bc-danger);
+  padding: 0.75rem 1rem;
+  color: var(--bc-danger);
+  background: color-mix(in oklab, var(--bc-danger) 8%, var(--bc-panel));
+}
+
+.error-summary:focus {
+  outline: 2px solid var(--bc-danger);
+  outline-offset: 2px;
+}
+
+.error-summary a {
+  color: inherit;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .field label {
   color: var(--bc-ink);
   font-size: 0.84rem;
   font-weight: 750;
+}
+
+.field small {
+  color: var(--bc-danger);
 }
 
 .actions {

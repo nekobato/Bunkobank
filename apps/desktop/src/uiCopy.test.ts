@@ -28,6 +28,7 @@ const promotionalOrRedundantCopy = [
 
 const requiredOperationalCopy = [
   "Web UIを開く",
+  "ログフォルダーを開く",
   "アカウント、ライブラリ、ネットワーク、サムネイルの設定はWeb UIで行います。",
   "外部で起動したBookCafeは、このアプリから停止できません。"
 ] as const;

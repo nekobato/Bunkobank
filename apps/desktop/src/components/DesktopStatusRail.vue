@@ -28,6 +28,7 @@ defineEmits<{
   start: [];
   stop: [];
   open: [];
+  openLogs: [];
   refresh: [];
 }>();
 
@@ -126,6 +127,19 @@ const webGuidance =
           <span>設定ファイル</span>
           <code>{{ state.environment?.configPath ?? "確認中…" }}</code>
         </div>
+        <div class="config-path">
+          <span>ログフォルダー</span>
+          <code>{{ state.environment?.logDir ?? "確認中…" }}</code>
+        </div>
+        <Button
+          label="ログフォルダーを開く"
+          icon="pi pi-folder-open"
+          size="small"
+          severity="secondary"
+          variant="outlined"
+          :disabled="!state.environment"
+          @click="$emit('openLogs')"
+        />
         <p v-if="processMessage" class="process-message">
           {{ processMessage }}
         </p>

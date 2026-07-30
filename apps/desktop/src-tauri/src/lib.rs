@@ -7,6 +7,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 const SERVER_CONFIG_FILE: &str = "config.json";
 const SIDECAR_NAME: &str = "binaries/bookcafe-server";
@@ -97,6 +98,16 @@ fn write_server_port(app: AppHandle, port: u16) -> Result<ServerConfig, String> 
     fs::create_dir_all(app_config_dir).map_err(display_error)?;
     fs::write(config_path, serialized).map_err(display_error)?;
     Ok(config)
+}
+
+/// Opens only BookCafe's fixed application log directory.
+#[tauri::command]
+fn open_log_directory(app: AppHandle) -> Result<(), String> {
+    let log_dir = app.path().app_log_dir().map_err(display_error)?;
+    fs::create_dir_all(&log_dir).map_err(display_error)?;
+    app.opener()
+        .open_path(display_path(&log_dir), None::<&str>)
+        .map_err(display_error)
 }
 
 /// Reads the fixed per-user BookCafe LaunchAgent plist on macOS.
@@ -211,6 +222,7 @@ pub fn run() {
             get_desktop_environment,
             read_server_config,
             write_server_port,
+            open_log_directory,
             read_mac_launch_agent_plist,
             install_mac_launch_agent,
             remove_mac_launch_agent

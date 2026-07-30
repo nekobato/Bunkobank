@@ -10,6 +10,13 @@ import type {
   BookDetailResponse,
   BookListQuery,
   BookListResponse,
+  CollectionBookCreateRequest,
+  CollectionBookOrderRequest,
+  CollectionCreateRequest,
+  CollectionDetailResponse,
+  CollectionListResponse,
+  CollectionResponse,
+  CollectionUpdateRequest,
   InitialSetupRequest,
   LibraryCreateRequest,
   LibraryListResponse,
@@ -109,6 +116,8 @@ export const useBookApi = () => {
           q: query.q || undefined,
           readingStatus: query.readingStatus || undefined,
           bookStatus: query.bookStatus || undefined,
+          sort: query.sort,
+          order: query.order,
           offset: query.offset,
           limit: query.limit
         }
@@ -207,6 +216,135 @@ export const useBookApi = () => {
         }
       )
     );
+
+  /** Fetches the current user's collections inside one library. */
+  const listCollections = (libraryId: string) =>
+    $fetch<CollectionListResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections"]),
+      requestOptions
+    );
+
+  /** Creates one user-owned collection inside the selected library. */
+  const createCollection = (libraryId: string, body: CollectionCreateRequest) =>
+    $fetch<CollectionResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections"]),
+      {
+        ...requestOptions,
+        method: "POST",
+        body
+      }
+    );
+
+  /** Fetches one collection and its manually ordered visible books. */
+  const getCollection = async (
+    libraryId: string,
+    collectionId: string
+  ): Promise<CollectionDetailResponse> => {
+    const response = await $fetch<CollectionDetailResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections", collectionId]),
+      requestOptions
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
+
+  /** Renames one user-owned collection. */
+  const updateCollection = (
+    libraryId: string,
+    collectionId: string,
+    body: CollectionUpdateRequest
+  ) =>
+    $fetch<CollectionResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections", collectionId]),
+      {
+        ...requestOptions,
+        method: "PATCH",
+        body
+      }
+    );
+
+  /** Deletes one collection without changing source books. */
+  const deleteCollection = (libraryId: string, collectionId: string) =>
+    $fetch<void>(
+      createLibraryApiPath(apiBase, libraryId, ["collections", collectionId]),
+      {
+        ...requestOptions,
+        method: "DELETE"
+      }
+    );
+
+  /** Adds one same-library book at the end of a collection. */
+  const addCollectionBook = async (
+    libraryId: string,
+    collectionId: string,
+    body: CollectionBookCreateRequest
+  ): Promise<CollectionDetailResponse> => {
+    const response = await $fetch<CollectionDetailResponse>(
+      createLibraryApiPath(apiBase, libraryId, [
+        "collections",
+        collectionId,
+        "books"
+      ]),
+      {
+        ...requestOptions,
+        method: "POST",
+        body
+      }
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
+
+  /** Removes one book from a collection without changing the source book. */
+  const removeCollectionBook = (
+    libraryId: string,
+    collectionId: string,
+    bookId: string
+  ) =>
+    $fetch<void>(
+      createLibraryApiPath(apiBase, libraryId, [
+        "collections",
+        collectionId,
+        "books",
+        bookId
+      ]),
+      {
+        ...requestOptions,
+        method: "DELETE"
+      }
+    );
+
+  /** Persists the full visible manual order for one collection. */
+  const reorderCollectionBooks = async (
+    libraryId: string,
+    collectionId: string,
+    body: CollectionBookOrderRequest
+  ): Promise<CollectionDetailResponse> => {
+    const response = await $fetch<CollectionDetailResponse>(
+      createLibraryApiPath(apiBase, libraryId, [
+        "collections",
+        collectionId,
+        "books",
+        "order"
+      ]),
+      {
+        ...requestOptions,
+        method: "PATCH",
+        body
+      }
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
 
   /** Builds an authenticated page-image URL for the reader. */
   const getPageImageUrl = (
@@ -314,14 +452,18 @@ export const useBookApi = () => {
     );
 
   return {
+    addCollectionBook,
     apiBase,
     archiveBook,
     cancelJob,
     createInitialSetup,
+    createCollection,
     createLibrary,
     createScanJob,
     deleteLibrary,
+    deleteCollection,
     getBook,
+    getCollection,
     getJob,
     getLibraryPreference,
     getNetworkSettings,
@@ -330,12 +472,16 @@ export const useBookApi = () => {
     getThumbnailSettings,
     listArchivedBooks,
     listBooks,
+    listCollections,
     listJobs,
     listLibraries,
     listScanFailures,
     restoreBook,
+    removeCollectionBook,
+    reorderCollectionBooks,
     updateBookMetadata,
     updateBookProgress,
+    updateCollection,
     updateLibrary,
     updateLibraryPreference,
     updateNetworkSettings,

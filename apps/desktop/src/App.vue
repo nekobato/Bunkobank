@@ -99,6 +99,7 @@ onUnmounted(() => {
       @start="controller.startServer()"
       @stop="controller.stopServer()"
       @open="controller.openWebUi()"
+      @open-logs="controller.openLogDirectory()"
       @refresh="refreshServer()"
     />
   </div>
