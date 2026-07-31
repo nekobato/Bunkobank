@@ -2,6 +2,7 @@
 import { initialSetupRequestSchema } from "@bookcafe/contracts";
 
 import { getApiErrorMessage } from "../utils/apiErrors";
+import { getLoginRedirect } from "../utils/authRedirect";
 import {
   createFieldErrorMap,
   focusFormErrorSummary
@@ -18,15 +19,18 @@ const message = ref("");
 const fieldErrors = ref<Record<string, string>>({});
 const errorSummary = useTemplateRef<HTMLElement>("login-error-summary");
 const isSubmitting = ref(false);
-const redirectTo = computed(() => {
-  const redirect =
-    typeof route.query.redirect === "string" ? route.query.redirect : "/";
-
-  return redirect.startsWith("/") && !redirect.startsWith("//")
-    ? redirect
-    : "/";
-});
+const redirectTo = computed(() => getLoginRedirect(route.query.redirect));
 const hasSession = computed(() => Boolean(session.value.data?.user));
+
+watch(
+  hasSession,
+  async (authenticated) => {
+    if (authenticated) {
+      await navigateTo(redirectTo.value, { replace: true });
+    }
+  },
+  { immediate: true }
+);
 
 /**
  * Signs in through Better Auth with the username plugin.
@@ -79,7 +83,7 @@ const submitLogin = async (): Promise<void> => {
 </script>
 
 <template>
-  <section class="login">
+  <section v-if="!hasSession" class="login">
     <div class="intro" aria-hidden="true">
       <span class="book book-one">BC</span>
       <span class="book book-two" />

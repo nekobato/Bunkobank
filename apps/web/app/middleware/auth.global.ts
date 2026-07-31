@@ -4,17 +4,20 @@
  * @module
  */
 
-const publicPaths = new Set(["/login", "/setup"]);
+import { getLoginRedirect } from "../utils/authRedirect";
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (import.meta.server || publicPaths.has(to.path)) {
+  if (import.meta.server || to.path === "/setup") {
     return;
   }
 
-  const { session } = useBookAuth();
+  const { session, waitForSession } = useBookAuth();
+  await waitForSession();
 
-  if (session.value.isPending) {
-    await session.value.refetch();
+  if (to.path === "/login") {
+    return session.value.data?.user
+      ? navigateTo(getLoginRedirect(to.query.redirect), { replace: true })
+      : undefined;
   }
 
   if (!session.value.data?.user) {

@@ -1,6 +1,11 @@
 import { createAuthClient } from "better-auth/vue";
 import { usernameClient } from "better-auth/client/plugins";
 
+import {
+  waitForAuthSession,
+  waitForAuthSessionState
+} from "../utils/authSession";
+
 interface UsernameSignInInput {
   username: string;
   password: string;
@@ -56,7 +61,10 @@ export const useBookAuth = () => {
   const signInWithUsername = async (input: UsernameSignInInput) => {
     const result = await authClient.signIn.username({
       ...input,
-      rememberMe: true
+      rememberMe: true,
+      fetchOptions: {
+        disableSignal: true
+      }
     });
 
     if (!result.error) {
@@ -67,19 +75,31 @@ export const useBookAuth = () => {
   };
 
   /**
-   * Signs out and refreshes the shared session atom.
+   * Signs out and waits for Better Auth's cross-tab session signal.
    */
   const signOut = async () => {
     const result = await authClient.signOut();
-    await session.value.refetch();
+
+    if (!result.error) {
+      await waitForAuthSessionState(
+        session,
+        (state) =>
+          (!state.isPending && !state.isRefetching && !state.data?.user) ||
+          Boolean(state.error)
+      );
+    }
 
     return result;
   };
+
+  /** Waits for the shared automatic session request without starting another. */
+  const waitForSession = (): Promise<void> => waitForAuthSession(session);
 
   return {
     authClient,
     session,
     signInWithUsername,
-    signOut
+    signOut,
+    waitForSession
   };
 };

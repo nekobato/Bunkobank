@@ -43,6 +43,14 @@ defineEmits<{
   resetZoom: [];
 }>();
 
+const settingsPopover = useTemplateRef<{
+  toggle: (event: Event) => void;
+}>("settings-popover");
+
+const toggleSettings = (event: Event): void => {
+  settingsPopover.value?.toggle(event);
+};
+
 const directionOptions = [
   { label: "右から左", value: "rtl" },
   { label: "左から右", value: "ltr" }
@@ -66,7 +74,19 @@ const fitOptions = [
 <template>
   <header class="reader-toolbar">
     <div class="book-status">
-      <strong>{{ title }}</strong>
+      <div class="book-title">
+        <Button
+          as="router-link"
+          to="/"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          variant="text"
+          size="small"
+          aria-label="ライブラリへ戻る"
+          title="ライブラリへ戻る"
+        />
+        <strong>{{ title }}</strong>
+      </div>
       <span>{{ pageLabel }}</span>
       <ProgressBar
         class="reader-progress"
@@ -120,71 +140,112 @@ const fitOptions = [
         <Button label="移動" size="small" type="submit" :disabled="disabled" />
       </form>
 
-      <div class="button-group zoom" role="group" aria-label="拡大率">
-        <Button
-          icon="pi pi-minus"
-          severity="secondary"
-          variant="text"
-          aria-label="縮小"
-          :disabled="disabled"
-          @click="$emit('zoomOut')"
-        />
-        <output aria-label="拡大率">{{ zoomLabel }}</output>
-        <Button
-          icon="pi pi-plus"
-          severity="secondary"
-          variant="text"
-          aria-label="拡大"
-          :disabled="disabled"
-          @click="$emit('zoomIn')"
-        />
-        <Button
-          label="100%"
-          size="small"
-          severity="secondary"
-          variant="text"
-          :disabled="disabled"
-          @click="$emit('resetZoom')"
-        />
-      </div>
+      <Button
+        label="設定"
+        icon="pi pi-cog"
+        severity="secondary"
+        variant="outlined"
+        aria-haspopup="dialog"
+        :disabled="disabled"
+        @click="toggleSettings"
+      />
 
-      <Select
-        v-model="direction"
-        :options="directionOptions"
-        option-label="label"
-        option-value="value"
-        aria-label="読む方向"
-        size="small"
-        :disabled="disabled"
-      />
-      <Select
-        v-model="mode"
-        :options="modeOptions"
-        option-label="label"
-        option-value="value"
-        aria-label="表示方法"
-        size="small"
-        :disabled="disabled"
-      />
-      <Select
-        v-if="mode === 'paged'"
-        v-model="layout"
-        :options="layoutOptions"
-        option-label="label"
-        option-value="value"
-        aria-label="ページレイアウト"
-        size="small"
-        :disabled="disabled"
-      />
-      <Select
-        v-model="fit"
-        :options="fitOptions"
-        option-label="label"
-        option-value="value"
-        aria-label="画像の表示倍率"
-        size="small"
-        :disabled="disabled"
-      />
+      <Popover
+        ref="settings-popover"
+        class="reader-settings-popover"
+        aria-label="リーダー設定"
+      >
+        <div class="reader-settings">
+          <div class="setting-field">
+            <span id="reader-zoom-label" class="setting-label">拡大率</span>
+            <div
+              class="button-group zoom"
+              role="group"
+              aria-labelledby="reader-zoom-label"
+            >
+              <Button
+                icon="pi pi-minus"
+                severity="secondary"
+                variant="text"
+                aria-label="縮小"
+                :disabled="disabled"
+                @click="$emit('zoomOut')"
+              />
+              <output aria-live="polite">{{ zoomLabel }}</output>
+              <Button
+                icon="pi pi-plus"
+                severity="secondary"
+                variant="text"
+                aria-label="拡大"
+                :disabled="disabled"
+                @click="$emit('zoomIn')"
+              />
+              <Button
+                label="100%に戻す"
+                size="small"
+                severity="secondary"
+                variant="text"
+                :disabled="disabled"
+                @click="$emit('resetZoom')"
+              />
+            </div>
+          </div>
+
+          <div class="setting-field">
+            <label class="setting-label" for="reader-direction">読む方向</label>
+            <Select
+              v-model="direction"
+              input-id="reader-direction"
+              :options="directionOptions"
+              option-label="label"
+              option-value="value"
+              size="small"
+              :disabled="disabled"
+            />
+          </div>
+
+          <div class="setting-field">
+            <label class="setting-label" for="reader-mode">表示方法</label>
+            <Select
+              v-model="mode"
+              input-id="reader-mode"
+              :options="modeOptions"
+              option-label="label"
+              option-value="value"
+              size="small"
+              :disabled="disabled"
+            />
+          </div>
+
+          <div v-if="mode === 'paged'" class="setting-field">
+            <label class="setting-label" for="reader-layout">
+              ページレイアウト
+            </label>
+            <Select
+              v-model="layout"
+              input-id="reader-layout"
+              :options="layoutOptions"
+              option-label="label"
+              option-value="value"
+              size="small"
+              :disabled="disabled"
+            />
+          </div>
+
+          <div class="setting-field">
+            <label class="setting-label" for="reader-fit">画像の表示倍率</label>
+            <Select
+              v-model="fit"
+              input-id="reader-fit"
+              :options="fitOptions"
+              option-label="label"
+              option-value="value"
+              size="small"
+              :disabled="disabled"
+            />
+          </div>
+        </div>
+      </Popover>
     </div>
   </header>
 </template>
@@ -209,6 +270,17 @@ const fitOptions = [
   align-items: center;
   gap: 0.25rem 0.65rem;
   min-inline-size: 0;
+}
+
+.book-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-inline-size: 0;
+}
+
+.book-title :deep(.p-button) {
+  flex: 0 0 auto;
 }
 
 .book-status strong {
@@ -261,10 +333,10 @@ const fitOptions = [
 }
 
 .zoom output {
-  min-inline-size: 3.3rem;
+  min-inline-size: 3.5rem;
   color: rgb(243 246 245 / 78%);
   font-family: var(--bc-font-data);
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   text-align: center;
 }
 
@@ -272,16 +344,45 @@ const fitOptions = [
   color: var(--reader-text);
 }
 
-.reader-toolbar :deep(.p-select),
 .reader-toolbar :deep(.p-inputtext) {
   border-color: rgb(255 255 255 / 16%);
   background: #26363c;
   color: var(--reader-text);
 }
 
-.reader-toolbar :deep(.p-select-label),
-.reader-toolbar :deep(.p-select-dropdown) {
-  color: var(--reader-text);
+.reader-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(9rem, 1fr));
+  gap: 1rem;
+  inline-size: min(25rem, calc(100vw - 2rem));
+}
+
+.setting-field {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+}
+
+.setting-field:first-child {
+  grid-column: 1 / -1;
+}
+
+.reader-settings .button-group {
+  border-color: var(--p-content-border-color);
+}
+
+.reader-settings .zoom output {
+  color: var(--p-text-muted-color);
+}
+
+.setting-label {
+  color: var(--p-text-muted-color);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.setting-field :deep(.p-select) {
+  inline-size: 100%;
 }
 
 @media (width <= 68rem) {
@@ -296,9 +397,16 @@ const fitOptions = [
 
 @media (width <= 40rem) {
   .jump label,
-  .jump > span,
-  .zoom output {
+  .jump > span {
     display: none;
+  }
+
+  .reader-settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setting-field:first-child {
+    grid-column: auto;
   }
 }
 </style>

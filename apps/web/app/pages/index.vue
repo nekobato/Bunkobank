@@ -7,7 +7,6 @@
 
 import type { BookSort, SortOrder } from "@bookcafe/contracts";
 import type { BookSummary } from "@bookcafe/core";
-import { useIntervalFn } from "@vueuse/core";
 
 import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import {
@@ -32,7 +31,7 @@ import {
 useHead({ title: "蔵書" });
 
 const route = useRoute();
-const { archiveBook, createScanJob, getJob, listBooks } = useBookApi();
+const { listBooks } = useBookApi();
 const {
   error: libraryError,
   loaded: librariesLoaded,
@@ -50,12 +49,9 @@ const bookStatus = ref<BookStatusFilter>(
 );
 const sort = ref<BookSort>(getRouteBookSort(route.query.sort));
 const order = ref<SortOrder>(getRouteSortOrder(route.query.order));
-const bookToArchive = ref<BookSummary | null>(null);
-const isArchiving = ref(false);
-const isScanning = ref(false);
-const activeScanJobId = ref<string | null>(null);
-const operationMessage = ref("");
-const operationSeverity = ref<"success" | "error">("success");
+const isSearchDialogOpen = ref(false);
+const isMetadataDialogOpen = ref(false);
+const selectedBook = ref<BookSummary | null>(null);
 const appliedSearch = computed(() => getRouteSearch(route.query.q));
 const appliedReadingStatus = computed(() =>
   getRouteReadingStatus(route.query.readingStatus)
@@ -147,16 +143,37 @@ const errorMessage = computed(() =>
   getAccessErrorMessage(statusCode.value, "蔵書を読み込めませんでした。")
 );
 
-const { pause: pauseScanPolling, resume: resumeScanPolling } = useIntervalFn(
-  refreshActiveScan,
-  1500,
-  { immediate: false }
-);
+/** Restores the search form to the filters currently applied in the URL. */
+const restoreAppliedFilters = (): void => {
+  searchText.value = appliedSearch.value;
+  readingStatus.value = appliedReadingStatus.value;
+  bookStatus.value = appliedBookStatus.value;
+  sort.value = appliedSort.value;
+  order.value = appliedOrder.value;
+};
+
+/** Opens the search dialog with a fresh copy of the applied filters. */
+const openSearchDialog = (): void => {
+  restoreAppliedFilters();
+  isSearchDialogOpen.value = true;
+};
+
+/** Opens the metadata editor for one visible book. */
+const openMetadataDialog = (book: BookSummary): void => {
+  selectedBook.value = book;
+  isMetadataDialogOpen.value = true;
+};
+
+/** Refreshes the current result page after metadata changes. */
+const handleMetadataUpdated = async (book: BookSummary): Promise<void> => {
+  selectedBook.value = book;
+  await refresh();
+};
 
 watch(selectedLibraryId, () => {
-  activeScanJobId.value = null;
-  isScanning.value = false;
-  pauseScanPolling();
+  isSearchDialogOpen.value = false;
+  isMetadataDialogOpen.value = false;
+  selectedBook.value = null;
 });
 
 watch(
@@ -167,13 +184,7 @@ watch(
     appliedSort,
     appliedOrder
   ],
-  ([nextSearch, nextReadingStatus, nextBookStatus, nextSort, nextOrder]) => {
-    searchText.value = nextSearch;
-    readingStatus.value = nextReadingStatus;
-    bookStatus.value = nextBookStatus;
-    sort.value = nextSort;
-    order.value = nextOrder;
-  }
+  () => restoreAppliedFilters()
 );
 
 /** Applies the current filters to the route query. */
@@ -193,6 +204,7 @@ const submitFilters = async (): Promise<void> => {
     )
   ) {
     await refresh();
+    isSearchDialogOpen.value = false;
     return;
   }
 
@@ -210,6 +222,7 @@ const submitFilters = async (): Promise<void> => {
     },
     { replace: true }
   );
+  isSearchDialogOpen.value = false;
 };
 
 /** Clears every book-list filter. */
@@ -220,6 +233,7 @@ const clearFilters = async (): Promise<void> => {
 
   if (!hasAppliedFilters.value) {
     await refresh();
+    isSearchDialogOpen.value = false;
     return;
   }
 
@@ -237,73 +251,8 @@ const clearFilters = async (): Promise<void> => {
     },
     { replace: true }
   );
+  isSearchDialogOpen.value = false;
 };
-
-/** Starts a scan for the selected library. */
-const scanSelectedLibrary = async (): Promise<void> => {
-  if (!selectedLibraryId.value) {
-    return;
-  }
-
-  isScanning.value = true;
-  operationMessage.value = "";
-
-  try {
-    const job = await createScanJob(selectedLibraryId.value);
-    activeScanJobId.value = job.id;
-    resumeScanPolling();
-    operationSeverity.value = "success";
-    operationMessage.value = "スキャンを開始しました。";
-    await refreshActiveScan();
-  } catch (error) {
-    operationSeverity.value = "error";
-    operationMessage.value = getApiErrorMessage(
-      error,
-      "スキャンを開始できませんでした。"
-    );
-    isScanning.value = false;
-  }
-};
-
-/**
- * Polls the active scan and refreshes books when it reaches a terminal state.
- */
-async function refreshActiveScan(): Promise<void> {
-  const libraryId = selectedLibraryId.value;
-  const jobId = activeScanJobId.value;
-
-  if (!libraryId || !jobId) {
-    pauseScanPolling();
-    return;
-  }
-
-  try {
-    const job = await getJob(libraryId, jobId);
-
-    if (job.status === "queued" || job.status === "running") {
-      return;
-    }
-
-    activeScanJobId.value = null;
-    isScanning.value = false;
-    pauseScanPolling();
-    await refresh();
-    operationSeverity.value = job.status === "completed" ? "success" : "error";
-    operationMessage.value =
-      job.status === "completed"
-        ? "スキャンが完了し、蔵書を更新しました。"
-        : (job.error ?? "スキャンは完了しませんでした。");
-  } catch (error) {
-    activeScanJobId.value = null;
-    isScanning.value = false;
-    pauseScanPolling();
-    operationSeverity.value = "error";
-    operationMessage.value = getApiErrorMessage(
-      error,
-      "スキャン状況を確認できませんでした。"
-    );
-  }
-}
 
 /**
  * Moves to a one-based page while retaining the active filters.
@@ -324,32 +273,6 @@ const changePage = async (event: { page: number }): Promise<void> => {
     { replace: true }
   );
 };
-
-/** Archives the confirmed book and refreshes the visible list. */
-const confirmArchive = async (): Promise<void> => {
-  if (!bookToArchive.value || !selectedLibraryId.value) {
-    return;
-  }
-
-  isArchiving.value = true;
-  operationMessage.value = "";
-
-  try {
-    await archiveBook(selectedLibraryId.value, bookToArchive.value.id);
-    bookToArchive.value = null;
-    await refresh();
-    operationSeverity.value = "success";
-    operationMessage.value = "アーカイブしました。";
-  } catch (error) {
-    operationSeverity.value = "error";
-    operationMessage.value = getApiErrorMessage(
-      error,
-      "アーカイブできませんでした。"
-    );
-  } finally {
-    isArchiving.value = false;
-  }
-};
 </script>
 
 <template>
@@ -363,118 +286,116 @@ const confirmArchive = async (): Promise<void> => {
       </div>
       <div class="commands" aria-label="ライブラリ操作">
         <Button
-          label="更新"
-          icon="pi pi-refresh"
+          label="検索"
+          icon="pi pi-search"
           severity="secondary"
           variant="outlined"
+          aria-haspopup="dialog"
+          aria-controls="library-search-dialog"
+          :aria-expanded="isSearchDialogOpen"
           :disabled="!selectedLibraryId"
-          @click="() => refresh()"
-        />
-        <Button
-          label="スキャン"
-          icon="pi pi-sync"
-          :loading="isScanning"
-          :disabled="!selectedLibraryId"
-          @click="scanSelectedLibrary"
+          @click="openSearchDialog"
         />
       </div>
     </header>
 
-    <Card v-if="selectedLibraryId" class="filter-card">
-      <template #content>
-        <form class="search" @submit.prevent="submitFilters">
-          <div class="search-field">
-            <label for="library-search">検索</label>
-            <IconField>
-              <InputIcon class="pi pi-search" />
-              <InputText
-                id="library-search"
-                v-model="searchText"
-                name="q"
-                type="search"
-                autocomplete="off"
-                maxlength="200"
-                enterkeyhint="search"
-                placeholder="タイトル、著者、タグ"
-                fluid
-              />
-            </IconField>
-          </div>
-          <div class="select-field">
-            <span id="reading-filter-label" class="control-label">
-              読書状況
-            </span>
-            <Select
-              v-model="readingStatus"
-              input-id="reading-filter"
-              :options="readingStatusFilterOptions"
-              option-label="label"
-              option-value="value"
-              aria-labelledby="reading-filter-label"
-              fluid
-            />
-          </div>
-          <div class="select-field">
-            <span id="source-filter-label" class="control-label">
-              元ファイル
-            </span>
-            <Select
-              v-model="bookStatus"
-              input-id="source-filter"
-              :options="bookStatusFilterOptions"
-              option-label="label"
-              option-value="value"
-              aria-labelledby="source-filter-label"
-              fluid
-            />
-          </div>
-          <div class="select-field">
-            <span id="book-sort-label" class="control-label">並び順</span>
-            <Select
-              v-model="sort"
-              input-id="book-sort"
-              :options="bookSortOptions"
-              option-label="label"
-              option-value="value"
-              aria-labelledby="book-sort-label"
-              fluid
-            />
-          </div>
-          <div class="select-field">
-            <span id="book-order-label" class="control-label">方向</span>
-            <Select
-              v-model="order"
-              input-id="book-order"
-              :options="sortOrderOptions"
-              option-label="label"
-              option-value="value"
-              aria-labelledby="book-order-label"
-              fluid
-            />
-          </div>
-          <div class="filter-actions">
-            <Button label="絞り込む" icon="pi pi-filter" type="submit" />
-            <Button
-              v-if="hasActiveFilters"
-              label="クリア"
-              icon="pi pi-times"
-              severity="secondary"
-              variant="text"
-              type="button"
-              @click="clearFilters"
-            />
-          </div>
-        </form>
-      </template>
-    </Card>
-
-    <Message
-      v-if="operationMessage"
-      :severity="operationSeverity"
-      :closable="false"
+    <Dialog
+      id="library-search-dialog"
+      v-model:visible="isSearchDialogOpen"
+      header="蔵書を検索"
+      modal
+      block-scroll
+      dismissable-mask
+      :draggable="false"
+      :style="{ width: 'min(36rem, calc(100vw - 2rem))' }"
+      :breakpoints="{ '44rem': 'calc(100vw - 2rem)' }"
+      :close-button-props="{ 'aria-label': '検索を閉じる' }"
     >
-      {{ operationMessage }}
-    </Message>
+      <form
+        id="library-search-form"
+        class="search"
+        @submit.prevent="submitFilters"
+      >
+        <div class="search-field">
+          <label for="library-search">検索</label>
+          <IconField>
+            <InputIcon class="pi pi-search" />
+            <InputText
+              id="library-search"
+              v-model="searchText"
+              name="q"
+              type="search"
+              autocomplete="off"
+              maxlength="200"
+              enterkeyhint="search"
+              placeholder="タイトル、著者、タグ"
+              autofocus
+              fluid
+            />
+          </IconField>
+        </div>
+        <div class="select-field">
+          <span id="reading-filter-label" class="control-label">読書状況</span>
+          <Select
+            v-model="readingStatus"
+            input-id="reading-filter"
+            :options="readingStatusFilterOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="reading-filter-label"
+            fluid
+          />
+        </div>
+        <div class="select-field">
+          <span id="source-filter-label" class="control-label">元ファイル</span>
+          <Select
+            v-model="bookStatus"
+            input-id="source-filter"
+            :options="bookStatusFilterOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="source-filter-label"
+            fluid
+          />
+        </div>
+        <div class="select-field">
+          <span id="book-sort-label" class="control-label">並び順</span>
+          <Select
+            v-model="sort"
+            input-id="book-sort"
+            :options="bookSortOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="book-sort-label"
+            fluid
+          />
+        </div>
+        <div class="select-field">
+          <span id="book-order-label" class="control-label">方向</span>
+          <Select
+            v-model="order"
+            input-id="book-order"
+            :options="sortOrderOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="book-order-label"
+            fluid
+          />
+        </div>
+        <div class="filter-actions">
+          <Button label="検索" icon="pi pi-search" type="submit" />
+          <Button
+            v-if="hasActiveFilters"
+            label="クリア"
+            icon="pi pi-times"
+            severity="secondary"
+            variant="text"
+            type="button"
+            @click="clearFilters"
+          />
+        </div>
+      </form>
+    </Dialog>
 
     <ClientOnly>
       <div
@@ -516,7 +437,10 @@ const confirmArchive = async (): Promise<void> => {
         <BookList
           v-if="books.length > 0"
           :books="books"
-          @archive="bookToArchive = $event"
+          :editing-book-id="
+            isMetadataDialogOpen ? (selectedBook?.id ?? null) : null
+          "
+          @edit="openMetadataDialog"
         />
         <Paginator
           v-if="totalBooks > BOOK_LIST_PAGE_SIZE"
@@ -544,37 +468,19 @@ const confirmArchive = async (): Promise<void> => {
       </template>
     </ClientOnly>
 
-    <Dialog
-      :visible="bookToArchive !== null"
-      modal
-      header="アーカイブ"
-      :style="{ width: 'min(28rem, calc(100vw - 2rem))' }"
-      @update:visible="bookToArchive = null"
-    >
-      <p class="dialog-copy">
-        「{{ bookToArchive?.title }}」を非表示にします。
-      </p>
-      <template #footer>
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          variant="text"
-          @click="bookToArchive = null"
-        />
-        <Button
-          label="アーカイブ"
-          icon="pi pi-inbox"
-          :loading="isArchiving"
-          @click="confirmArchive"
-        />
-      </template>
-    </Dialog>
+    <BookMetadataDialog
+      v-model:visible="isMetadataDialogOpen"
+      :book="selectedBook"
+      :library-id="selectedLibraryId"
+      @updated="handleMetadataUpdated"
+    />
   </section>
 </template>
 
 <style scoped>
 .library {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.4rem;
   inline-size: min(82rem, 100%);
   padding: clamp(1.25rem, 4vw, 3.5rem);
@@ -604,26 +510,12 @@ const confirmArchive = async (): Promise<void> => {
   gap: 0.5rem;
 }
 
-.filter-card {
-  border-inline-start: 0.35rem solid var(--bc-ink-blue);
-}
-
-.filter-card :deep(.p-card-body) {
-  padding: 1rem;
-}
-
-.filter-card :deep(.p-card-content) {
-  padding: 0;
-}
-
 .search {
   display: grid;
-  grid-template-columns: minmax(14rem, 1.5fr) repeat(
-      4,
-      minmax(8.5rem, 0.6fr)
-    ) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: end;
   gap: 0.8rem;
+  min-inline-size: 0;
 }
 
 .search-field,
@@ -638,6 +530,11 @@ const confirmArchive = async (): Promise<void> => {
   color: var(--bc-ink-soft);
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.filter-actions {
+  justify-content: flex-end;
+  padding-block-start: 0.4rem;
 }
 
 .summary {
@@ -680,31 +577,10 @@ const confirmArchive = async (): Promise<void> => {
   color: var(--bc-ink-soft);
 }
 
-@media (width <= 68rem) {
-  .search {
-    grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.6fr) minmax(
-        9rem,
-        0.6fr
-      );
-  }
-
-  .filter-actions {
-    grid-column: 1 / -1;
-  }
-}
-
 @media (width <= 44rem) {
   .heading {
     align-items: start;
     flex-direction: column;
-  }
-
-  .search {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .filter-actions {
-    grid-column: auto;
   }
 }
 </style>
