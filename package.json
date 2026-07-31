@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel --filter @bookcafe/server --filter @bookcafe/web dev",
     "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @bookcafe/app build && pnpm --filter @bookcafe/web generate && pnpm --filter @bookcafe/server build && pnpm --filter @bookcafe/server copy-web",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm -r --filter \"./packages/*\" build && pnpm -r --if-present test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "pnpm -r --filter \"./packages/*\" build && pnpm -r --if-present typecheck"
