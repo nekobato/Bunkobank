@@ -24,6 +24,8 @@ describe("metadata form helpers", () => {
     expect(
       toMetadataForm({
         id: "book-1",
+        libraryId: "library-1",
+        relativePath: "edited.cbz",
         title: "Edited Book",
         authors: ["Author A", "Author B"],
         format: "cbz",
@@ -33,7 +35,7 @@ describe("metadata form helpers", () => {
         pageCount: 120,
         currentPage: 12,
         thumbnailUrl: null,
-        sourcePath: "/books/edited.cbz",
+        archivedAt: null,
         readingDirection: "rtl",
         publisher: "Publisher",
         isbn: "9780000000001",

@@ -28,12 +28,36 @@ export type BookFormat =
   | "seven-zip"
   | "unknown";
 
+/** Stable source scopes recorded for one scan failure. */
+export const scanFailureKinds = ["book", "subtree"] as const;
+
+/** Source scope recorded for one scan failure. */
+export type ScanFailureKind = (typeof scanFailureKinds)[number];
+
+/** Stable, path-free reasons that can be persisted for scan diagnostics. */
+export const scanFailureCodes = [
+  "SOURCE_UNREADABLE",
+  "DIRECTORY_UNREADABLE",
+  "ARCHIVE_PARSE_FAILED",
+  "EPUB_PARSE_FAILED",
+  "PDF_APPLEDOUBLE_FILE",
+  "PDF_INVALID_HEADER",
+  "PDF_PARSE_FAILED",
+  "PDF_PROCESS_TIMEOUT",
+  "PDF_PROCESS_FAILED"
+] as const;
+
+/** Path-free reason recorded for one scan failure. */
+export type ScanFailureCode = (typeof scanFailureCodes)[number];
+
 export type BookStatus = "ready" | "scanning" | "missing" | "error";
 
 export type ReadingStatus = "unread" | "reading" | "finished";
 
 export interface BookSummary {
   id: string;
+  libraryId: string;
+  relativePath: string;
   title: string;
   authors: string[];
   format: BookFormat;
@@ -43,10 +67,10 @@ export interface BookSummary {
   pageCount: number;
   currentPage: number;
   thumbnailUrl: string | null;
+  archivedAt: string | null;
 }
 
 export interface BookDetail extends BookSummary {
-  sourcePath: string;
   readingDirection: ReadingDirection;
   publisher: string | null;
   isbn: string | null;
@@ -243,5 +267,9 @@ export const clampScale = (scale: number): number => {
 /**
  * Builds the API URL for a one-based page image.
  */
-export const createPageImageUrl = (bookId: string, page: number): string =>
-  `/api/books/${encodeURIComponent(bookId)}/pages/${page}/image`;
+export const createPageImageUrl = (
+  libraryId: string,
+  bookId: string,
+  page: number
+): string =>
+  `/api/libraries/${encodeURIComponent(libraryId)}/books/${encodeURIComponent(bookId)}/pages/${page}/image`;

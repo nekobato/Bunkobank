@@ -2,10 +2,13 @@
  * Browser entrypoint for the BookCafe Tauri manager.
  */
 
+import "primeicons/primeicons.css";
+import "@bookcafe/ui/styles.css";
 import "./styles.css";
-import "./manager.css";
 
-import { createApp } from "vue";
+import { desktopShelfmarkTheme, shelfmarkJapaneseLocale } from "@bookcafe/ui";
+import PrimeVue from "primevue/config";
+import { createApp, type Plugin } from "vue";
 
 import App from "./App.vue";
 import { createDesktopManagerController } from "./manager.js";
@@ -21,4 +24,14 @@ const controller = createDesktopManagerController({
   runtime: createTauriDesktopRuntime()
 });
 
-createApp(App, { controller }).mount(root);
+const app = createApp(App, { controller });
+
+// PrimeVue's package-level re-export loses its default Plugin type under
+// NodeNext, although the runtime default is the documented Vue plugin.
+app.use(PrimeVue as unknown as Plugin, {
+  theme: desktopShelfmarkTheme,
+  ripple: true,
+  locale: shelfmarkJapaneseLocale
+});
+
+app.mount(root);

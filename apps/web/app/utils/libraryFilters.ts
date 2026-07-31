@@ -1,7 +1,9 @@
+import type { BookSort, SortOrder } from "@bookcafe/contracts";
 import type { BookStatus, ReadingStatus } from "@bookcafe/core";
 
 export type ReadingStatusFilter = "" | ReadingStatus;
 export type BookStatusFilter = "" | BookStatus;
+export const BOOK_LIST_PAGE_SIZE = 100;
 
 export interface ReadingStatusFilterOption {
   value: ReadingStatusFilter;
@@ -13,19 +15,41 @@ export interface BookStatusFilterOption {
   label: string;
 }
 
+export interface BookSortOption {
+  value: BookSort;
+  label: string;
+}
+
+export interface SortOrderOption {
+  value: SortOrder;
+  label: string;
+}
+
 export const readingStatusFilterOptions: ReadingStatusFilterOption[] = [
-  { value: "", label: "All" },
-  { value: "unread", label: "Unread" },
-  { value: "reading", label: "Reading" },
-  { value: "finished", label: "Finished" }
+  { value: "", label: "すべて" },
+  { value: "unread", label: "未読" },
+  { value: "reading", label: "読書中" },
+  { value: "finished", label: "読了" }
 ];
 
 export const bookStatusFilterOptions: BookStatusFilterOption[] = [
-  { value: "", label: "All" },
-  { value: "ready", label: "Ready" },
-  { value: "missing", label: "Missing" },
-  { value: "error", label: "Error" },
-  { value: "scanning", label: "Scanning" }
+  { value: "", label: "すべて" },
+  { value: "ready", label: "閲覧可能" },
+  { value: "missing", label: "見つかりません" },
+  { value: "error", label: "エラー" },
+  { value: "scanning", label: "スキャン中" }
+];
+
+export const bookSortOptions: BookSortOption[] = [
+  { value: "title", label: "タイトル" },
+  { value: "purchasedAt", label: "購入日" },
+  { value: "updatedAt", label: "更新日" },
+  { value: "lastReadAt", label: "最後に読んだ日" }
+];
+
+export const sortOrderOptions: SortOrderOption[] = [
+  { value: "asc", label: "昇順" },
+  { value: "desc", label: "降順" }
 ];
 
 /**
@@ -37,7 +61,7 @@ export const formatLibraryResultSummary = (
   readingStatus: ReadingStatusFilter,
   bookStatus: BookStatusFilter
 ): string => {
-  const countLabel = bookCount === 1 ? "1 book" : `${bookCount} books`;
+  const countLabel = `蔵書 ${bookCount}冊`;
   const filterLabels = getActiveLibraryFilterLabels(
     searchText,
     readingStatus,
@@ -45,10 +69,10 @@ export const formatLibraryResultSummary = (
   );
 
   if (filterLabels.length < 1) {
-    return `${countLabel} in library`;
+    return countLabel;
   }
 
-  return `Showing ${countLabel} for ${filterLabels.join(", ")}`;
+  return `${countLabel}（${filterLabels.join("、")}）`;
 };
 
 /**
@@ -85,19 +109,52 @@ export const getRouteBookStatus = (value: unknown): BookStatusFilter => {
 };
 
 /**
+ * Reads a supported database-backed sort field from the route.
+ */
+export const getRouteBookSort = (value: unknown): BookSort => {
+  const sort = getRouteSearch(value);
+
+  return sort === "purchasedAt" || sort === "updatedAt" || sort === "lastReadAt"
+    ? sort
+    : "title";
+};
+
+/**
+ * Reads a supported sort direction from the route.
+ */
+export const getRouteSortOrder = (value: unknown): SortOrder =>
+  getRouteSearch(value) === "desc" ? "desc" : "asc";
+
+/**
+ * Reads a positive one-based page number from a route query field.
+ */
+export const getRoutePage = (value: unknown): number => {
+  const rawPage = getRouteSearch(value);
+  const page = /^\d+$/u.test(rawPage) ? Number(rawPage) : Number.NaN;
+
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+};
+
+/**
  * Creates the route query for the library filters.
  */
 export const createLibraryQuery = (
   searchText: string,
   readingStatus: ReadingStatusFilter,
-  bookStatus: BookStatusFilter
+  bookStatus: BookStatusFilter,
+  page = 1,
+  sort: BookSort = "title",
+  order: SortOrder = "asc"
 ): Record<string, string> => {
   const query = searchText.trim();
 
   return {
     ...(query.length > 0 ? { q: query } : {}),
     ...(readingStatus.length > 0 ? { readingStatus } : {}),
-    ...(bookStatus.length > 0 ? { bookStatus } : {})
+    ...(bookStatus.length > 0 ? { bookStatus } : {}),
+    ...(sort !== "title" ? { sort } : {}),
+    ...(order !== "asc" ? { order } : {}),
+    ...(page > 1 ? { page: String(page) } : {})
   };
 };
 
@@ -110,23 +167,35 @@ export const areLibraryFiltersEqual = (
   leftBookStatus: BookStatusFilter,
   rightSearchText: string,
   rightReadingStatus: ReadingStatusFilter,
-  rightBookStatus: BookStatusFilter
+  rightBookStatus: BookStatusFilter,
+  leftSort: BookSort = "title",
+  leftOrder: SortOrder = "asc",
+  rightSort: BookSort = "title",
+  rightOrder: SortOrder = "asc"
 ): boolean => {
   const leftQuery = createLibraryQuery(
     leftSearchText,
     leftReadingStatus,
-    leftBookStatus
+    leftBookStatus,
+    1,
+    leftSort,
+    leftOrder
   );
   const rightQuery = createLibraryQuery(
     rightSearchText,
     rightReadingStatus,
-    rightBookStatus
+    rightBookStatus,
+    1,
+    rightSort,
+    rightOrder
   );
 
   return (
     leftQuery.q === rightQuery.q &&
     leftQuery.readingStatus === rightQuery.readingStatus &&
-    leftQuery.bookStatus === rightQuery.bookStatus
+    leftQuery.bookStatus === rightQuery.bookStatus &&
+    leftQuery.sort === rightQuery.sort &&
+    leftQuery.order === rightQuery.order
   );
 };
 
@@ -141,9 +210,9 @@ const getActiveLibraryFilterLabels = (
   const query = searchText.trim();
 
   return [
-    ...(query.length > 0 ? [`Search: ${query}`] : []),
-    ...getOptionLabel("Reading: ", readingStatus, readingStatusFilterOptions),
-    ...getOptionLabel("Book: ", bookStatus, bookStatusFilterOptions)
+    ...(query.length > 0 ? [`検索: ${query}`] : []),
+    ...getOptionLabel("読書状況: ", readingStatus, readingStatusFilterOptions),
+    ...getOptionLabel("元ファイル: ", bookStatus, bookStatusFilterOptions)
   ];
 };
 

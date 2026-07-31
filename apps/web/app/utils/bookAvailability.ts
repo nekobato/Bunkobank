@@ -12,13 +12,13 @@ export const isReadableBookStatus = (status: BookStatus): boolean =>
 export const getBookSourceStatusLabel = (status: BookStatus): string => {
   switch (status) {
     case "error":
-      return "Error";
+      return "エラー";
     case "missing":
-      return "Missing";
+      return "見つかりません";
     case "scanning":
-      return "Scanning";
+      return "スキャン中";
     default:
-      return "Ready";
+      return "閲覧可能";
   }
 };
 
@@ -28,13 +28,13 @@ export const getBookSourceStatusLabel = (status: BookStatus): string => {
 export const getBookSourceStatusTitle = (status: BookStatus): string => {
   switch (status) {
     case "error":
-      return "Source error";
+      return "元ファイルのエラー";
     case "missing":
-      return "Source unavailable";
+      return "元ファイルを確認できません";
     case "scanning":
-      return "Source scanning";
+      return "スキャン中";
     default:
-      return "Source ready";
+      return "閲覧できます";
   }
 };
 
@@ -44,12 +44,12 @@ export const getBookSourceStatusTitle = (status: BookStatus): string => {
 export const getBookSourceStatusMessage = (status: BookStatus): string => {
   switch (status) {
     case "error":
-      return "This source could not be read. Check the file, then scan the collection root again.";
+      return "元ファイルを読み取れませんでした。ファイルを確認してからコレクションを再スキャンしてください。";
     case "missing":
-      return "Restore the source file, then scan the collection root again.";
+      return "元ファイルを戻してからコレクションを再スキャンしてください。";
     case "scanning":
-      return "Reading will be available after the current scan finishes.";
+      return "現在のスキャンが完了すると閲覧できるようになります。";
     default:
-      return "This source is ready to read.";
+      return "この書籍は閲覧できます。";
   }
 };

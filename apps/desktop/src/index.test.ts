@@ -26,31 +26,22 @@ import {
 } from "./index.js";
 
 describe("desktop setup helpers", () => {
-  it("accepts the Tauri-resolved data directory for a default draft", () => {
-    expect(createDefaultSetupDraft("/Users/alice/BookCafe")).toMatchObject({
-      dataDir: "/Users/alice/BookCafe",
-      host: "127.0.0.1",
-      port: 4510
+  it("creates an empty account draft", () => {
+    expect(createDefaultSetupDraft()).toEqual({
+      username: "",
+      password: ""
     });
   });
 
-  it("normalizes unsafe setup draft values", () => {
+  it("normalizes account setup values", () => {
     expect(
       normalizeSetupDraft({
         username: " admin ",
-        password: "password123",
-        dataDir: " /tmp/bookcafe ",
-        host: "0.0.0.0",
-        port: 70000,
-        thumbnails: { enabled: false }
+        password: "password123"
       })
-    ).toMatchObject({
+    ).toEqual({
       username: "admin",
-      password: "password123",
-      dataDir: "/tmp/bookcafe",
-      host: "0.0.0.0",
-      port: 4510,
-      thumbnails: { enabled: false }
+      password: "password123"
     });
   });
 
@@ -58,21 +49,11 @@ describe("desktop setup helpers", () => {
     expect(
       createInitialSetupRequest({
         username: "admin",
-        password: "password123",
-        dataDir: "",
-        host: "127.0.0.1",
-        port: 4525,
-        collectionRoots: ["/Users/alice/Books"],
-        thumbnails: { enabled: false }
+        password: "password123"
       })
     ).toEqual({
       username: "admin",
-      password: "password123",
-      dataDir: undefined,
-      host: "127.0.0.1",
-      port: 4525,
-      collectionRoots: ["/Users/alice/Books"],
-      thumbnails: { enabled: false }
+      password: "password123"
     });
   });
 

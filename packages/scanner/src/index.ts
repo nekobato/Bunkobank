@@ -3,9 +3,22 @@
  */
 
 import { readdir, stat } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import {
+  basename,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve
+} from "node:path";
 
-import type { BookFormat } from "@bookcafe/core";
+import { scanFailureCodes } from "@bookcafe/core";
+import type {
+  BookFormat,
+  ScanFailureCode,
+  ScanFailureKind
+} from "@bookcafe/core";
+import type { PdfPageEntry } from "@bookcafe/format-adapters";
 import type { Dirent } from "node:fs";
 import {
   detectFileFormat,
@@ -21,6 +34,13 @@ import { isImageFile, sortPageNames } from "@bookcafe/format-adapters";
 const excludedNames = new Set(["__macosx", "thumbs.db", "desktop.ini"]);
 const defaultScanConcurrency = 2;
 const maximumScanConcurrency = 8;
+const pdfScanConcurrency = 1;
+
+/** Lists PDF pages through the caller-selected parsing boundary. */
+export type ListPdfPages = (
+  pdfPath: string,
+  signal?: AbortSignal
+) => Promise<PdfPageEntry[]>;
 
 export interface CandidateSource {
   path: string;
@@ -32,10 +52,21 @@ export interface CandidateSource {
 /**
  * Controls filesystem and format parsing parallelism during a scan.
  */
-export interface ScanCollectionRootOptions {
+export interface ScanLibraryOptions {
   concurrency?: number;
+  excludedRelativePaths?: ReadonlySet<string> | readonly string[];
+  listPdfPages?: ListPdfPages;
+  onCandidateError?: (failure: ScanCandidateFailure) => void;
   signal?: AbortSignal;
 }
+
+/** Safe identity of a supported source or subtree that could not be read. */
+export type ScanCandidateFailure = {
+  kind: ScanFailureKind;
+  relativePath: string;
+  format: BookFormat;
+  code: ScanFailureCode;
+};
 
 export interface ScanCandidate extends CandidateSource {
   format: BookFormat;
@@ -50,6 +81,10 @@ interface FileBookCandidate {
 
 interface ScanRuntime {
   concurrency: number;
+  excludedRelativePaths: ReadonlySet<string>;
+  listPdfPages: ListPdfPages;
+  onCandidateError?: (failure: ScanCandidateFailure) => void;
+  rootPath: string;
   signal?: AbortSignal;
 }
 
@@ -57,15 +92,17 @@ export type ScannedPageSourceType =
   "file" | "archive-entry" | "packed-archive-entry" | "pdf-page" | "epub-page";
 
 export interface ScannedBookPage {
-  sourcePath: string;
   sourceType: ScannedPageSourceType;
+  relativePath: string;
   entryPath?: string | null;
+  sourcePageNumber?: number | null;
   width?: number | null;
   height?: number | null;
+  mimeType?: string | null;
 }
 
 export interface ScannedBook {
-  sourcePath: string;
+  relativePath: string;
   title: string;
   authors: string[];
   format:
@@ -104,39 +141,46 @@ export const toScanCandidate = (source: CandidateSource): ScanCandidate => ({
 });
 
 /**
- * Scans a collection root and returns discovered book sources.
+ * Scans one library root and yields library-relative books incrementally.
  */
-export const scanCollectionRoot = async (
+export const scanLibrary = async function* (
   rootPath: string,
-  options: ScanCollectionRootOptions = {}
-): Promise<ScannedBook[]> => {
+  options: ScanLibraryOptions = {}
+): AsyncGenerator<ScannedBook, void, void> {
   const root = resolve(rootPath);
-  const runtime = createScanRuntime(options);
+  const runtime = createScanRuntime(root, options);
 
-  try {
-    runtime.signal?.throwIfAborted();
-    const rootStat = await stat(root);
-    runtime.signal?.throwIfAborted();
+  runtime.signal?.throwIfAborted();
+  const rootStat = await stat(root);
+  runtime.signal?.throwIfAborted();
 
-    if (!rootStat.isDirectory()) {
-      return [];
-    }
-
-    return await scanDirectory(root, runtime);
-  } catch {
-    runtime.signal?.throwIfAborted();
-    return [];
+  if (!rootStat.isDirectory()) {
+    return;
   }
+
+  yield* scanDirectory(root, runtime);
 };
+
+/**
+ * Compatibility alias for callers migrating from Collection Root terminology.
+ *
+ * @deprecated Use {@link scanLibrary}.
+ */
+export const scanCollectionRoot = scanLibrary;
 
 /**
  * Recursively scans a directory for image-folder books.
  */
-const scanDirectory = async (
+const scanDirectory = async function* (
   directoryPath: string,
   runtime: ScanRuntime
-): Promise<ScannedBook[]> => {
+): AsyncGenerator<ScannedBook, void, void> {
   runtime.signal?.throwIfAborted();
+
+  if (isExcludedSource(directoryPath, runtime)) {
+    return;
+  }
+
   const entries = await readdir(directoryPath, { withFileTypes: true });
   runtime.signal?.throwIfAborted();
   const imageNames = sortPageNames(
@@ -151,7 +195,14 @@ const scanDirectory = async (
   );
 
   if (imageNames.length > 0) {
-    return [await createImageFolderBook(directoryPath, imageNames, runtime)];
+    try {
+      yield await createImageFolderBook(directoryPath, imageNames, runtime);
+    } catch (error) {
+      runtime.signal?.throwIfAborted();
+      reportCandidateError(directoryPath, "image-folder", error, runtime);
+    }
+
+    return;
   }
 
   const fileCandidates = await listFileBookCandidates(
@@ -164,48 +215,29 @@ const scanDirectory = async (
       (candidate) => candidate.format === "zip" || candidate.format === "cbz"
     )
   );
-  const archiveBooks = (
-    await mapWithConcurrency(
-      archiveCandidates,
-      runtime.concurrency,
-      (candidate) =>
-        createScannedBookSafely(
-          () => createArchiveBook(candidate.path, candidate.format),
-          runtime.signal
-        ),
-      runtime.signal
-    )
-  ).filter((book): book is ScannedBook => book !== null);
+  yield* yieldScannedBooks(
+    archiveCandidates,
+    (candidate) =>
+      createArchiveBook(candidate.path, runtime.rootPath, candidate.format),
+    runtime
+  );
   const pdfCandidates = sortFileBookCandidates(
     fileCandidates.filter((candidate) => candidate.format === "pdf")
   );
-  const pdfBooks = (
-    await mapWithConcurrency(
-      pdfCandidates,
-      runtime.concurrency,
-      (candidate) =>
-        createScannedBookSafely(
-          () => createPdfBook(candidate.path),
-          runtime.signal
-        ),
-      runtime.signal
-    )
-  ).filter((book): book is ScannedBook => book !== null);
+  yield* yieldScannedBooks(
+    pdfCandidates,
+    (candidate) => createPdfBook(candidate.path, runtime),
+    runtime,
+    pdfScanConcurrency
+  );
   const epubCandidates = sortFileBookCandidates(
     fileCandidates.filter((candidate) => candidate.format === "epub")
   );
-  const epubBooks = (
-    await mapWithConcurrency(
-      epubCandidates,
-      runtime.concurrency,
-      (candidate) =>
-        createScannedBookSafely(
-          () => createEpubBook(candidate.path),
-          runtime.signal
-        ),
-      runtime.signal
-    )
-  ).filter((book): book is ScannedBook => book !== null);
+  yield* yieldScannedBooks(
+    epubCandidates,
+    (candidate) => createEpubBook(candidate.path, runtime.rootPath),
+    runtime
+  );
   const packedArchiveCandidates = sortFileBookCandidates(
     fileCandidates.filter(
       (candidate) =>
@@ -214,18 +246,16 @@ const scanDirectory = async (
         candidate.format === "seven-zip"
     )
   );
-  const packedArchiveBooks = (
-    await mapWithConcurrency(
-      packedArchiveCandidates,
-      runtime.concurrency,
-      (candidate) =>
-        createScannedBookSafely(
-          () => createPackedArchiveBook(candidate.path, candidate.format),
-          runtime.signal
-        ),
-      runtime.signal
-    )
-  ).filter((book): book is ScannedBook => book !== null);
+  yield* yieldScannedBooks(
+    packedArchiveCandidates,
+    (candidate) =>
+      createPackedArchiveBook(
+        candidate.path,
+        runtime.rootPath,
+        candidate.format
+      ),
+    runtime
+  );
   const childDirectories = sortPageNames(
     entries
       .filter(
@@ -233,38 +263,53 @@ const scanDirectory = async (
       )
       .map((entry) => entry.name)
   );
-  const nestedBooks: ScannedBook[][] = [];
-
   for (const name of childDirectories) {
     runtime.signal?.throwIfAborted();
-    nestedBooks.push(
-      await scanDirectorySafely(join(directoryPath, name), runtime)
-    );
+    yield* scanDirectorySafely(join(directoryPath, name), runtime);
   }
 
   runtime.signal?.throwIfAborted();
-
-  return [
-    ...archiveBooks,
-    ...pdfBooks,
-    ...epubBooks,
-    ...packedArchiveBooks,
-    ...nestedBooks.flat()
-  ];
 };
 
 /**
  * Scans a child directory without letting one unreadable subtree stop the root.
  */
-const scanDirectorySafely = async (
+const scanDirectorySafely = async function* (
   directoryPath: string,
   runtime: ScanRuntime
-): Promise<ScannedBook[]> => {
+): AsyncGenerator<ScannedBook, void, void> {
   try {
-    return await scanDirectory(directoryPath, runtime);
+    yield* scanDirectory(directoryPath, runtime);
   } catch {
     runtime.signal?.throwIfAborted();
-    return [];
+    runtime.onCandidateError?.({
+      kind: "subtree",
+      relativePath: toLibraryRelativePath(runtime.rootPath, directoryPath),
+      format: "unknown",
+      code: "DIRECTORY_UNREADABLE"
+    });
+  }
+};
+
+/**
+ * Parses file candidates with bounded concurrency and yields them in scan order.
+ */
+const yieldScannedBooks = async function* (
+  candidates: FileBookCandidate[],
+  createBook: (candidate: FileBookCandidate) => Promise<ScannedBook | null>,
+  runtime: ScanRuntime,
+  concurrency = runtime.concurrency
+): AsyncGenerator<ScannedBook, void, void> {
+  for await (const book of mapWithConcurrencyStream(
+    candidates,
+    concurrency,
+    (candidate) =>
+      createScannedBookSafely(() => createBook(candidate), candidate, runtime),
+    runtime.signal
+  )) {
+    if (book) {
+      yield book;
+    }
   }
 };
 
@@ -273,15 +318,17 @@ const scanDirectorySafely = async (
  */
 const createScannedBookSafely = async (
   createBook: () => Promise<ScannedBook | null>,
-  signal?: AbortSignal
+  candidate: FileBookCandidate,
+  runtime: ScanRuntime
 ): Promise<ScannedBook | null> => {
   try {
-    signal?.throwIfAborted();
+    runtime.signal?.throwIfAborted();
     const book = await createBook();
-    signal?.throwIfAborted();
+    runtime.signal?.throwIfAborted();
     return book;
-  } catch {
-    signal?.throwIfAborted();
+  } catch (error) {
+    runtime.signal?.throwIfAborted();
+    reportCandidateError(candidate.path, candidate.format, error, runtime);
     return null;
   }
 };
@@ -304,6 +351,10 @@ const listFileBookCandidates = async (
         runtime.signal?.throwIfAborted();
         const path = join(directoryPath, entry.name);
 
+        if (isExcludedSource(path, runtime)) {
+          return null;
+        }
+
         try {
           const candidate = {
             name: entry.name,
@@ -313,8 +364,20 @@ const listFileBookCandidates = async (
 
           runtime.signal?.throwIfAborted();
           return candidate;
-        } catch {
+        } catch (error) {
           runtime.signal?.throwIfAborted();
+          const format = detectFormat(path, false);
+
+          if (format !== "unknown") {
+            reportCandidateError(
+              path,
+              format,
+              error,
+              runtime,
+              "SOURCE_UNREADABLE"
+            );
+          }
+
           return null;
         }
       },
@@ -373,22 +436,27 @@ const createImageFolderBook = async (
     (latest, item) => Math.max(latest, item.mtimeMs),
     0
   );
+  const relativePath = toLibraryRelativePath(runtime.rootPath, directoryPath);
   const candidate = toScanCandidate({
-    path: directoryPath,
+    path: relativePath,
     isDirectory: true,
     size,
     mtimeMs
   });
+  const relativePagePaths = pagePaths.map((pagePath) =>
+    toLibraryRelativePath(runtime.rootPath, pagePath)
+  );
 
   return {
-    sourcePath: directoryPath,
+    relativePath,
     title: basename(directoryPath),
     authors: [],
     format: "image-folder",
-    pagePaths,
-    pages: pagePaths.map((pagePath) => ({
-      sourcePath: pagePath,
-      sourceType: "file"
+    pagePaths: relativePagePaths,
+    pages: relativePagePaths.map((pagePath) => ({
+      sourceType: "file",
+      relativePath: pagePath,
+      mimeType: getImageMimeType(pagePath)
     })),
     size,
     mtimeMs,
@@ -401,9 +469,11 @@ const createImageFolderBook = async (
  */
 const createArchiveBook = async (
   archivePath: string,
+  rootPath: string,
   detectedFormat: BookFormat = detectFormat(archivePath, false)
 ): Promise<ScannedBook | null> => {
   const normalizedArchivePath = resolve(archivePath);
+  const relativePath = toLibraryRelativePath(rootPath, normalizedArchivePath);
   const entries = await listArchiveImageEntries(normalizedArchivePath);
 
   if (entries.length === 0) {
@@ -412,7 +482,7 @@ const createArchiveBook = async (
 
   const fileStat = await stat(normalizedArchivePath);
   const candidate = toScanCandidate({
-    path: normalizedArchivePath,
+    path: relativePath,
     isDirectory: false,
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs
@@ -420,15 +490,16 @@ const createArchiveBook = async (
   const format = detectedFormat === "cbz" ? "cbz" : "zip";
 
   return {
-    sourcePath: normalizedArchivePath,
+    relativePath,
     title: basename(normalizedArchivePath, extname(normalizedArchivePath)),
     authors: [],
     format,
     pagePaths: entries.map((entry) => entry.entryPath),
     pages: entries.map((entry) => ({
-      sourcePath: normalizedArchivePath,
       sourceType: "archive-entry",
-      entryPath: entry.entryPath
+      relativePath,
+      entryPath: entry.entryPath,
+      mimeType: getImageMimeType(entry.entryPath)
     })),
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,
@@ -439,9 +510,16 @@ const createArchiveBook = async (
 /**
  * Creates a scanned book from a PDF and its renderable pages.
  */
-const createPdfBook = async (pdfPath: string): Promise<ScannedBook | null> => {
+const createPdfBook = async (
+  pdfPath: string,
+  runtime: ScanRuntime
+): Promise<ScannedBook | null> => {
   const normalizedPdfPath = resolve(pdfPath);
-  const pages = await listPdfPages(normalizedPdfPath);
+  const relativePath = toLibraryRelativePath(
+    runtime.rootPath,
+    normalizedPdfPath
+  );
+  const pages = await runtime.listPdfPages(normalizedPdfPath, runtime.signal);
 
   if (pages.length === 0) {
     return null;
@@ -449,24 +527,25 @@ const createPdfBook = async (pdfPath: string): Promise<ScannedBook | null> => {
 
   const fileStat = await stat(normalizedPdfPath);
   const candidate = toScanCandidate({
-    path: normalizedPdfPath,
+    path: relativePath,
     isDirectory: false,
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs
   });
 
   return {
-    sourcePath: normalizedPdfPath,
+    relativePath,
     title: basename(normalizedPdfPath, extname(normalizedPdfPath)),
     authors: [],
     format: "pdf",
     pagePaths: pages.map((page) => `page:${page.pageNumber}`),
     pages: pages.map((page) => ({
-      sourcePath: normalizedPdfPath,
       sourceType: "pdf-page",
-      entryPath: null,
+      relativePath,
+      sourcePageNumber: page.pageNumber,
       width: page.width,
-      height: page.height
+      height: page.height,
+      mimeType: "image/png"
     })),
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,
@@ -478,13 +557,13 @@ const createPdfBook = async (pdfPath: string): Promise<ScannedBook | null> => {
  * Creates a scanned book from an EPUB and its generated page images.
  */
 const createEpubBook = async (
-  epubPath: string
+  epubPath: string,
+  rootPath: string
 ): Promise<ScannedBook | null> => {
   const normalizedEpubPath = resolve(epubPath);
-  const [pages, metadata] = await Promise.all([
-    listEpubPages(normalizedEpubPath),
-    readEpubMetadata(normalizedEpubPath)
-  ]);
+  const relativePath = toLibraryRelativePath(rootPath, normalizedEpubPath);
+  const pages = await listEpubPages(normalizedEpubPath);
+  const metadata = await readEpubMetadata(normalizedEpubPath);
 
   if (pages.length === 0) {
     return null;
@@ -492,14 +571,14 @@ const createEpubBook = async (
 
   const fileStat = await stat(normalizedEpubPath);
   const candidate = toScanCandidate({
-    path: normalizedEpubPath,
+    path: relativePath,
     isDirectory: false,
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs
   });
 
   return {
-    sourcePath: normalizedEpubPath,
+    relativePath,
     title:
       metadata.title ??
       basename(normalizedEpubPath, extname(normalizedEpubPath)),
@@ -507,11 +586,12 @@ const createEpubBook = async (
     format: "epub",
     pagePaths: pages.map((page) => `page:${page.pageNumber}`),
     pages: pages.map((page) => ({
-      sourcePath: normalizedEpubPath,
       sourceType: "epub-page",
-      entryPath: null,
+      relativePath,
+      sourcePageNumber: page.pageNumber,
       width: page.width,
-      height: page.height
+      height: page.height,
+      mimeType: "image/png"
     })),
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,
@@ -524,9 +604,11 @@ const createEpubBook = async (
  */
 const createPackedArchiveBook = async (
   archivePath: string,
+  rootPath: string,
   detectedFormat: BookFormat = detectFormat(archivePath, false)
 ): Promise<ScannedBook | null> => {
   const normalizedArchivePath = resolve(archivePath);
+  const relativePath = toLibraryRelativePath(rootPath, normalizedArchivePath);
   const entries = await listPackedArchiveImageEntries(normalizedArchivePath);
 
   if (entries.length === 0) {
@@ -535,7 +617,7 @@ const createPackedArchiveBook = async (
 
   const fileStat = await stat(normalizedArchivePath);
   const candidate = toScanCandidate({
-    path: normalizedArchivePath,
+    path: relativePath,
     isDirectory: false,
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs
@@ -547,15 +629,16 @@ const createPackedArchiveBook = async (
   }
 
   return {
-    sourcePath: normalizedArchivePath,
+    relativePath,
     title: basename(normalizedArchivePath, extname(normalizedArchivePath)),
     authors: [],
     format,
     pagePaths: entries.map((entry) => entry.entryPath),
     pages: entries.map((entry) => ({
-      sourcePath: normalizedArchivePath,
       sourceType: "packed-archive-entry",
-      entryPath: entry.entryPath
+      relativePath,
+      entryPath: entry.entryPath,
+      mimeType: getImageMimeType(entry.entryPath)
     })),
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,
@@ -574,14 +657,154 @@ const toPackedArchiveFormat = (
     : null;
 
 /**
- * Creates the shared runtime knobs for one collection root scan.
+ * Creates the shared runtime knobs for one library scan.
  */
 const createScanRuntime = (
-  options: ScanCollectionRootOptions
+  rootPath: string,
+  options: ScanLibraryOptions
 ): ScanRuntime => ({
   concurrency: normalizeScanConcurrency(options.concurrency),
+  excludedRelativePaths: new Set(
+    Array.from(options.excludedRelativePaths ?? []).map(normalizeLocator)
+  ),
+  listPdfPages: options.listPdfPages ?? listPdfPages,
+  onCandidateError: options.onCandidateError,
+  rootPath,
   signal: options.signal
 });
+
+/**
+ * Reports a parse failure without exposing an absolute source path.
+ */
+const reportCandidateError = (
+  sourcePath: string,
+  format: BookFormat,
+  error: unknown,
+  runtime: ScanRuntime,
+  fallbackCode?: ScanFailureCode
+): void => {
+  runtime.onCandidateError?.({
+    kind: "book",
+    relativePath: toLibraryRelativePath(runtime.rootPath, sourcePath),
+    format,
+    code: getScanFailureCode(format, error, fallbackCode)
+  });
+};
+
+/**
+ * Maps an internal parse exception to a stable, path-free diagnostic code.
+ */
+const getScanFailureCode = (
+  format: BookFormat,
+  error: unknown,
+  fallbackCode?: ScanFailureCode
+): ScanFailureCode => {
+  const errorCode =
+    error instanceof Error && "code" in error ? error.code : undefined;
+
+  if (
+    typeof errorCode === "string" &&
+    scanFailureCodes.some((code) => code === errorCode)
+  ) {
+    return errorCode as ScanFailureCode;
+  }
+
+  if (errorCode === "PDF_PROCESS_PROTOCOL_ERROR") {
+    return "PDF_PROCESS_FAILED";
+  }
+
+  if (fallbackCode) {
+    return fallbackCode;
+  }
+
+  if (
+    format === "zip" ||
+    format === "cbz" ||
+    format === "rar" ||
+    format === "cbr" ||
+    format === "seven-zip"
+  ) {
+    return "ARCHIVE_PARSE_FAILED";
+  }
+
+  if (format === "epub") {
+    return "EPUB_PARSE_FAILED";
+  }
+
+  if (format === "pdf") {
+    return "PDF_PARSE_FAILED";
+  }
+
+  return "SOURCE_UNREADABLE";
+};
+
+/**
+ * Returns whether a source was archived and must be skipped before parsing.
+ */
+const isExcludedSource = (
+  sourcePath: string,
+  runtime: ScanRuntime
+): boolean => {
+  const relativePath = toLibraryRelativePath(runtime.rootPath, sourcePath);
+  return (
+    relativePath.length > 0 && runtime.excludedRelativePaths.has(relativePath)
+  );
+};
+
+/**
+ * Converts an absolute filesystem source into a safe library-relative locator.
+ */
+const toLibraryRelativePath = (
+  rootPath: string,
+  sourcePath: string
+): string => {
+  const relativePath = relative(rootPath, resolve(sourcePath));
+
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error("The scanned source is outside the library root.");
+  }
+
+  return normalizeLocator(relativePath) || ".";
+};
+
+/**
+ * Normalizes a filesystem or archive locator to forward slashes.
+ */
+const normalizeLocator = (value: string): string =>
+  value
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((segment) => segment.length > 0 && segment !== ".")
+    .join("/");
+
+/**
+ * Returns the MIME type for a supported page image extension.
+ */
+const getImageMimeType = (path: string): string | null => {
+  const extension = extname(path).toLocaleLowerCase();
+
+  if (extension === ".jpg" || extension === ".jpeg") {
+    return "image/jpeg";
+  }
+
+  if (extension === ".png") {
+    return "image/png";
+  }
+
+  if (extension === ".gif") {
+    return "image/gif";
+  }
+
+  if (extension === ".webp") {
+    return "image/webp";
+  }
+
+  if (extension === ".avif") {
+    return "image/avif";
+  }
+
+  return null;
+};
 
 /**
  * Normalizes requested scan concurrency to a small bounded integer.
@@ -630,4 +853,60 @@ const mapWithConcurrency = async <Input, Output>(
 
   await Promise.all(workers);
   return results;
+};
+
+interface SettledValue<Output> {
+  error?: unknown;
+  value?: Output;
+}
+
+/**
+ * Maps async work through a bounded queue while yielding ordered results.
+ */
+const mapWithConcurrencyStream = async function* <Input, Output>(
+  items: Input[],
+  concurrency: number,
+  mapper: (item: Input, index: number) => Promise<Output>,
+  signal?: AbortSignal
+): AsyncGenerator<Output, void, void> {
+  signal?.throwIfAborted();
+  const pending = new Map<number, Promise<SettledValue<Output>>>();
+  let nextScheduleIndex = 0;
+
+  const schedule = (): void => {
+    while (
+      nextScheduleIndex < items.length &&
+      pending.size < Math.min(concurrency, items.length)
+    ) {
+      const index = nextScheduleIndex;
+      nextScheduleIndex += 1;
+      const item = items[index] as Input;
+      const task = Promise.resolve()
+        .then(() => mapper(item, index))
+        .then(
+          (value): SettledValue<Output> => ({ value }),
+          (error): SettledValue<Output> => ({ error })
+        );
+      pending.set(index, task);
+    }
+  };
+
+  schedule();
+
+  for (let index = 0; index < items.length; index += 1) {
+    signal?.throwIfAborted();
+    const result = await pending.get(index);
+    pending.delete(index);
+    schedule();
+
+    if (!result) {
+      throw new Error("A queued scan result was unavailable.");
+    }
+
+    if ("error" in result) {
+      throw result.error;
+    }
+
+    yield result.value as Output;
+  }
 };

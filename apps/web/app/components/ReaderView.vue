@@ -7,14 +7,13 @@ import type {
 import {
   clampPage,
   clampScale,
-  createPageImageUrl,
   getAdjacentPages,
   getPageByStep,
   getReaderKeyboardAction,
   getSpreadAnchorPage,
   getVisibleReaderPages
 } from "@bookcafe/core";
-import { useElementSize, useSwipe } from "@vueuse/core";
+import { useElementSize, useLocalStorage, useSwipe } from "@vueuse/core";
 import {
   computed,
   nextTick,
@@ -33,6 +32,15 @@ import {
   getBookSourceStatusTitle,
   isReadableBookStatus
 } from "../utils/bookAvailability";
+import {
+  normalizeReaderPreferences,
+  type ReaderPreferences
+} from "../utils/readerPreferences";
+import {
+  getReaderHorizontalSide,
+  getReaderImageInteraction,
+  isPointInReaderTopEdge
+} from "../utils/readerToolbarInteraction";
 
 const { book } = defineProps<{
   book: BookDetail;
@@ -40,18 +48,33 @@ const { book } = defineProps<{
 const emit = defineEmits<{
   pageChange: [currentPage: number];
 }>();
+const { getPageImageUrl } = useBookApi();
 
+const defaultPreferences = normalizeReaderPreferences(
+  null,
+  book.readingDirection
+);
+const storedPreferences = useLocalStorage<ReaderPreferences>(
+  "bookcafe-reader-preferences",
+  defaultPreferences,
+  { mergeDefaults: true }
+);
+const initialPreferences = normalizeReaderPreferences(
+  storedPreferences.value,
+  book.readingDirection
+);
 const currentPage = ref(clampPage(book.currentPage, book.pageCount));
-const direction = ref(book.readingDirection);
-const mode = ref<"paged" | "vertical">("paged");
-const layout = ref<PageLayout>("single");
-const fit = ref<"contain" | "width" | "height" | "actual">("contain");
+const direction = ref(initialPreferences.direction);
+const mode = ref(initialPreferences.mode);
+const layout = ref<PageLayout>(initialPreferences.layout);
+const fit = ref(initialPreferences.fit);
 const scale = ref(1);
 const pageInput = ref(String(currentPage.value));
 const reader = useTemplateRef<HTMLElement>("reader");
+const toolbarLayer = useTemplateRef<HTMLElement>("toolbar-layer");
 const pageInputId = useId();
 const { width } = useElementSize(reader);
-const { direction: swipeDirection } = useSwipe(reader);
+const isToolbarVisible = ref(false);
 const pages = computed(() =>
   Array.from({ length: book.pageCount }, (_, index) => index + 1)
 );
@@ -71,6 +94,9 @@ const pageLabel = computed(() =>
 const pageProgressLabel = computed(
   () =>
     `${Math.round((lastVisiblePage.value / Math.max(book.pageCount, 1)) * 100)}%`
+);
+const pageProgress = computed(() =>
+  Math.round((lastVisiblePage.value / Math.max(book.pageCount, 1)) * 100)
 );
 const zoomLabel = computed(() => `${Math.round(scale.value * 100)}%`);
 const preloadPages = computed(() => {
@@ -97,12 +123,12 @@ const hasViewportNotice = computed(
 const issueTitle = computed(() =>
   hasUnavailableSource.value
     ? getBookSourceStatusTitle(book.status)
-    : "Page unavailable"
+    : "ページを表示できません"
 );
 const issueBody = computed(() =>
   hasUnavailableSource.value
     ? getBookSourceStatusMessage(book.status)
-    : "This page image could not be read from the source file."
+    : "元ファイルからこのページ画像を読み取れませんでした。"
 );
 const readerClasses = computed(() => [
   "reader",
@@ -120,7 +146,7 @@ const readerClasses = computed(() => [
  * Builds a page image URL for a one-based page number.
  */
 const getPageUrl = (pageNumber: number): string =>
-  createPageImageUrl(book.id, pageNumber);
+  getPageImageUrl(book.libraryId, book.id, pageNumber);
 
 useHead(() => ({
   link:
@@ -138,8 +164,11 @@ useHead(() => ({
 const pageElements = new Map<number, HTMLElement>();
 let pinchStartDistance = 0;
 let pinchStartScale = 1;
-let lastWheelAt = 0;
 let scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTouchEndAt = 0;
+let suppressPageClickUntil = 0;
+const touchClickDetectionMs = 800;
+const pageClickSuppressionMs = 500;
 
 /**
  * Tracks DOM elements for pages rendered in vertical mode.
@@ -347,6 +376,112 @@ const handleArrow = (key: "left" | "right"): void => {
 };
 
 /**
+ * Handles toolbar visibility and page navigation from image clicks.
+ */
+const handlePagedImageClick = (event: MouseEvent): void => {
+  if (
+    hasUnavailableSource.value ||
+    !(event.currentTarget instanceof HTMLElement) ||
+    Date.now() < suppressPageClickUntil
+  ) {
+    return;
+  }
+
+  const previewBounds = event.currentTarget.getBoundingClientRect();
+  const toolbarHeight = toolbarLayer.value?.getBoundingClientRect().height ?? 0;
+  const isInTopEdge = isPointInReaderTopEdge({
+    pointY: event.clientY,
+    imageTop: previewBounds.top,
+    imageBottom: previewBounds.bottom,
+    toolbarHeight
+  });
+  const pointerType =
+    typeof PointerEvent !== "undefined" && event instanceof PointerEvent
+      ? event.pointerType
+      : undefined;
+  const isTouchLike =
+    (pointerType !== undefined && pointerType !== "mouse") ||
+    Date.now() - lastTouchEndAt < touchClickDetectionMs;
+  const interaction = getReaderImageInteraction({
+    isTouchLike,
+    isToolbarVisible: isToolbarVisible.value,
+    isInTopEdge
+  });
+
+  if (interaction === "show-toolbar") {
+    isToolbarVisible.value = true;
+    return;
+  }
+
+  if (interaction === "hide-toolbar") {
+    isToolbarVisible.value = false;
+    return;
+  }
+
+  const clickSide = getReaderHorizontalSide({
+    pointX: event.clientX,
+    previewLeft: previewBounds.left,
+    previewRight: previewBounds.right
+  });
+  handleArrow(clickSide);
+};
+
+/**
+ * Reveals desktop reader controls while the pointer is over the image top edge.
+ */
+const handleReaderPointerMove = (event: PointerEvent): void => {
+  if (event.pointerType !== "mouse") {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    isToolbarVisible.value = false;
+    return;
+  }
+
+  if (target.closest(".toolbar-layer")) {
+    isToolbarVisible.value = true;
+    return;
+  }
+
+  const pageImage = target.closest<HTMLImageElement>("img.page");
+  if (!pageImage) {
+    isToolbarVisible.value = false;
+    return;
+  }
+
+  const imageBounds = pageImage.getBoundingClientRect();
+  const toolbarHeight = toolbarLayer.value?.getBoundingClientRect().height ?? 0;
+  isToolbarVisible.value = isPointInReaderTopEdge({
+    pointY: event.clientY,
+    imageTop: imageBounds.top,
+    imageBottom: imageBounds.bottom,
+    toolbarHeight
+  });
+};
+
+/**
+ * Hides hover-triggered controls after a mouse leaves the reader.
+ */
+const handleReaderPointerLeave = (event: PointerEvent): void => {
+  if (event.pointerType === "mouse") {
+    isToolbarVisible.value = false;
+  }
+};
+
+useSwipe(reader, {
+  onSwipeEnd: (_event, swipeDirection) => {
+    if (swipeDirection !== "left" && swipeDirection !== "right") {
+      return;
+    }
+
+    suppressPageClickUntil = Date.now() + pageClickSuppressionMs;
+    handleArrow(swipeDirection);
+  }
+});
+
+/**
  * Applies a normalized keyboard action to the reader.
  */
 const applyReaderKeyboardAction = (action: ReaderKeyboardAction): void => {
@@ -432,16 +567,6 @@ const handleReaderKeydown = (event: KeyboardEvent): void => {
   applyReaderKeyboardAction(action);
 };
 
-watch(swipeDirection, (value) => {
-  if (value === "left") {
-    handleArrow("left");
-  }
-
-  if (value === "right") {
-    handleArrow("right");
-  }
-});
-
 watch(mode, (nextMode) => {
   if (nextMode === "vertical") {
     void scrollToPage(currentPage.value);
@@ -460,6 +585,19 @@ watch(layout, (nextLayout) => {
 });
 
 watch(
+  [direction, mode, layout, fit],
+  ([nextDirection, nextMode, nextLayout, nextFit]) => {
+    storedPreferences.value = {
+      direction: nextDirection,
+      mode: nextMode,
+      layout: nextLayout,
+      fit: nextFit
+    };
+  },
+  { immediate: true }
+);
+
+watch(
   () => book.id,
   () => {
     pageElements.clear();
@@ -468,7 +606,6 @@ watch(
       mode.value === "paged" && layout.value === "spread"
         ? getSpreadAnchorPage(book.currentPage, book.pageCount)
         : clampPage(book.currentPage, book.pageCount);
-    direction.value = book.readingDirection;
     resetScale();
   }
 );
@@ -476,29 +613,6 @@ watch(
 watch(currentPage, (pageNumber) => {
   pageInput.value = String(pageNumber);
 });
-
-/**
- * Uses the mouse wheel for page navigation.
- */
-const handleWheel = (event: WheelEvent): void => {
-  if (hasUnavailableSource.value) {
-    return;
-  }
-
-  event.preventDefault();
-  const now = Date.now();
-  if (now - lastWheelAt < 250) {
-    return;
-  }
-  lastWheelAt = now;
-
-  if (event.deltaY > 0) {
-    nextPage();
-    return;
-  }
-
-  previousPage();
-};
 
 /**
  * Updates the active page after vertical scrolling rests.
@@ -563,6 +677,7 @@ const handleTouchEnd = (): void => {
     return;
   }
 
+  lastTouchEndAt = Date.now();
   pinchStartDistance = 0;
   pinchStartScale = scale.value;
 };
@@ -694,98 +809,36 @@ onUnmounted(() => {
   <section
     :class="readerClasses"
     :style="{ '--reader-width': `${width}px` }"
-    aria-label="Book reader"
+    aria-label="書籍Reader"
+    @pointermove="handleReaderPointerMove"
+    @pointerleave="handleReaderPointerLeave"
   >
-    <div class="toolbar">
-      <div class="title">
-        <strong>{{ book.title }}</strong>
-        <span>{{ pageLabel }}</span>
-        <span>{{ pageProgressLabel }}</span>
-      </div>
-      <div class="controls" aria-label="Reader controls">
-        <button
-          type="button"
-          :disabled="hasUnavailableSource"
-          @click="previousPage"
-        >
-          Prev
-        </button>
-        <button
-          type="button"
-          :disabled="hasUnavailableSource"
-          @click="nextPage"
-        >
-          Next
-        </button>
-        <form
-          class="jump"
-          aria-label="Page jump"
-          @submit.prevent="commitPageInput"
-        >
-          <label :for="pageInputId">Page</label>
-          <input
-            :id="pageInputId"
-            v-model="pageInput"
-            type="number"
-            inputmode="numeric"
-            min="1"
-            :max="book.pageCount"
-            step="1"
-            required
-            :disabled="hasUnavailableSource"
-          />
-          <span>/ {{ book.pageCount }}</span>
-          <button type="submit" :disabled="hasUnavailableSource">Go</button>
-        </form>
-        <div class="zoom" aria-label="Zoom controls">
-          <button
-            type="button"
-            aria-label="Zoom out"
-            :disabled="hasUnavailableSource"
-            @click="decreaseScale"
-          >
-            -
-          </button>
-          <output aria-label="Zoom scale">{{ zoomLabel }}</output>
-          <button
-            type="button"
-            aria-label="Zoom in"
-            :disabled="hasUnavailableSource"
-            @click="increaseScale"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            :disabled="hasUnavailableSource"
-            @click="resetScale"
-          >
-            100%
-          </button>
-        </div>
-        <select v-model="direction" aria-label="Reading direction">
-          <option value="rtl">RTL</option>
-          <option value="ltr">LTR</option>
-        </select>
-        <select v-model="mode" aria-label="Reader mode">
-          <option value="paged">Paged</option>
-          <option value="vertical">Vertical</option>
-        </select>
-        <select
-          v-if="mode === 'paged'"
-          v-model="layout"
-          aria-label="Page layout"
-        >
-          <option value="single">Single</option>
-          <option value="spread">Spread</option>
-        </select>
-        <select v-model="fit" aria-label="Image fit">
-          <option value="contain">Fit page</option>
-          <option value="width">Fit width</option>
-          <option value="height">Fit height</option>
-          <option value="actual">Actual size</option>
-        </select>
-      </div>
+    <div
+      ref="toolbar-layer"
+      class="toolbar-layer"
+      :class="{ 'is-visible': isToolbarVisible }"
+    >
+      <ReaderToolbar
+        v-model:page-input="pageInput"
+        v-model:direction="direction"
+        v-model:mode="mode"
+        v-model:layout="layout"
+        v-model:fit="fit"
+        :title="book.title"
+        :page-label="pageLabel"
+        :page-progress="pageProgress"
+        :page-progress-label="pageProgressLabel"
+        :page-input-id="pageInputId"
+        :page-count="book.pageCount"
+        :zoom-label="zoomLabel"
+        :disabled="hasUnavailableSource"
+        @previous="previousPage"
+        @next="nextPage"
+        @commit-page="commitPageInput"
+        @zoom-out="decreaseScale"
+        @zoom-in="increaseScale"
+        @reset-zoom="resetScale"
+      />
     </div>
     <div
       ref="reader"
@@ -793,7 +846,6 @@ onUnmounted(() => {
       tabindex="0"
       @scroll.passive="handleScroll"
       @scrollend="handleScrollEnd"
-      @wheel="handleWheel"
       @touchstart="handleTouchStart"
       @touchmove="handleTouchMove"
       @touchend="handleTouchEnd"
@@ -806,7 +858,7 @@ onUnmounted(() => {
       >
         <strong>{{ issueTitle }}</strong>
         <span>{{ issueBody }}</span>
-        <NuxtLink to="/">Library</NuxtLink>
+        <NuxtLink to="/">ライブラリ</NuxtLink>
       </div>
       <div
         v-else-if="mode === 'paged' && hasVisibleFailedPage"
@@ -816,13 +868,18 @@ onUnmounted(() => {
       >
         <strong>{{ issueTitle }}</strong>
         <span>{{ issueBody }}</span>
-        <button type="button" @click="retryVisiblePages">Retry</button>
+        <Button
+          label="再試行"
+          icon="pi pi-refresh"
+          @click="retryVisiblePages"
+        />
       </div>
       <div
         v-else-if="mode === 'paged'"
         class="spread"
         :style="scaleStyle"
         :aria-label="pageLabel"
+        @click="handlePagedImageClick"
       >
         <img
           v-for="pageNumber in visiblePages"
@@ -830,7 +887,7 @@ onUnmounted(() => {
           class="page"
           :class="{ 'is-spread': visiblePages.length > 1 }"
           :src="getPageUrl(pageNumber)"
-          :alt="`${book.title} page ${pageNumber}`"
+          :alt="`${book.title} ${pageNumber}ページ`"
           width="960"
           height="1440"
           loading="eager"
@@ -855,14 +912,14 @@ onUnmounted(() => {
             role="status"
             aria-live="polite"
           >
-            <strong>Page unavailable</strong>
-            <span>This page image could not be read from the source file.</span>
+            <strong>ページを表示できません</strong>
+            <span>元ファイルからこのページ画像を読み取れませんでした。</span>
           </div>
           <img
             v-else
             class="page"
             :src="getPageUrl(pageNumber)"
-            :alt="`${book.title} page ${pageNumber}`"
+            :alt="`${book.title} ${pageNumber}ページ`"
             width="960"
             height="1440"
             :loading="pageNumber === currentPage ? 'eager' : 'lazy'"
@@ -880,12 +937,39 @@ onUnmounted(() => {
 
 <style scoped>
 .reader {
+  position: relative;
   display: grid;
-  height: calc(100dvh - var(--app-topbar-height, 4rem));
+  height: 100dvh;
   min-height: 0;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: minmax(0, 1fr);
   color: var(--reader-text);
   background: var(--reader-bg);
+  color-scheme: dark;
+}
+
+.toolbar-layer {
+  position: absolute;
+  z-index: 10;
+  inset-block-start: 0;
+  inset-inline: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-100%);
+}
+
+.toolbar-layer.is-visible,
+.toolbar-layer:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toolbar-layer {
+    transition:
+      opacity 140ms ease-out,
+      transform 140ms ease-out;
+  }
 }
 
 .toolbar {
@@ -996,6 +1080,10 @@ onUnmounted(() => {
   user-select: none;
 }
 
+.mode-paged .spread {
+  cursor: pointer;
+}
+
 .spread {
   --spread-gap: clamp(0.25rem, 1vw, 1rem);
 
@@ -1005,7 +1093,7 @@ onUnmounted(() => {
   gap: var(--spread-gap);
   width: 100%;
   max-width: 100%;
-  max-height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
+  max-height: 100dvh;
   transform-origin: center center;
   transition: transform 120ms ease-out;
 }
@@ -1023,8 +1111,10 @@ onUnmounted(() => {
 }
 
 .fit-contain .page {
+  width: auto;
   max-width: min(100%, 980px);
-  max-height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
+  height: auto;
+  max-height: 100dvh;
 }
 
 .fit-contain .spread .page.is-spread {
@@ -1046,7 +1136,7 @@ onUnmounted(() => {
 .fit-height .page {
   width: auto;
   max-width: none;
-  height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
+  height: 100dvh;
   max-height: 100%;
 }
 
@@ -1103,7 +1193,7 @@ onUnmounted(() => {
 .mode-vertical.fit-height .page {
   width: auto;
   max-width: none;
-  height: calc(100dvh - var(--app-topbar-height, 4rem) - 4.6rem);
+  height: 100dvh;
 }
 
 .mode-vertical.fit-actual .page {
@@ -1165,6 +1255,14 @@ onUnmounted(() => {
 }
 
 @media (max-width: 720px) {
+  .mode-paged .viewport {
+    place-items: start center;
+  }
+
+  .mode-paged .spread {
+    align-items: flex-start;
+  }
+
   .toolbar {
     align-items: start;
     flex-direction: column;

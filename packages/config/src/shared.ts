@@ -17,11 +17,9 @@ export const thumbnailSettingsSchema = z
 export type ThumbnailSettings = z.infer<typeof thumbnailSettingsSchema>;
 
 export const appConfigSchema = z.object({
-  dataDir: z.string().min(1),
   host: bindHostSchema.default("127.0.0.1"),
   port: z.number().int().min(1).max(65535).default(4510),
-  thumbnails: thumbnailSettingsSchema,
-  setupComplete: z.boolean().default(false)
+  thumbnails: thumbnailSettingsSchema
 });
 
 export type AppConfig = z.infer<typeof appConfigSchema>;

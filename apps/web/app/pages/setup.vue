@@ -1,58 +1,70 @@
 <script setup lang="ts">
+/**
+ * Initial account, library, and server settings.
+ *
+ * @module
+ */
+
+import {
+  initialSetupRequestSchema,
+  updateNetworkSettingsRequestSchema
+} from "@bookcafe/contracts";
+
 import { getApiErrorMessage } from "../utils/apiErrors";
+import {
+  createFieldErrorMap,
+  focusFormErrorSummary
+} from "../utils/formValidation";
+
+useHead({ title: "設定" });
 
 const {
   apiBase,
-  cancelJob,
-  createCollectionRoot,
   createInitialSetup,
-  createScanAllJobs,
-  createScanJob,
-  deleteCollectionRoot,
   getNetworkSettings,
   getSetupStatus,
   getThumbnailSettings,
-  listCollectionRoots,
-  listJobs,
   updateNetworkSettings,
   updateThumbnailSettings
 } = useBookApi();
+const { error: libraryError, refreshLibraries } = useLibraries();
 const { session, signInWithUsername } = useBookAuth();
 const username = ref("");
 const password = ref("");
-const dataDir = ref("");
 const host = ref<"127.0.0.1" | "0.0.0.0">("127.0.0.1");
 const port = ref(4510);
 const thumbnailEnabled = ref(true);
-const rootPath = ref("");
-const message = ref("");
-const rootMessage = ref("");
+const setupMessage = ref("");
+const setupMessageSeverity = ref<"success" | "error">("success");
 const networkMessage = ref("");
+const networkMessageSeverity = ref<"success" | "error">("success");
 const thumbnailMessage = ref("");
-const jobMessage = ref("");
-const isSaving = ref(false);
+const thumbnailMessageSeverity = ref<"success" | "error">("success");
+const isSavingSetup = ref(false);
 const isSavingNetwork = ref(false);
 const isSavingThumbnails = ref(false);
-const isAddingRoot = ref(false);
-const isScanningAll = ref(false);
-const scanningRootId = ref<string | null>(null);
-const deletingRootId = ref<string | null>(null);
-const confirmingRootId = ref<string | null>(null);
-const cancellingJobId = ref<string | null>(null);
+const setupFieldErrors = ref<Record<string, string>>({});
+const networkFieldErrors = ref<Record<string, string>>({});
+const setupErrorSummary = useTemplateRef<HTMLElement>("setup-error-summary");
+const networkErrorSummary = useTemplateRef<HTMLElement>(
+  "network-error-summary"
+);
 const {
   data: setupStatus,
   status: setupRequestStatus,
   error: setupError,
-  refresh
+  refresh: refreshSetupStatus
 } = await useAsyncData("setup-status", getSetupStatus, {
   server: false
 });
-const canUseProtectedApi = computed(
-  () =>
-    setupStatus.value?.setupComplete === true &&
-    Boolean(session.value.data?.user)
+const authenticated = computed(() => Boolean(session.value.data?.user));
+const libraryErrorMessage = computed(() =>
+  getApiErrorMessage(libraryError.value, "ライブラリを読み込めませんでした。")
 );
-const { data: networkData, refresh: refreshNetwork } = await useAsyncData(
+const canUseProtectedApi = computed(
+  () => setupStatus.value?.setupComplete === true && authenticated.value
+);
+const { data: networkData } = await useAsyncData(
   "network-settings",
   () =>
     canUseProtectedApi.value ? getNetworkSettings() : Promise.resolve(null),
@@ -62,7 +74,7 @@ const { data: networkData, refresh: refreshNetwork } = await useAsyncData(
     watch: [canUseProtectedApi]
   }
 );
-const { data: thumbnailData, refresh: refreshThumbnails } = await useAsyncData(
+const { data: thumbnailData } = await useAsyncData(
   "thumbnail-settings",
   () =>
     canUseProtectedApi.value ? getThumbnailSettings() : Promise.resolve(null),
@@ -72,625 +84,421 @@ const { data: thumbnailData, refresh: refreshThumbnails } = await useAsyncData(
     watch: [canUseProtectedApi]
   }
 );
-const { data: rootsData, refresh: refreshRoots } = await useAsyncData(
-  "collection-roots",
-  () =>
-    canUseProtectedApi.value
-      ? listCollectionRoots()
-      : Promise.resolve({ roots: [] }),
-  {
-    default: () => ({ roots: [] }),
-    server: false,
-    watch: [canUseProtectedApi]
-  }
-);
-const { data: jobsData, refresh: refreshJobs } = await useAsyncData(
-  "background-jobs",
-  () => (canUseProtectedApi.value ? listJobs() : Promise.resolve({ jobs: [] })),
-  {
-    default: () => ({ jobs: [] }),
-    server: false,
-    watch: [canUseProtectedApi]
-  }
-);
-
-const roots = computed(() => rootsData.value?.roots ?? []);
-const jobs = computed(() => jobsData.value?.jobs ?? []);
-const protectedStatus = computed(() =>
-  setupStatus.value?.setupComplete && !session.value.data?.user
-    ? "Login required"
-    : ""
-);
-const setupStateLabel = computed(() => {
-  if (["idle", "pending"].includes(setupRequestStatus.value)) {
-    return "Loading";
-  }
-
-  if (setupRequestStatus.value === "error") {
-    return "Unavailable";
-  }
-
-  return setupStatus.value?.setupComplete ? "Complete" : "Required";
-});
-const canSubmitInitialSetup = computed(
-  () =>
-    setupRequestStatus.value === "success" &&
-    setupStatus.value?.setupComplete === false
-);
-const canScanRoots = computed(
-  () => canUseProtectedApi.value && roots.value.length > 0
-);
 
 watch(
-  [setupStatus, networkData, thumbnailData],
-  ([setupValue, networkValue, thumbnailValue]) => {
-    host.value = networkValue?.host ?? setupValue?.host ?? "127.0.0.1";
-    port.value = networkValue?.port ?? setupValue?.port ?? 4510;
-    thumbnailEnabled.value =
-      thumbnailValue?.enabled ?? setupValue?.thumbnails?.enabled ?? true;
+  networkData,
+  (settings) => {
+    if (settings) {
+      host.value = settings.host;
+      port.value = settings.port;
+    }
   },
   { immediate: true }
 );
 
-/**
- * Sends the initial setup request to the Hono API.
- */
+watch(
+  thumbnailData,
+  (settings) => {
+    if (settings) {
+      thumbnailEnabled.value = settings.enabled;
+    }
+  },
+  { immediate: true }
+);
+
+/** Creates the initial user and signs into the new account. */
 const submitSetup = async (): Promise<void> => {
-  isSaving.value = true;
-  message.value = "";
+  const validation = initialSetupRequestSchema.safeParse({
+    username: username.value,
+    password: password.value
+  });
+
+  if (!validation.success) {
+    const errors = createFieldErrorMap(validation.error.issues);
+    setupFieldErrors.value = {
+      ...(errors.username
+        ? {
+            username:
+              "ユーザー名は3〜30文字の半角英数字、_、.で入力してください。"
+          }
+        : {}),
+      ...(errors.password
+        ? { password: "パスワードは8〜128文字で入力してください。" }
+        : {})
+    };
+    await focusFormErrorSummary(setupErrorSummary.value);
+    return;
+  }
+
+  isSavingSetup.value = true;
+  setupMessage.value = "";
+  setupFieldErrors.value = {};
 
   try {
-    await createInitialSetup({
-      username: username.value,
-      password: password.value,
-      dataDir: dataDir.value || undefined,
-      collectionRoots: [],
-      host: host.value,
-      port: port.value,
-      thumbnails: { enabled: thumbnailEnabled.value }
-    });
-    const signInResult = await signInWithUsername({
-      username: username.value,
-      password: password.value
-    });
+    await createInitialSetup(validation.data);
+    const signInResult = await signInWithUsername(validation.data);
 
-    message.value = "Saved";
+    setupMessageSeverity.value = "success";
+    setupMessage.value = signInResult.error
+      ? "保存しました。ログインしてください。"
+      : "初期設定を保存しました。";
+    await refreshSetupStatus();
 
-    if (signInResult.error) {
-      message.value = "Saved. Login required";
+    if (!signInResult.error) {
+      await refreshLibraries();
     }
-
-    await refresh();
-    await refreshNetwork();
-    await refreshThumbnails();
-    await refreshRoots();
-    await refreshJobs();
   } catch (error) {
-    message.value = getApiErrorMessage(error, "Failed");
+    setupMessageSeverity.value = "error";
+    setupMessage.value = getApiErrorMessage(
+      error,
+      "初期設定を保存できませんでした。"
+    );
   } finally {
-    isSaving.value = false;
+    isSavingSetup.value = false;
   }
 };
 
-/**
- * Saves persisted server network settings.
- */
+/** Saves persisted network settings. */
 const submitNetworkSettings = async (): Promise<void> => {
+  const validation = updateNetworkSettingsRequestSchema.safeParse({
+    host: host.value,
+    port: port.value
+  });
+
+  if (!validation.success) {
+    const errors = createFieldErrorMap(validation.error.issues);
+    networkFieldErrors.value = {
+      ...(errors.host ? { host: "待受アドレスを選択してください。" } : {}),
+      ...(errors.port
+        ? { port: "ポートは1〜65535の整数で入力してください。" }
+        : {})
+    };
+    await focusFormErrorSummary(networkErrorSummary.value);
+    return;
+  }
+
   isSavingNetwork.value = true;
   networkMessage.value = "";
+  networkFieldErrors.value = {};
 
   try {
-    const response = await updateNetworkSettings({
-      host: host.value,
-      port: port.value
-    });
-
+    const response = await updateNetworkSettings(validation.data);
     networkData.value = response;
+    networkMessageSeverity.value = "success";
     networkMessage.value = response.restartRequired
-      ? "Saved. Restart required"
-      : "Saved";
+      ? "保存しました。再起動後に反映されます。"
+      : "保存しました。";
   } catch (error) {
-    networkMessage.value = getApiErrorMessage(error, "Failed");
+    networkMessageSeverity.value = "error";
+    networkMessage.value = getApiErrorMessage(error, "保存できませんでした。");
   } finally {
     isSavingNetwork.value = false;
   }
 };
 
-/**
- * Saves persisted thumbnail settings.
- */
+/** Saves the thumbnail-generation setting. */
 const submitThumbnailSettings = async (): Promise<void> => {
   isSavingThumbnails.value = true;
   thumbnailMessage.value = "";
 
   try {
-    const response = await updateThumbnailSettings({
+    thumbnailData.value = await updateThumbnailSettings({
       enabled: thumbnailEnabled.value
     });
-
-    thumbnailData.value = response;
-    thumbnailMessage.value = "Saved";
+    thumbnailMessageSeverity.value = "success";
+    thumbnailMessage.value = "保存しました。";
   } catch (error) {
-    thumbnailMessage.value = getApiErrorMessage(error, "Failed");
+    thumbnailMessageSeverity.value = "error";
+    thumbnailMessage.value = getApiErrorMessage(
+      error,
+      "保存できませんでした。"
+    );
   } finally {
     isSavingThumbnails.value = false;
-  }
-};
-
-/**
- * Saves a collection root path.
- */
-const submitCollectionRoot = async (): Promise<void> => {
-  isAddingRoot.value = true;
-  rootMessage.value = "";
-
-  try {
-    await createCollectionRoot({ path: rootPath.value });
-    rootPath.value = "";
-    rootMessage.value = "Saved";
-    await refreshRoots();
-  } catch (error) {
-    rootMessage.value = getApiErrorMessage(error, "Failed");
-  } finally {
-    isAddingRoot.value = false;
-  }
-};
-
-/**
- * Starts a scan job for a collection root.
- */
-const scanRoot = async (collectionRootId: string): Promise<void> => {
-  scanningRootId.value = collectionRootId;
-  rootMessage.value = "";
-
-  try {
-    await createScanJob({ collectionRootId });
-    rootMessage.value = "Scan queued";
-    await refreshJobs();
-  } catch (error) {
-    rootMessage.value = getApiErrorMessage(error, "Failed");
-  } finally {
-    scanningRootId.value = null;
-  }
-};
-
-/**
- * Removes one empty collection root from persisted settings.
- */
-const removeRoot = async (collectionRootId: string): Promise<void> => {
-  deletingRootId.value = collectionRootId;
-  rootMessage.value = "";
-
-  try {
-    await deleteCollectionRoot(collectionRootId);
-    rootMessage.value = "Removed";
-    await refreshRoots();
-  } catch (error) {
-    rootMessage.value = getApiErrorMessage(error, "Failed");
-  } finally {
-    deletingRootId.value = null;
-    confirmingRootId.value = null;
-  }
-};
-
-/** Reveals an inline confirmation before removing one collection root. */
-const requestRootRemoval = (collectionRootId: string): void => {
-  confirmingRootId.value = collectionRootId;
-  rootMessage.value = "Confirm removal of this collection root.";
-};
-
-/** Cancels a pending collection-root removal confirmation. */
-const cancelRootRemoval = (): void => {
-  confirmingRootId.value = null;
-  rootMessage.value = "Removal cancelled";
-};
-
-/**
- * Starts scan jobs for every configured collection root.
- */
-const scanAllRoots = async (): Promise<void> => {
-  isScanningAll.value = true;
-  rootMessage.value = "";
-
-  try {
-    const response = await createScanAllJobs();
-    rootMessage.value = `Queued ${response.jobs.length} scans`;
-    await refreshJobs();
-  } catch (error) {
-    rootMessage.value = getApiErrorMessage(error, "Failed");
-  } finally {
-    isScanningAll.value = false;
-  }
-};
-
-/**
- * Cancels one queued or running scan job.
- */
-const cancelScanJob = async (jobId: string): Promise<void> => {
-  if (cancellingJobId.value) {
-    return;
-  }
-
-  cancellingJobId.value = jobId;
-  jobMessage.value = "";
-
-  try {
-    await cancelJob(jobId);
-    jobMessage.value = "Scan cancelled";
-    await refreshJobs();
-  } catch (error) {
-    jobMessage.value = getApiErrorMessage(error, "Failed to cancel scan");
-  } finally {
-    cancellingJobId.value = null;
   }
 };
 </script>
 
 <template>
   <section class="setup">
-    <div class="heading">
-      <h1>Setup</h1>
-      <p>{{ setupStateLabel }}</p>
-    </div>
-    <section
-      v-if="setupRequestStatus === 'error'"
-      class="panel"
-      role="alert"
-      aria-labelledby="setup-unavailable-title"
-    >
-      <div class="section-head">
-        <h2 id="setup-unavailable-title">Setup unavailable</h2>
-        <button type="button" @click="() => refresh()">Retry</button>
-      </div>
-      <p class="message">
-        {{ getApiErrorMessage(setupError, "Could not reach BookCafe") }}
-      </p>
-    </section>
-    <p
-      v-else-if="['idle', 'pending'].includes(setupRequestStatus)"
-      class="message"
-      role="status"
-    >
-      Checking setup status…
-    </p>
-    <form
-      v-if="canSubmitInitialSetup"
-      class="form"
-      :action="`${apiBase}/setup/initial-user`"
-      method="post"
-      @submit.prevent="submitSetup"
-    >
-      <label class="field" for="setup-username">
-        <span>Username</span>
-        <input
-          id="setup-username"
-          v-model="username"
-          name="username"
-          autocomplete="username"
-          required
-        />
-      </label>
-      <label class="field" for="setup-password">
-        <span>Password</span>
-        <input
-          id="setup-password"
-          v-model="password"
-          name="password"
-          type="password"
-          autocomplete="new-password"
-          minlength="8"
-          required
-        />
-      </label>
-      <label class="field" for="setup-data-dir">
-        <span>Data directory</span>
-        <input
-          id="setup-data-dir"
-          v-model="dataDir"
-          name="dataDir"
-          placeholder="Default"
-        />
-      </label>
-      <fieldset class="choice-group">
-        <legend>Bind address</legend>
-        <label class="choice" for="setup-host-local">
-          <input
-            id="setup-host-local"
-            v-model="host"
-            name="host"
-            type="radio"
-            value="127.0.0.1"
-            required
-          />
-          <span>Local</span>
-          <span class="value">127.0.0.1</span>
-        </label>
-        <label class="choice" for="setup-host-lan">
-          <input
-            id="setup-host-lan"
-            v-model="host"
-            name="host"
-            type="radio"
-            value="0.0.0.0"
-            required
-          />
-          <span>LAN</span>
-          <span class="value">0.0.0.0</span>
-        </label>
-      </fieldset>
-      <label class="field" for="setup-port">
-        <span>Port</span>
-        <input
-          id="setup-port"
-          v-model.number="port"
-          name="port"
-          type="number"
-          min="1"
-          max="65535"
-          required
-        />
-      </label>
-      <fieldset class="choice-group">
-        <legend>Thumbnails</legend>
-        <label class="choice" for="setup-thumbnail-enabled">
-          <input
-            id="setup-thumbnail-enabled"
-            v-model="thumbnailEnabled"
-            name="thumbnailEnabled"
-            type="checkbox"
-          />
-          <span>Store cover thumbnails</span>
-          <span class="value">{{ thumbnailEnabled ? "On" : "Off" }}</span>
-        </label>
-      </fieldset>
-      <button type="submit" :disabled="isSaving">
-        {{ isSaving ? "Saving" : "Save" }}
-      </button>
-      <p v-if="message" class="message" aria-live="polite">{{ message }}</p>
-    </form>
+    <header>
+      <h1 class="page-title">設定</h1>
+    </header>
 
-    <section
-      v-else-if="setupStatus?.setupComplete"
-      class="panel"
-      aria-labelledby="setup-complete-title"
-    >
-      <div class="section-head">
-        <h2 id="setup-complete-title">Initial setup complete</h2>
-      </div>
-      <p class="message">
-        The local account and storage location are configured. Use the settings
-        below for later changes.
-      </p>
-    </section>
-
-    <section
-      v-if="setupStatus?.setupComplete"
-      class="panel"
-      aria-labelledby="network-title"
-    >
-      <div class="section-head">
-        <h2 id="network-title">Network</h2>
-      </div>
-      <form
-        class="form"
-        :action="`${apiBase}/settings/network`"
-        method="post"
-        @submit.prevent="submitNetworkSettings"
+    <ClientOnly>
+      <Message
+        v-if="setupRequestStatus === 'error'"
+        severity="error"
+        :closable="false"
       >
-        <fieldset class="choice-group">
-          <legend>Bind address</legend>
-          <label class="choice" for="network-host-local">
-            <input
-              id="network-host-local"
-              v-model="host"
-              name="networkHost"
-              type="radio"
-              value="127.0.0.1"
-              required
-            />
-            <span>Local</span>
-            <span class="value">127.0.0.1</span>
-          </label>
-          <label class="choice" for="network-host-lan">
-            <input
-              id="network-host-lan"
-              v-model="host"
-              name="networkHost"
-              type="radio"
-              value="0.0.0.0"
-              required
-            />
-            <span>LAN</span>
-            <span class="value">0.0.0.0</span>
-          </label>
-        </fieldset>
-        <label class="field" for="network-port">
-          <span>Port</span>
-          <input
-            id="network-port"
-            v-model.number="port"
-            name="port"
-            type="number"
-            min="1"
-            max="65535"
-            required
-          />
-        </label>
-        <button
-          type="submit"
-          :disabled="isSavingNetwork || !canUseProtectedApi"
-        >
-          {{ isSavingNetwork ? "Saving" : "Save network" }}
-        </button>
-        <p v-if="networkMessage" class="message" aria-live="polite">
-          {{ networkMessage }}
-        </p>
-        <p v-else-if="protectedStatus" class="message">
-          {{ protectedStatus }}
-        </p>
-      </form>
-    </section>
+        <span>設定を確認できません</span>
+        <span>
+          {{
+            getApiErrorMessage(setupError, "BookCafeへ接続できませんでした。")
+          }}
+        </span>
+        <Button
+          label="再試行"
+          icon="pi pi-refresh"
+          size="small"
+          @click="() => refreshSetupStatus()"
+        />
+      </Message>
 
-    <section
-      v-if="setupStatus?.setupComplete"
-      class="panel"
-      aria-labelledby="thumbnail-title"
-    >
-      <div class="section-head">
-        <h2 id="thumbnail-title">Thumbnails</h2>
-      </div>
-      <form
-        class="form"
-        :action="`${apiBase}/settings/thumbnails`"
-        method="post"
-        @submit.prevent="submitThumbnailSettings"
+      <div
+        v-else-if="['idle', 'pending'].includes(setupRequestStatus)"
+        class="loading"
+        role="status"
       >
-        <label class="choice toggle" for="thumbnail-enabled">
-          <input
-            id="thumbnail-enabled"
-            v-model="thumbnailEnabled"
-            name="thumbnailEnabled"
-            type="checkbox"
-            :disabled="!canUseProtectedApi"
-          />
-          <span>Store cover thumbnails</span>
-          <span class="value">{{ thumbnailEnabled ? "On" : "Off" }}</span>
-        </label>
-        <button
-          type="submit"
-          :disabled="isSavingThumbnails || !canUseProtectedApi"
-        >
-          {{ isSavingThumbnails ? "Saving" : "Save thumbnails" }}
-        </button>
-        <p v-if="thumbnailMessage" class="message" aria-live="polite">
-          {{ thumbnailMessage }}
-        </p>
-        <p v-else-if="protectedStatus" class="message">
-          {{ protectedStatus }}
-        </p>
-      </form>
-    </section>
+        <ProgressSpinner class="spinner" stroke-width="4" />
+      </div>
 
-    <section
-      v-if="setupStatus?.setupComplete"
-      class="panel"
-      aria-labelledby="roots-title"
-    >
-      <div class="section-head">
-        <h2 id="roots-title">Collection roots</h2>
-        <button
-          type="button"
-          :disabled="isScanningAll || !canScanRoots"
-          @click="scanAllRoots"
-        >
-          {{ isScanningAll ? "Queueing" : "Scan all" }}
-        </button>
-      </div>
-      <form
-        class="form"
-        :action="`${apiBase}/collection-roots`"
-        method="post"
-        @submit.prevent="submitCollectionRoot"
-      >
-        <label class="field" for="collection-root-path">
-          <span>Path</span>
-          <input
-            id="collection-root-path"
-            v-model="rootPath"
-            name="path"
-            autocomplete="off"
-            required
-          />
-        </label>
-        <button type="submit" :disabled="isAddingRoot || !canUseProtectedApi">
-          {{ isAddingRoot ? "Saving" : "Save root" }}
-        </button>
-      </form>
-      <ul
-        v-if="roots.length > 0"
-        class="root-list"
-        aria-label="Collection roots"
-      >
-        <li v-for="root in roots" :key="root.id" class="root-item">
-          <span class="path">{{ root.path }}</span>
-          <div class="root-actions">
-            <button
-              type="button"
-              :disabled="scanningRootId === root.id"
-              @click="scanRoot(root.id)"
-            >
-              {{ scanningRootId === root.id ? "Queueing" : "Scan" }}
-            </button>
-            <button
-              v-if="confirmingRootId !== root.id"
-              type="button"
-              class="is-danger"
-              :disabled="deletingRootId === root.id"
-              @click="requestRootRemoval(root.id)"
-            >
-              Remove
-            </button>
-            <template v-else>
-              <button
-                type="button"
-                class="is-danger"
-                :disabled="deletingRootId === root.id"
-                @click="removeRoot(root.id)"
-              >
-                {{ deletingRootId === root.id ? "Removing" : "Confirm remove" }}
-              </button>
-              <button type="button" @click="cancelRootRemoval">Keep</button>
-            </template>
-          </div>
-        </li>
-      </ul>
-      <p v-else-if="protectedStatus" class="message">
-        {{ protectedStatus }}
-      </p>
-      <p v-else class="message">No collection roots</p>
-      <p v-if="rootMessage" class="message" aria-live="polite">
-        {{ rootMessage }}
-      </p>
-    </section>
-
-    <section
-      v-if="setupStatus?.setupComplete"
-      class="panel"
-      aria-labelledby="jobs-title"
-    >
-      <div class="section-head">
-        <h2 id="jobs-title">Jobs</h2>
-        <button
-          type="button"
-          :disabled="!canUseProtectedApi"
-          @click="() => refreshJobs()"
-        >
-          Refresh
-        </button>
-      </div>
-      <ul v-if="jobs.length > 0" class="job-list" aria-label="Jobs">
-        <li v-for="job in jobs" :key="job.id" class="job-item">
-          <span class="badge">{{ job.status }}</span>
-          <span class="path">{{ job.type }}</span>
-          <span class="progress">{{ job.progress }}%</span>
-          <button
-            v-if="job.canCancel"
-            type="button"
-            :disabled="cancellingJobId !== null"
-            @click="cancelScanJob(job.id)"
+      <Card v-else-if="setupStatus?.setupComplete === false">
+        <template #title>初期設定</template>
+        <template #content>
+          <form
+            class="form"
+            :action="`${apiBase}/setup/initial-user`"
+            method="post"
+            @submit.prevent="submitSetup"
           >
-            {{ cancellingJobId === job.id ? "Cancelling" : "Cancel" }}
-          </button>
-        </li>
-      </ul>
-      <p v-else-if="protectedStatus" class="message">
-        {{ protectedStatus }}
-      </p>
-      <p v-else class="message">No jobs</p>
-      <p v-if="jobMessage" class="message" aria-live="polite">
-        {{ jobMessage }}
-      </p>
-    </section>
+            <div
+              v-if="Object.keys(setupFieldErrors).length > 0"
+              ref="setup-error-summary"
+              class="error-summary"
+              tabindex="-1"
+              role="alert"
+            >
+              <strong>入力内容を確認してください。</strong>
+              <ul>
+                <li v-if="setupFieldErrors.username">
+                  <a href="#setup-username">{{ setupFieldErrors.username }}</a>
+                </li>
+                <li v-if="setupFieldErrors.password">
+                  <a href="#setup-password">{{ setupFieldErrors.password }}</a>
+                </li>
+              </ul>
+            </div>
+            <div class="field">
+              <label for="setup-username">ユーザー名</label>
+              <InputText
+                id="setup-username"
+                v-model="username"
+                name="username"
+                autocomplete="username"
+                minlength="3"
+                maxlength="30"
+                pattern="[A-Za-z0-9_.]+"
+                required
+                fluid
+                :invalid="Boolean(setupFieldErrors.username)"
+                :aria-invalid="Boolean(setupFieldErrors.username)"
+                aria-describedby="setup-username-error"
+              />
+              <small
+                v-if="setupFieldErrors.username"
+                id="setup-username-error"
+                class="field-error"
+              >
+                {{ setupFieldErrors.username }}
+              </small>
+            </div>
+            <div class="field">
+              <label for="setup-password">パスワード</label>
+              <InputText
+                id="setup-password"
+                v-model="password"
+                name="password"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+                maxlength="128"
+                required
+                fluid
+                :invalid="Boolean(setupFieldErrors.password)"
+                :aria-invalid="Boolean(setupFieldErrors.password)"
+                aria-describedby="setup-password-error"
+              />
+              <small
+                v-if="setupFieldErrors.password"
+                id="setup-password-error"
+                class="field-error"
+              >
+                {{ setupFieldErrors.password }}
+              </small>
+            </div>
+            <Button
+              label="保存"
+              icon="pi pi-check"
+              type="submit"
+              :loading="isSavingSetup"
+            />
+            <Message
+              v-if="setupMessage"
+              :severity="setupMessageSeverity"
+              :closable="false"
+            >
+              {{ setupMessage }}
+            </Message>
+          </form>
+        </template>
+      </Card>
+
+      <Card v-else-if="!authenticated">
+        <template #content>
+          <Button
+            as="router-link"
+            label="ログイン"
+            icon="pi pi-sign-in"
+            to="/login"
+          />
+        </template>
+      </Card>
+
+      <template v-else>
+        <Message v-if="libraryError" severity="error" :closable="false">
+          <span>{{ libraryErrorMessage }}</span>
+          <Button
+            label="再試行"
+            icon="pi pi-refresh"
+            size="small"
+            @click="refreshLibraries"
+          />
+        </Message>
+
+        <Card>
+          <template #content>
+            <LibraryManager />
+          </template>
+        </Card>
+
+        <div class="settings-grid">
+          <Card>
+            <template #title>ネットワーク</template>
+            <template #content>
+              <form class="form" @submit.prevent="submitNetworkSettings">
+                <div
+                  v-if="Object.keys(networkFieldErrors).length > 0"
+                  ref="network-error-summary"
+                  class="error-summary"
+                  tabindex="-1"
+                  role="alert"
+                >
+                  <strong>入力内容を確認してください。</strong>
+                  <ul>
+                    <li v-if="networkFieldErrors.host">
+                      <a href="#network-host">{{ networkFieldErrors.host }}</a>
+                    </li>
+                    <li v-if="networkFieldErrors.port">
+                      <a href="#network-port">{{ networkFieldErrors.port }}</a>
+                    </li>
+                  </ul>
+                </div>
+                <div class="field">
+                  <span id="network-host-label" class="control-label">
+                    待受アドレス
+                  </span>
+                  <Select
+                    v-model="host"
+                    input-id="network-host"
+                    :options="[
+                      { label: 'この端末のみ', value: '127.0.0.1' },
+                      { label: 'ローカルネットワーク', value: '0.0.0.0' }
+                    ]"
+                    option-label="label"
+                    option-value="value"
+                    aria-labelledby="network-host-label"
+                    :invalid="Boolean(networkFieldErrors.host)"
+                    fluid
+                  />
+                  <small v-if="networkFieldErrors.host" class="field-error">
+                    {{ networkFieldErrors.host }}
+                  </small>
+                </div>
+                <Message
+                  v-if="host === '0.0.0.0'"
+                  severity="warn"
+                  :closable="false"
+                >
+                  すべてのネットワークインターフェースで待ち受けます。ファイアウォールを確認してください。
+                </Message>
+                <div class="field">
+                  <label for="network-port">ポート</label>
+                  <InputNumber
+                    v-model="port"
+                    input-id="network-port"
+                    :min="1"
+                    :max="65535"
+                    :use-grouping="false"
+                    required
+                    fluid
+                    :invalid="Boolean(networkFieldErrors.port)"
+                    :input-props="{
+                      'aria-invalid': Boolean(networkFieldErrors.port),
+                      'aria-describedby': 'network-port-error'
+                    }"
+                  />
+                  <small
+                    v-if="networkFieldErrors.port"
+                    id="network-port-error"
+                    class="field-error"
+                  >
+                    {{ networkFieldErrors.port }}
+                  </small>
+                </div>
+                <Button
+                  label="保存"
+                  icon="pi pi-check"
+                  type="submit"
+                  :loading="isSavingNetwork"
+                />
+                <Message
+                  v-if="networkMessage"
+                  :severity="networkMessageSeverity"
+                  :closable="false"
+                >
+                  {{ networkMessage }}
+                </Message>
+              </form>
+            </template>
+          </Card>
+
+          <Card>
+            <template #title>サムネイル</template>
+            <template #content>
+              <form class="form" @submit.prevent="submitThumbnailSettings">
+                <label class="toggle" for="thumbnail-enabled">
+                  <span>生成する</span>
+                  <ToggleSwitch
+                    v-model="thumbnailEnabled"
+                    input-id="thumbnail-enabled"
+                  />
+                </label>
+                <Button
+                  label="保存"
+                  icon="pi pi-check"
+                  type="submit"
+                  :loading="isSavingThumbnails"
+                />
+                <Message
+                  v-if="thumbnailMessage"
+                  :severity="thumbnailMessageSeverity"
+                  :closable="false"
+                >
+                  {{ thumbnailMessage }}
+                </Message>
+              </form>
+            </template>
+          </Card>
+        </div>
+      </template>
+
+      <template #fallback>
+        <div class="loading" role="status">
+          <ProgressSpinner class="spinner" stroke-width="4" />
+        </div>
+      </template>
+    </ClientOnly>
   </section>
 </template>
 
@@ -698,231 +506,86 @@ const cancelScanJob = async (jobId: string): Promise<void> => {
 .setup {
   display: grid;
   gap: 1.25rem;
-  width: min(720px, 100%);
-  padding: clamp(1rem, 4vw, 2rem);
+  inline-size: min(72rem, 100%);
+  padding: clamp(1.25rem, 4vw, 3.5rem);
   margin: 0 auto;
 }
 
-.heading {
-  display: grid;
-  gap: 0.25rem;
-}
-
-.heading h1,
-.heading p {
+.setup h1 {
   margin: 0;
-}
-
-.heading p {
-  color: var(--muted);
 }
 
 .form {
   display: grid;
   gap: 1rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
 }
 
-.panel {
+.field {
   display: grid;
+  gap: 0.4rem;
+}
+
+.field label,
+.field .control-label,
+.toggle span {
+  color: var(--bc-ink-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.field-error {
+  color: var(--bc-danger);
+  font-size: 0.75rem;
+}
+
+.error-summary {
+  border-inline-start: 0.3rem solid var(--bc-danger);
+  padding: 0.75rem 1rem;
+  color: var(--bc-danger);
+  background: color-mix(in oklab, var(--bc-danger) 8%, var(--bc-panel));
+}
+
+.error-summary:focus {
+  outline: 2px solid var(--bc-danger);
+  outline-offset: 2px;
+}
+
+.error-summary ul {
+  margin-block: 0.5rem 0;
+}
+
+.error-summary a {
+  color: inherit;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 1rem;
 }
 
-.section-head {
+.toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
 
-.section-head h2 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.section-head button {
-  min-height: 2.25rem;
-  padding: 0 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-
-.section-head button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.field {
+.loading {
   display: grid;
-  gap: 0.35rem;
+  min-block-size: 8rem;
+  place-items: center;
 }
 
-.field span {
-  color: var(--muted);
-  font-size: 0.9rem;
+.spinner {
+  inline-size: 2rem;
+  block-size: 2rem;
 }
 
-.field input,
-.choice-group {
-  min-height: 2.5rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-
-.field input {
-  padding: 0 0.75rem;
-}
-
-.choice-group {
-  display: grid;
-  gap: 0.6rem;
-  padding: 0.75rem;
-  margin: 0;
-}
-
-.choice-group legend {
-  padding: 0 0.25rem;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.choice {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: center;
-  min-height: 2rem;
-}
-
-.choice input {
-  accent-color: var(--accent);
-}
-
-.toggle {
-  min-height: 2.5rem;
-  padding: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-
-.toggle:has(input:disabled) {
-  opacity: 0.65;
-}
-
-.value {
-  color: var(--muted);
-  font-size: 0.85rem;
-  overflow-wrap: anywhere;
-}
-
-.form button {
-  min-height: 2.5rem;
-  border: 0;
-  border-radius: 6px;
-  color: #fff;
-  background: var(--accent);
-  cursor: pointer;
-}
-
-.form button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.root-list,
-.job-list {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.root-item,
-.job-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
-}
-
-.job-item {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-}
-
-.path {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.root-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: end;
-  gap: 0.5rem;
-}
-
-.root-actions button {
-  min-height: 2.25rem;
-  padding: 0 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.job-item button {
-  min-height: 2.25rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--surface);
-  cursor: pointer;
-}
-
-.job-item button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.root-actions button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.is-danger {
-  border-color: color-mix(in oklab, var(--danger) 45%, var(--line));
-  color: var(--danger);
-  background: color-mix(in oklab, var(--danger) 9%, transparent);
-}
-
-.badge {
-  padding: 0.25rem 0.45rem;
-  border-radius: 4px;
-  color: #fff;
-  background: var(--accent);
-  font-size: 0.8rem;
-}
-
-.progress {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.message {
-  margin: 0;
-  color: var(--muted);
+@media (width <= 48rem) {
+  .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

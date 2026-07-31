@@ -4,9 +4,12 @@ import {
   areLibraryFiltersEqual,
   createLibraryQuery,
   formatLibraryResultSummary,
+  getRouteBookSort,
   getRouteBookStatus,
+  getRoutePage,
   getRouteReadingStatus,
-  getRouteSearch
+  getRouteSearch,
+  getRouteSortOrder
 } from "./libraryFilters";
 
 describe("library filter helpers", () => {
@@ -28,6 +31,21 @@ describe("library filter helpers", () => {
     expect(getRouteBookStatus("archived")).toBe("");
   });
 
+  it("reads only supported sort query values", () => {
+    expect(getRouteBookSort("lastReadAt")).toBe("lastReadAt");
+    expect(getRouteBookSort("unknown")).toBe("title");
+    expect(getRouteSortOrder("desc")).toBe("desc");
+    expect(getRouteSortOrder("sideways")).toBe("asc");
+  });
+
+  it("reads only positive one-based page numbers", () => {
+    expect(getRoutePage("2")).toBe(2);
+    expect(getRoutePage(["3"])).toBe(3);
+    expect(getRoutePage("0")).toBe(1);
+    expect(getRoutePage("2x")).toBe(1);
+    expect(getRoutePage("invalid")).toBe(1);
+  });
+
   it("creates a compact route query from active filters", () => {
     expect(createLibraryQuery("  manga  ", "finished", "missing")).toEqual({
       q: "manga",
@@ -35,6 +53,14 @@ describe("library filter helpers", () => {
       bookStatus: "missing"
     });
     expect(createLibraryQuery("", "", "")).toEqual({});
+    expect(createLibraryQuery("manga", "", "", 2)).toEqual({
+      q: "manga",
+      page: "2"
+    });
+    expect(createLibraryQuery("", "", "", 1, "lastReadAt", "desc")).toEqual({
+      sort: "lastReadAt",
+      order: "desc"
+    });
   });
 
   it("compares filter states by their normalized route query", () => {
@@ -71,11 +97,9 @@ describe("library filter helpers", () => {
   });
 
   it("formats result summaries with active filter labels", () => {
-    expect(formatLibraryResultSummary(2, "", "", "")).toBe(
-      "2 books in library"
-    );
+    expect(formatLibraryResultSummary(2, "", "", "")).toBe("蔵書 2冊");
     expect(formatLibraryResultSummary(1, " Origin ", "reading", "ready")).toBe(
-      "Showing 1 book for Search: Origin, Reading: Reading, Book: Ready"
+      "蔵書 1冊（検索: Origin、読書状況: 読書中、元ファイル: 閲覧可能）"
     );
   });
 });

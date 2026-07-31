@@ -1,238 +1,490 @@
+/**
+ * Authenticated API helpers for the BookCafe frontend.
+ *
+ * @module
+ */
+
 import type {
   BackgroundJobListResponse,
-  BackgroundJobCreateManyResponse,
   BackgroundJobResponse,
   BookDetailResponse,
   BookListQuery,
   BookListResponse,
-  CollectionRootCreateRequest,
-  CollectionRootListResponse,
-  CollectionRootResponse,
+  CollectionBookCreateRequest,
+  CollectionBookOrderRequest,
+  CollectionCreateRequest,
+  CollectionDetailResponse,
+  CollectionListResponse,
+  CollectionResponse,
+  CollectionUpdateRequest,
   InitialSetupRequest,
-  LibraryExportResponse,
+  LibraryCreateRequest,
+  LibraryListResponse,
+  LibraryPreferenceResponse,
+  LibraryResponse,
+  LibraryUpdateRequest,
   NetworkSettingsResponse,
-  ScanJobCreateRequest,
+  ScanFailureListQuery,
+  ScanFailureListResponse,
   SetupStatusResponse,
   ThumbnailSettingsResponse,
   UpdateBookMetadataRequest,
-  UpdateNetworkSettingsRequest,
   UpdateBookProgressRequest,
+  UpdateLibraryPreferenceRequest,
+  UpdateNetworkSettingsRequest,
   UpdateThumbnailSettingsRequest
 } from "@bookcafe/contracts";
 
+import {
+  createLibraryApiPath,
+  resolveApiAssetUrl
+} from "../utils/libraryApiPaths";
+
 /**
- * Creates small API helpers for the BookCafe frontend.
+ * Creates small API helpers scoped explicitly to a selected library.
  */
 export const useBookApi = () => {
   const apiBase = useApiBase();
+  const requestOptions = { credentials: "include" as const };
 
-  /**
-   * Fetches the available books.
-   */
-  const listBooks = (query: BookListQuery = {}) =>
-    $fetch<BookListResponse>(`${apiBase}/books`, {
-      credentials: "include",
-      query: {
-        q: query.q || undefined,
-        readingStatus: query.readingStatus || undefined,
-        bookStatus: query.bookStatus || undefined
-      }
+  /** Resolves the thumbnail URL returned by the API for split-origin dev mode. */
+  const resolveBookAssets = <Book extends { thumbnailUrl: string | null }>(
+    book: Book
+  ): Book => ({
+    ...book,
+    thumbnailUrl: book.thumbnailUrl
+      ? resolveApiAssetUrl(apiBase, book.thumbnailUrl)
+      : null
+  });
+
+  /** Fetches all configured libraries. */
+  const listLibraries = () =>
+    $fetch<LibraryListResponse>(`${apiBase}/libraries`, requestOptions);
+
+  /** Registers one named library and its server-side directory. */
+  const createLibrary = (body: LibraryCreateRequest) =>
+    $fetch<LibraryResponse>(`${apiBase}/libraries`, {
+      ...requestOptions,
+      method: "POST",
+      body
     });
 
-  /**
-   * Exports portable library metadata.
-   */
-  const exportLibrary = () =>
-    $fetch<LibraryExportResponse>(`${apiBase}/library/export`, {
-      credentials: "include"
+  /** Updates a library name or target directory. */
+  const updateLibrary = (libraryId: string, body: LibraryUpdateRequest) =>
+    $fetch<LibraryResponse>(createLibraryApiPath(apiBase, libraryId), {
+      ...requestOptions,
+      method: "PATCH",
+      body
     });
 
-  /**
-   * Fetches one book by id.
-   */
-  const getBook = (bookId: string) =>
-    $fetch<BookDetailResponse>(
-      `${apiBase}/books/${encodeURIComponent(bookId)}`,
-      {
-        credentials: "include"
-      }
+  /** Deletes BookCafe records for one library without touching source files. */
+  const deleteLibrary = (libraryId: string) =>
+    $fetch<void>(createLibraryApiPath(apiBase, libraryId), {
+      ...requestOptions,
+      method: "DELETE"
+    });
+
+  /** Fetches the current user's selected-library preference. */
+  const getLibraryPreference = () =>
+    $fetch<LibraryPreferenceResponse>(
+      `${apiBase}/users/me/library-preference`,
+      requestOptions
     );
 
-  /**
-   * Updates the persisted reading progress for one book.
-   */
-  const updateBookProgress = (
-    bookId: string,
-    body: UpdateBookProgressRequest
-  ) =>
-    $fetch<BookDetailResponse>(
-      `${apiBase}/books/${encodeURIComponent(bookId)}/progress`,
+  /** Persists the current user's selected library. */
+  const updateLibraryPreference = (body: UpdateLibraryPreferenceRequest) =>
+    $fetch<LibraryPreferenceResponse>(
+      `${apiBase}/users/me/library-preference`,
       {
-        credentials: "include",
+        ...requestOptions,
         method: "PATCH",
-        priority: "low",
         body
       }
     );
 
-  /**
-   * Updates user-editable metadata for one book.
-   */
-  const updateBookMetadata = (
+  /** Fetches normal or archived books in one library. */
+  const fetchBookList = async (
+    libraryId: string,
+    path: readonly string[],
+    query: BookListQuery = {}
+  ): Promise<BookListResponse> => {
+    const response = await $fetch<BookListResponse>(
+      createLibraryApiPath(apiBase, libraryId, path),
+      {
+        ...requestOptions,
+        query: {
+          q: query.q || undefined,
+          readingStatus: query.readingStatus || undefined,
+          bookStatus: query.bookStatus || undefined,
+          sort: query.sort,
+          order: query.order,
+          offset: query.offset,
+          limit: query.limit
+        }
+      }
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
+
+  /** Fetches the visible books for one library. */
+  const listBooks = (libraryId: string, query: BookListQuery = {}) =>
+    fetchBookList(libraryId, ["books"], query);
+
+  /** Fetches archived books for one library. */
+  const listArchivedBooks = (libraryId: string, query: BookListQuery = {}) =>
+    fetchBookList(libraryId, ["books", "archived"], query);
+
+  /** Fetches one book by its library and book identifiers. */
+  const getBook = async (
+    libraryId: string,
+    bookId: string
+  ): Promise<BookDetailResponse> =>
+    resolveBookAssets(
+      await $fetch<BookDetailResponse>(
+        createLibraryApiPath(apiBase, libraryId, ["books", bookId]),
+        requestOptions
+      )
+    );
+
+  /** Updates one book's persisted reading position. */
+  const updateBookProgress = async (
+    libraryId: string,
+    bookId: string,
+    body: UpdateBookProgressRequest,
+    options: { keepalive?: boolean } = {}
+  ): Promise<BookDetailResponse> =>
+    resolveBookAssets(
+      await $fetch<BookDetailResponse>(
+        createLibraryApiPath(apiBase, libraryId, ["books", bookId, "progress"]),
+        {
+          ...requestOptions,
+          method: "PATCH",
+          priority: "low",
+          keepalive: options.keepalive,
+          body
+        }
+      )
+    );
+
+  /** Updates user-editable metadata for one book. */
+  const updateBookMetadata = async (
+    libraryId: string,
     bookId: string,
     body: UpdateBookMetadataRequest
-  ) =>
-    $fetch<BookDetailResponse>(
-      `${apiBase}/books/${encodeURIComponent(bookId)}/metadata`,
+  ): Promise<BookDetailResponse> =>
+    resolveBookAssets(
+      await $fetch<BookDetailResponse>(
+        createLibraryApiPath(apiBase, libraryId, ["books", bookId, "metadata"]),
+        {
+          ...requestOptions,
+          method: "PATCH",
+          body
+        }
+      )
+    );
+
+  /** Archives one book while retaining its metadata and progress. */
+  const archiveBook = async (
+    libraryId: string,
+    bookId: string
+  ): Promise<BookDetailResponse> =>
+    resolveBookAssets(
+      await $fetch<BookDetailResponse>(
+        createLibraryApiPath(apiBase, libraryId, ["books", bookId, "archive"]),
+        {
+          ...requestOptions,
+          method: "POST"
+        }
+      )
+    );
+
+  /** Restores one archived book to the normal library. */
+  const restoreBook = async (
+    libraryId: string,
+    bookId: string
+  ): Promise<BookDetailResponse> =>
+    resolveBookAssets(
+      await $fetch<BookDetailResponse>(
+        createLibraryApiPath(apiBase, libraryId, ["books", bookId, "restore"]),
+        {
+          ...requestOptions,
+          method: "POST"
+        }
+      )
+    );
+
+  /** Fetches the current user's collections inside one library. */
+  const listCollections = (libraryId: string) =>
+    $fetch<CollectionListResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections"]),
+      requestOptions
+    );
+
+  /** Creates one user-owned collection inside the selected library. */
+  const createCollection = (libraryId: string, body: CollectionCreateRequest) =>
+    $fetch<CollectionResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections"]),
       {
-        credentials: "include",
+        ...requestOptions,
+        method: "POST",
+        body
+      }
+    );
+
+  /** Fetches one collection and its manually ordered visible books. */
+  const getCollection = async (
+    libraryId: string,
+    collectionId: string
+  ): Promise<CollectionDetailResponse> => {
+    const response = await $fetch<CollectionDetailResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections", collectionId]),
+      requestOptions
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
+
+  /** Renames one user-owned collection. */
+  const updateCollection = (
+    libraryId: string,
+    collectionId: string,
+    body: CollectionUpdateRequest
+  ) =>
+    $fetch<CollectionResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["collections", collectionId]),
+      {
+        ...requestOptions,
         method: "PATCH",
         body
       }
     );
 
-  /**
-   * Fetches current setup status.
-   */
-  const getSetupStatus = () =>
-    $fetch<SetupStatusResponse>(`${apiBase}/setup/status`, {
-      credentials: "include"
-    });
+  /** Deletes one collection without changing source books. */
+  const deleteCollection = (libraryId: string, collectionId: string) =>
+    $fetch<void>(
+      createLibraryApiPath(apiBase, libraryId, ["collections", collectionId]),
+      {
+        ...requestOptions,
+        method: "DELETE"
+      }
+    );
 
-  /**
-   * Creates the initial configured user and server settings.
-   */
+  /** Adds one same-library book at the end of a collection. */
+  const addCollectionBook = async (
+    libraryId: string,
+    collectionId: string,
+    body: CollectionBookCreateRequest
+  ): Promise<CollectionDetailResponse> => {
+    const response = await $fetch<CollectionDetailResponse>(
+      createLibraryApiPath(apiBase, libraryId, [
+        "collections",
+        collectionId,
+        "books"
+      ]),
+      {
+        ...requestOptions,
+        method: "POST",
+        body
+      }
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
+
+  /** Removes one book from a collection without changing the source book. */
+  const removeCollectionBook = (
+    libraryId: string,
+    collectionId: string,
+    bookId: string
+  ) =>
+    $fetch<void>(
+      createLibraryApiPath(apiBase, libraryId, [
+        "collections",
+        collectionId,
+        "books",
+        bookId
+      ]),
+      {
+        ...requestOptions,
+        method: "DELETE"
+      }
+    );
+
+  /** Persists the full visible manual order for one collection. */
+  const reorderCollectionBooks = async (
+    libraryId: string,
+    collectionId: string,
+    body: CollectionBookOrderRequest
+  ): Promise<CollectionDetailResponse> => {
+    const response = await $fetch<CollectionDetailResponse>(
+      createLibraryApiPath(apiBase, libraryId, [
+        "collections",
+        collectionId,
+        "books",
+        "order"
+      ]),
+      {
+        ...requestOptions,
+        method: "PATCH",
+        body
+      }
+    );
+
+    return {
+      ...response,
+      books: response.books.map(resolveBookAssets)
+    };
+  };
+
+  /** Builds an authenticated page-image URL for the reader. */
+  const getPageImageUrl = (
+    libraryId: string,
+    bookId: string,
+    pageNumber: number
+  ): string =>
+    createLibraryApiPath(apiBase, libraryId, [
+      "books",
+      bookId,
+      "pages",
+      String(pageNumber),
+      "image"
+    ]);
+
+  /** Fetches current setup status. */
+  const getSetupStatus = () =>
+    $fetch<SetupStatusResponse>(`${apiBase}/setup/status`, requestOptions);
+
+  /** Creates the single shared initial user. */
   const createInitialSetup = (body: InitialSetupRequest) =>
     $fetch<SetupStatusResponse>(`${apiBase}/setup/initial-user`, {
-      credentials: "include",
+      ...requestOptions,
       method: "POST",
       body
     });
 
-  /**
-   * Fetches persisted server network settings.
-   */
+  /** Fetches persisted server network settings. */
   const getNetworkSettings = () =>
-    $fetch<NetworkSettingsResponse>(`${apiBase}/settings/network`, {
-      credentials: "include"
-    });
+    $fetch<NetworkSettingsResponse>(
+      `${apiBase}/settings/network`,
+      requestOptions
+    );
 
-  /**
-   * Updates persisted server network settings.
-   */
+  /** Updates persisted server network settings. */
   const updateNetworkSettings = (body: UpdateNetworkSettingsRequest) =>
     $fetch<NetworkSettingsResponse>(`${apiBase}/settings/network`, {
-      credentials: "include",
+      ...requestOptions,
       method: "PATCH",
       body
     });
 
-  /**
-   * Fetches persisted thumbnail settings.
-   */
+  /** Fetches persisted thumbnail settings. */
   const getThumbnailSettings = () =>
-    $fetch<ThumbnailSettingsResponse>(`${apiBase}/settings/thumbnails`, {
-      credentials: "include"
-    });
+    $fetch<ThumbnailSettingsResponse>(
+      `${apiBase}/settings/thumbnails`,
+      requestOptions
+    );
 
-  /**
-   * Updates persisted thumbnail settings.
-   */
+  /** Updates persisted thumbnail settings. */
   const updateThumbnailSettings = (body: UpdateThumbnailSettingsRequest) =>
     $fetch<ThumbnailSettingsResponse>(`${apiBase}/settings/thumbnails`, {
-      credentials: "include",
+      ...requestOptions,
       method: "PATCH",
       body
     });
 
-  /**
-   * Fetches configured collection roots.
-   */
-  const listCollectionRoots = () =>
-    $fetch<CollectionRootListResponse>(`${apiBase}/collection-roots`, {
-      credentials: "include"
-    });
-
-  /**
-   * Creates or updates a collection root.
-   */
-  const createCollectionRoot = (body: CollectionRootCreateRequest) =>
-    $fetch<CollectionRootResponse>(`${apiBase}/collection-roots`, {
-      credentials: "include",
-      method: "POST",
-      body
-    });
-
-  /**
-   * Deletes an empty collection root.
-   */
-  const deleteCollectionRoot = (collectionRootId: string) =>
-    $fetch<void>(
-      `${apiBase}/collection-roots/${encodeURIComponent(collectionRootId)}`,
-      {
-        credentials: "include",
-        method: "DELETE"
-      }
+  /** Fetches background jobs for one library. */
+  const listJobs = (libraryId: string) =>
+    $fetch<BackgroundJobListResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["jobs"]),
+      requestOptions
     );
 
-  /**
-   * Fetches background jobs.
-   */
-  const listJobs = () =>
-    $fetch<BackgroundJobListResponse>(`${apiBase}/jobs`, {
-      credentials: "include"
-    });
-
-  /**
-   * Cancels one queued or running background job.
-   */
-  const cancelJob = (jobId: string) =>
+  /** Fetches one background job for scan-completion monitoring. */
+  const getJob = (libraryId: string, jobId: string) =>
     $fetch<BackgroundJobResponse>(
-      `${apiBase}/jobs/${encodeURIComponent(jobId)}`,
+      createLibraryApiPath(apiBase, libraryId, ["jobs", jobId]),
+      requestOptions
+    );
+
+  /** Fetches one bounded page of path-safe failures for a scan job. */
+  const listScanFailures = (
+    libraryId: string,
+    jobId: string,
+    query: ScanFailureListQuery = { offset: 0, limit: 100 }
+  ) =>
+    $fetch<ScanFailureListResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["jobs", jobId, "failures"]),
       {
-        credentials: "include",
+        ...requestOptions,
+        query
+      }
+    );
+
+  /** Cancels one queued or running library job. */
+  const cancelJob = (libraryId: string, jobId: string) =>
+    $fetch<BackgroundJobResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["jobs", jobId]),
+      {
+        ...requestOptions,
         method: "DELETE"
       }
     );
 
-  /**
-   * Starts a collection-root scan job.
-   */
-  const createScanJob = (body: ScanJobCreateRequest) =>
-    $fetch<BackgroundJobResponse>(`${apiBase}/jobs/scan`, {
-      credentials: "include",
-      method: "POST",
-      body
-    });
-
-  /**
-   * Starts scan jobs for every configured collection root.
-   */
-  const createScanAllJobs = () =>
-    $fetch<BackgroundJobCreateManyResponse>(`${apiBase}/jobs/scan-all`, {
-      credentials: "include",
-      method: "POST"
-    });
+  /** Starts a scan for one library. */
+  const createScanJob = (libraryId: string) =>
+    $fetch<BackgroundJobResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["jobs", "scan"]),
+      {
+        ...requestOptions,
+        method: "POST",
+        body: {}
+      }
+    );
 
   return {
+    addCollectionBook,
     apiBase,
+    archiveBook,
     cancelJob,
-    createCollectionRoot,
     createInitialSetup,
-    createScanAllJobs,
+    createCollection,
+    createLibrary,
     createScanJob,
-    deleteCollectionRoot,
-    exportLibrary,
-    listBooks,
-    listCollectionRoots,
-    listJobs,
+    deleteLibrary,
+    deleteCollection,
     getBook,
+    getCollection,
+    getJob,
+    getLibraryPreference,
     getNetworkSettings,
+    getPageImageUrl,
     getSetupStatus,
     getThumbnailSettings,
+    listArchivedBooks,
+    listBooks,
+    listCollections,
+    listJobs,
+    listLibraries,
+    listScanFailures,
+    restoreBook,
+    removeCollectionBook,
+    reorderCollectionBooks,
     updateBookMetadata,
-    updateNetworkSettings,
     updateBookProgress,
+    updateCollection,
+    updateLibrary,
+    updateLibraryPreference,
+    updateNetworkSettings,
     updateThumbnailSettings
   };
 };

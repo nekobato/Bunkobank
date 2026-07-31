@@ -7,6 +7,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 const SERVER_CONFIG_FILE: &str = "config.json";
 const SIDECAR_NAME: &str = "binaries/bookcafe-server";
@@ -34,11 +35,9 @@ struct ThumbnailSettings {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ServerConfig {
-    data_dir: String,
     host: String,
     port: u16,
     thumbnails: ThumbnailSettings,
-    setup_complete: bool,
 }
 
 /// Returns paths and platform facts resolved by Tauri's native path API.
@@ -78,6 +77,37 @@ fn read_server_config(app: AppHandle) -> Result<Option<ServerConfig>, String> {
 
     let raw = fs::read_to_string(config_path).map_err(display_error)?;
     serde_json::from_str(&raw).map(Some).map_err(display_error)
+}
+
+/// Writes a validated port while preserving the remaining server settings.
+#[tauri::command]
+fn write_server_port(app: AppHandle, port: u16) -> Result<ServerConfig, String> {
+    if port == 0 {
+        return Err("Server port must be between 1 and 65535.".to_string());
+    }
+
+    let app_config_dir = app.path().app_config_dir().map_err(display_error)?;
+    let config_path = app_config_dir.join(SERVER_CONFIG_FILE);
+    let mut config = read_server_config(app)?.unwrap_or_else(default_server_config);
+    config.port = port;
+    let serialized = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&config).map_err(display_error)?
+    );
+
+    fs::create_dir_all(app_config_dir).map_err(display_error)?;
+    fs::write(config_path, serialized).map_err(display_error)?;
+    Ok(config)
+}
+
+/// Opens only BookCafe's fixed application log directory.
+#[tauri::command]
+fn open_log_directory(app: AppHandle) -> Result<(), String> {
+    let log_dir = app.path().app_log_dir().map_err(display_error)?;
+    fs::create_dir_all(&log_dir).map_err(display_error)?;
+    app.opener()
+        .open_path(display_path(&log_dir), None::<&str>)
+        .map_err(display_error)
 }
 
 /// Reads the fixed per-user BookCafe LaunchAgent plist on macOS.
@@ -191,6 +221,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_desktop_environment,
             read_server_config,
+            write_server_port,
+            open_log_directory,
             read_mac_launch_agent_plist,
             install_mac_launch_agent,
             remove_mac_launch_agent
@@ -206,6 +238,15 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running BookCafe desktop manager");
+}
+
+/// Returns the same defaults used by the shared TypeScript config schema.
+fn default_server_config() -> ServerConfig {
+    ServerConfig {
+        host: "127.0.0.1".to_string(),
+        port: 4510,
+        thumbnails: ThumbnailSettings { enabled: true },
+    }
 }
 
 /// Resolves the sidecar path beside the native desktop executable.

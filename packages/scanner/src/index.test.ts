@@ -1,11 +1,21 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { zipSync } from "fflate";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { scanCollectionRoot } from "./index.js";
+import {
+  scanLibrary,
+  type ScanCandidateFailure,
+  type ScannedBook
+} from "./index.js";
 
 const tempDirs: string[] = [];
 
@@ -15,14 +25,42 @@ afterEach(() => {
   }
 });
 
-describe("scanCollectionRoot", () => {
+describe("scanLibrary", () => {
   it("stops before filesystem work when the scan is cancelled", async () => {
     const controller = new AbortController();
     controller.abort();
 
     await expect(
-      scanCollectionRoot("/collection", { signal: controller.signal })
+      collectBooks(scanLibrary("/collection", { signal: controller.signal }))
     ).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("yields each discovered book before the complete scan is collected", async () => {
+    const root = join(mkdirTempDir(), "collection");
+    const firstBookDir = join(root, "Volume 1");
+    const secondBookDir = join(root, "Volume 2");
+    mkdirSync(firstBookDir, { recursive: true });
+    mkdirSync(secondBookDir, { recursive: true });
+    writeFileSync(join(firstBookDir, "001.jpg"), "first");
+    writeFileSync(join(secondBookDir, "001.jpg"), "second");
+
+    const iterator = scanLibrary(root)[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toEqual(
+      expect.objectContaining({
+        done: false,
+        value: expect.objectContaining({ relativePath: "Volume 1" })
+      })
+    );
+    await expect(iterator.next()).resolves.toEqual(
+      expect.objectContaining({
+        done: false,
+        value: expect.objectContaining({ relativePath: "Volume 2" })
+      })
+    );
+    await expect(iterator.next()).resolves.toEqual(
+      expect.objectContaining({ done: true })
+    );
   });
 
   it("discovers nested image-folder books with naturally sorted pages", async () => {
@@ -33,13 +71,43 @@ describe("scanCollectionRoot", () => {
     writeFileSync(join(bookDir, "2.jpg"), "two");
     writeFileSync(join(bookDir, "cover.txt"), "ignored");
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(books).toHaveLength(1);
     expect(books[0]?.title).toBe("Volume 1");
-    expect(books[0]?.pagePaths.map((path) => path.split("/").at(-1))).toEqual([
-      "2.jpg",
-      "10.jpg"
+    expect(books[0]).toEqual(
+      expect.objectContaining({
+        relativePath: "Volume 1",
+        pagePaths: ["Volume 1/2.jpg", "Volume 1/10.jpg"]
+      })
+    );
+    expect(books[0]?.pages).toEqual([
+      {
+        sourceType: "file",
+        relativePath: "Volume 1/2.jpg",
+        mimeType: "image/jpeg"
+      },
+      {
+        sourceType: "file",
+        relativePath: "Volume 1/10.jpg",
+        mimeType: "image/jpeg"
+      }
+    ]);
+  });
+
+  it("represents an image-folder library root with a relative dot locator", async () => {
+    const root = join(mkdirTempDir(), "Root Volume");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "001.jpg"), "one");
+
+    const books = await collectBooks(scanLibrary(root));
+
+    expect(books).toEqual([
+      expect.objectContaining({
+        relativePath: ".",
+        title: "Root Volume",
+        pagePaths: ["001.jpg"]
+      })
     ]);
   });
 
@@ -56,12 +124,12 @@ describe("scanCollectionRoot", () => {
       })
     );
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(books).toHaveLength(1);
     expect(books[0]).toEqual(
       expect.objectContaining({
-        sourcePath: archivePath,
+        relativePath: "Volume Archive.cbz",
         title: "Volume Archive",
         format: "cbz",
         pagePaths: ["002.jpg", "010.jpg"]
@@ -69,14 +137,16 @@ describe("scanCollectionRoot", () => {
     );
     expect(books[0]?.pages).toEqual([
       {
-        sourcePath: archivePath,
         sourceType: "archive-entry",
-        entryPath: "002.jpg"
+        relativePath: "Volume Archive.cbz",
+        entryPath: "002.jpg",
+        mimeType: "image/jpeg"
       },
       {
-        sourcePath: archivePath,
         sourceType: "archive-entry",
-        entryPath: "010.jpg"
+        relativePath: "Volume Archive.cbz",
+        entryPath: "010.jpg",
+        mimeType: "image/jpeg"
       }
     ]);
   });
@@ -87,12 +157,12 @@ describe("scanCollectionRoot", () => {
     mkdirSync(root, { recursive: true });
     writeFileSync(pdfPath, createTestPdf(), "binary");
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(books).toHaveLength(1);
     expect(books[0]).toEqual(
       expect.objectContaining({
-        sourcePath: pdfPath,
+        relativePath: "Volume PDF.pdf",
         title: "Volume PDF",
         format: "pdf",
         pagePaths: ["page:1"]
@@ -100,11 +170,74 @@ describe("scanCollectionRoot", () => {
     );
     expect(books[0]?.pages).toEqual([
       {
-        sourcePath: pdfPath,
         sourceType: "pdf-page",
-        entryPath: null,
+        relativePath: "Volume PDF.pdf",
+        sourcePageNumber: 1,
         width: 200,
-        height: 260
+        height: 260,
+        mimeType: "image/png"
+      }
+    ]);
+  });
+
+  it("serializes PDF page discovery through the configured loader", async () => {
+    const root = join(mkdirTempDir(), "collection");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "Volume 1.pdf"), createTestPdf(), "binary");
+    writeFileSync(join(root, "Volume 2.pdf"), createTestPdf(), "binary");
+    let activeLoads = 0;
+    let maximumActiveLoads = 0;
+    const receivedSignals: Array<AbortSignal | undefined> = [];
+    const controller = new AbortController();
+
+    const books = await collectBooks(
+      scanLibrary(root, {
+        concurrency: 8,
+        listPdfPages: async (_pdfPath, signal) => {
+          receivedSignals.push(signal);
+          activeLoads += 1;
+          maximumActiveLoads = Math.max(maximumActiveLoads, activeLoads);
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          activeLoads -= 1;
+
+          return [{ pageNumber: 1, width: 200, height: 260 }];
+        },
+        signal: controller.signal
+      })
+    );
+
+    expect(maximumActiveLoads).toBe(1);
+    expect(receivedSignals).toEqual([controller.signal, controller.signal]);
+    expect(books.map((book) => book.relativePath)).toEqual([
+      "Volume 1.pdf",
+      "Volume 2.pdf"
+    ]);
+  });
+
+  it("keeps a stable PDF process code in candidate failure diagnostics", async () => {
+    const root = join(mkdirTempDir(), "collection");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "Slow.pdf"), createTestPdf(), "binary");
+    const failures: ScanCandidateFailure[] = [];
+
+    const books = await collectBooks(
+      scanLibrary(root, {
+        listPdfPages: async () => {
+          throw Object.assign(new Error("private path omitted"), {
+            code: "PDF_PROCESS_TIMEOUT"
+          });
+        },
+        onCandidateError: (failure) => failures.push(failure)
+      })
+    );
+
+    expect(books).toEqual([]);
+    expect(failures).toEqual([
+      {
+        kind: "book",
+        relativePath: "Slow.pdf",
+        format: "pdf",
+        code: "PDF_PROCESS_TIMEOUT"
       }
     ]);
   });
@@ -124,7 +257,7 @@ describe("scanCollectionRoot", () => {
     );
     writeFileSync(pdfPath, createTestPdf(), "binary");
 
-    const books = await scanCollectionRoot(root, { concurrency: 1 });
+    const books = await collectBooks(scanLibrary(root, { concurrency: 1 }));
 
     expect(
       books.map((book) => ({
@@ -146,7 +279,7 @@ describe("scanCollectionRoot", () => {
       {
         title: "Nested Image Volume",
         format: "image-folder",
-        pagePaths: [join(imageBookDir, "001.jpg")]
+        pagePaths: ["Nested Image Volume/001.jpg"]
       }
     ]);
   });
@@ -157,12 +290,12 @@ describe("scanCollectionRoot", () => {
     mkdirSync(root, { recursive: true });
     writeFileSync(epubPath, createTestEpub());
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(books).toHaveLength(1);
     expect(books[0]).toEqual(
       expect.objectContaining({
-        sourcePath: epubPath,
+        relativePath: "Volume EPUB.epub",
         title: "Test EPUB",
         authors: ["Test Author"],
         format: "epub",
@@ -171,11 +304,12 @@ describe("scanCollectionRoot", () => {
     );
     expect(books[0]?.pages).toEqual([
       {
-        sourcePath: epubPath,
         sourceType: "epub-page",
-        entryPath: null,
+        relativePath: "Volume EPUB.epub",
+        sourcePageNumber: 1,
         width: 800,
-        height: 1200
+        height: 1200,
+        mimeType: "image/png"
       }
     ]);
   });
@@ -186,12 +320,12 @@ describe("scanCollectionRoot", () => {
     mkdirSync(root, { recursive: true });
     writeFileSync(archivePath, createTestSevenZipArchive());
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(books).toHaveLength(1);
     expect(books[0]).toEqual(
       expect.objectContaining({
-        sourcePath: archivePath,
+        relativePath: "Volume Seven.7z",
         title: "Volume Seven",
         format: "seven-zip",
         pagePaths: ["pages/001.png", "pages/002.png"]
@@ -199,14 +333,16 @@ describe("scanCollectionRoot", () => {
     );
     expect(books[0]?.pages).toEqual([
       {
-        sourcePath: archivePath,
         sourceType: "packed-archive-entry",
-        entryPath: "pages/001.png"
+        relativePath: "Volume Seven.7z",
+        entryPath: "pages/001.png",
+        mimeType: "image/png"
       },
       {
-        sourcePath: archivePath,
         sourceType: "packed-archive-entry",
-        entryPath: "pages/002.png"
+        relativePath: "Volume Seven.7z",
+        entryPath: "pages/002.png",
+        mimeType: "image/png"
       }
     ]);
   });
@@ -229,36 +365,36 @@ describe("scanCollectionRoot", () => {
     writeFileSync(epubPath, createTestEpub());
     writeFileSync(sevenZipPath, createTestSevenZipArchive());
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(
       books.map((book) => ({
-        sourcePath: book.sourcePath,
+        relativePath: book.relativePath,
         title: book.title,
         format: book.format,
         pagePaths: book.pagePaths
       }))
     ).toEqual([
       {
-        sourcePath: zipPath,
+        relativePath: "Volume ZIP",
         title: "Volume ZIP",
         format: "zip",
         pagePaths: ["001.jpg"]
       },
       {
-        sourcePath: pdfPath,
+        relativePath: "Volume PDF",
         title: "Volume PDF",
         format: "pdf",
         pagePaths: ["page:1"]
       },
       {
-        sourcePath: epubPath,
+        relativePath: "Volume EPUB",
         title: "Test EPUB",
         format: "epub",
         pagePaths: ["page:1"]
       },
       {
-        sourcePath: sevenZipPath,
+        relativePath: "Volume Seven",
         title: "Volume Seven",
         format: "seven-zip",
         pagePaths: ["pages/001.png", "pages/002.png"]
@@ -266,7 +402,7 @@ describe("scanCollectionRoot", () => {
     ]);
   });
 
-  it("skips unreadable file candidates without aborting the scan", async () => {
+  it("reports unreadable file candidates without aborting the scan", async () => {
     const root = join(mkdirTempDir(), "collection");
     const archivePath = join(root, "Readable Archive.cbz");
     const brokenArchivePath = join(root, "Broken Archive.cbz");
@@ -279,17 +415,62 @@ describe("scanCollectionRoot", () => {
     );
     writeFileSync(brokenArchivePath, "not-a-zip");
 
-    const books = await scanCollectionRoot(root);
+    const failures: ScanCandidateFailure[] = [];
+    const books = await collectBooks(
+      scanLibrary(root, {
+        onCandidateError: (failure) => failures.push(failure)
+      })
+    );
 
     expect(books).toHaveLength(1);
     expect(books[0]).toEqual(
       expect.objectContaining({
-        sourcePath: archivePath,
+        relativePath: "Readable Archive.cbz",
         title: "Readable Archive",
         format: "cbz"
       })
     );
+    expect(failures).toEqual([
+      {
+        kind: "book",
+        relativePath: "Broken Archive.cbz",
+        format: "cbz",
+        code: "ARCHIVE_PARSE_FAILED"
+      }
+    ]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "reports an unreadable child directory as a failed subtree",
+    async () => {
+      const root = join(mkdirTempDir(), "collection");
+      const unreadable = join(root, "Unreadable");
+      mkdirSync(unreadable, { recursive: true });
+      chmodSync(unreadable, 0o000);
+      const failures: ScanCandidateFailure[] = [];
+
+      try {
+        expect(
+          await collectBooks(
+            scanLibrary(root, {
+              onCandidateError: (failure) => failures.push(failure)
+            })
+          )
+        ).toEqual([]);
+      } finally {
+        chmodSync(unreadable, 0o700);
+      }
+
+      expect(failures).toEqual([
+        {
+          kind: "subtree",
+          relativePath: "Unreadable",
+          format: "unknown",
+          code: "DIRECTORY_UNREADABLE"
+        }
+      ]);
+    }
+  );
 
   it("excludes hidden and system filesystem entries from scanning", async () => {
     const root = join(mkdirTempDir(), "collection");
@@ -318,7 +499,7 @@ describe("scanCollectionRoot", () => {
       })
     );
 
-    const books = await scanCollectionRoot(root);
+    const books = await collectBooks(scanLibrary(root));
 
     expect(
       books.map((book) => ({
@@ -336,7 +517,46 @@ describe("scanCollectionRoot", () => {
       }
     ]);
   });
+
+  it("skips archived relative paths before returning scan candidates", async () => {
+    const root = join(mkdirTempDir(), "collection");
+    const activeBookDir = join(root, "Active");
+    const archivedBookDir = join(root, "Archived");
+    mkdirSync(activeBookDir, { recursive: true });
+    mkdirSync(archivedBookDir, { recursive: true });
+    writeFileSync(join(activeBookDir, "001.jpg"), "active");
+    writeFileSync(join(archivedBookDir, "001.jpg"), "archived");
+
+    const books = await collectBooks(
+      scanLibrary(root, {
+        excludedRelativePaths: new Set(["Archived"])
+      })
+    );
+
+    expect(books.map((book) => book.relativePath)).toEqual(["Active"]);
+    expect(
+      books.flatMap((book) => [
+        book.relativePath,
+        ...book.pages.flatMap((page) => page.relativePath ?? [])
+      ])
+    ).not.toContain(expect.stringContaining(root));
+  });
 });
+
+/**
+ * Collects a scan stream for assertions that need the complete result.
+ */
+const collectBooks = async (
+  books: AsyncIterable<ScannedBook>
+): Promise<ScannedBook[]> => {
+  const collected: ScannedBook[] = [];
+
+  for await (const book of books) {
+    collected.push(book);
+  }
+
+  return collected;
+};
 
 /**
  * Creates a temporary directory tracked for cleanup.

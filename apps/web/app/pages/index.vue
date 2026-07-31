@@ -1,20 +1,45 @@
 <script setup lang="ts">
-import { getApiErrorMessage } from "../utils/apiErrors";
+/**
+ * Searchable book list for the selected library.
+ *
+ * @module
+ */
+
+import type { BookSort, SortOrder } from "@bookcafe/contracts";
+import type { BookSummary } from "@bookcafe/core";
+
+import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import {
   areLibraryFiltersEqual,
+  bookSortOptions,
   bookStatusFilterOptions,
+  BOOK_LIST_PAGE_SIZE,
   createLibraryQuery,
   formatLibraryResultSummary,
   getRouteBookStatus,
+  getRouteBookSort,
+  getRoutePage,
   getRouteReadingStatus,
   getRouteSearch,
+  getRouteSortOrder,
   readingStatusFilterOptions,
+  sortOrderOptions,
   type BookStatusFilter,
   type ReadingStatusFilter
 } from "../utils/libraryFilters";
 
+useHead({ title: "蔵書" });
+
 const route = useRoute();
-const { exportLibrary, listBooks } = useBookApi();
+const { listBooks } = useBookApi();
+const {
+  error: libraryError,
+  loaded: librariesLoaded,
+  loading: librariesLoading,
+  refreshLibraries,
+  selectedLibrary,
+  selectedLibraryId
+} = useLibraries();
 const searchText = ref(getRouteSearch(route.query.q));
 const readingStatus = ref<ReadingStatusFilter>(
   getRouteReadingStatus(route.query.readingStatus)
@@ -22,8 +47,11 @@ const readingStatus = ref<ReadingStatusFilter>(
 const bookStatus = ref<BookStatusFilter>(
   getRouteBookStatus(route.query.bookStatus)
 );
-const exportMessage = ref("");
-const isExporting = ref(false);
+const sort = ref<BookSort>(getRouteBookSort(route.query.sort));
+const order = ref<SortOrder>(getRouteSortOrder(route.query.order));
+const isSearchDialogOpen = ref(false);
+const isMetadataDialogOpen = ref(false);
+const selectedBook = ref<BookSummary | null>(null);
 const appliedSearch = computed(() => getRouteSearch(route.query.q));
 const appliedReadingStatus = computed(() =>
   getRouteReadingStatus(route.query.readingStatus)
@@ -31,20 +59,54 @@ const appliedReadingStatus = computed(() =>
 const appliedBookStatus = computed(() =>
   getRouteBookStatus(route.query.bookStatus)
 );
+const appliedSort = computed(() => getRouteBookSort(route.query.sort));
+const appliedOrder = computed(() => getRouteSortOrder(route.query.order));
+const appliedPage = computed(() => getRoutePage(route.query.page));
 const { data, error, pending, refresh } = await useAsyncData(
-  "books",
+  "selected-library-books",
   () =>
-    listBooks({
-      q: appliedSearch.value || undefined,
-      readingStatus: appliedReadingStatus.value || undefined,
-      bookStatus: appliedBookStatus.value || undefined
-    }),
+    selectedLibraryId.value
+      ? listBooks(selectedLibraryId.value, {
+          q: appliedSearch.value || undefined,
+          readingStatus: appliedReadingStatus.value || undefined,
+          bookStatus: appliedBookStatus.value || undefined,
+          sort: appliedSort.value,
+          order: appliedOrder.value,
+          offset: (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE,
+          limit: BOOK_LIST_PAGE_SIZE
+        })
+      : Promise.resolve({
+          books: [],
+          total: 0,
+          offset: 0,
+          limit: BOOK_LIST_PAGE_SIZE,
+          hasMore: false
+        }),
   {
+    default: () => ({
+      books: [],
+      total: 0,
+      offset: 0,
+      limit: BOOK_LIST_PAGE_SIZE,
+      hasMore: false
+    }),
     server: false,
-    watch: [appliedSearch, appliedReadingStatus, appliedBookStatus]
+    watch: [
+      selectedLibraryId,
+      appliedSearch,
+      appliedReadingStatus,
+      appliedBookStatus,
+      appliedSort,
+      appliedOrder,
+      appliedPage
+    ]
   }
 );
 const books = computed(() => data.value?.books ?? []);
+const totalBooks = computed(() => data.value?.total ?? 0);
+const firstBookOffset = computed(
+  () => (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE
+);
 const statusCode = computed(() => error.value?.statusCode);
 const hasActiveFilters = computed(() =>
   Boolean(
@@ -63,46 +125,69 @@ const hasAppliedFilters = computed(() =>
 );
 const resultSummary = computed(() =>
   formatLibraryResultSummary(
-    books.value.length,
+    totalBooks.value,
     appliedSearch.value,
     appliedReadingStatus.value,
     appliedBookStatus.value
   )
 );
+const libraryErrorMessage = computed(() =>
+  getApiErrorMessage(libraryError.value, "ライブラリを読み込めませんでした。")
+);
 const emptyMessage = computed(() =>
   hasAppliedFilters.value
-    ? "No books match the current filters"
-    : "No books found"
+    ? "条件に一致する本はありません。"
+    : "本は登録されていません。"
 );
-const actionLink = computed(() => {
-  if (statusCode.value === 409) {
-    return { label: "Setup", to: "/setup" };
-  }
-
-  if (statusCode.value === 401) {
-    return { label: "Login", to: "/login" };
-  }
-
-  return null;
-});
 const errorMessage = computed(() =>
-  statusCode.value === 409 || statusCode.value === 401
-    ? "Authentication required."
-    : "Failed to load books."
+  getAccessErrorMessage(statusCode.value, "蔵書を読み込めませんでした。")
 );
+
+/** Restores the search form to the filters currently applied in the URL. */
+const restoreAppliedFilters = (): void => {
+  searchText.value = appliedSearch.value;
+  readingStatus.value = appliedReadingStatus.value;
+  bookStatus.value = appliedBookStatus.value;
+  sort.value = appliedSort.value;
+  order.value = appliedOrder.value;
+};
+
+/** Opens the search dialog with a fresh copy of the applied filters. */
+const openSearchDialog = (): void => {
+  restoreAppliedFilters();
+  isSearchDialogOpen.value = true;
+};
+
+/** Opens the metadata editor for one visible book. */
+const openMetadataDialog = (book: BookSummary): void => {
+  selectedBook.value = book;
+  isMetadataDialogOpen.value = true;
+};
+
+/** Refreshes the current result page after metadata changes. */
+const handleMetadataUpdated = async (book: BookSummary): Promise<void> => {
+  selectedBook.value = book;
+  await refresh();
+};
+
+watch(selectedLibraryId, () => {
+  isSearchDialogOpen.value = false;
+  isMetadataDialogOpen.value = false;
+  selectedBook.value = null;
+});
 
 watch(
-  [appliedSearch, appliedReadingStatus, appliedBookStatus],
-  ([nextSearch, nextReadingStatus, nextBookStatus]) => {
-    searchText.value = nextSearch;
-    readingStatus.value = nextReadingStatus;
-    bookStatus.value = nextBookStatus;
-  }
+  [
+    appliedSearch,
+    appliedReadingStatus,
+    appliedBookStatus,
+    appliedSort,
+    appliedOrder
+  ],
+  () => restoreAppliedFilters()
 );
 
-/**
- * Applies the current filters to the route query.
- */
+/** Applies the current filters to the route query. */
 const submitFilters = async (): Promise<void> => {
   if (
     areLibraryFiltersEqual(
@@ -111,10 +196,15 @@ const submitFilters = async (): Promise<void> => {
       bookStatus.value,
       appliedSearch.value,
       appliedReadingStatus.value,
-      appliedBookStatus.value
+      appliedBookStatus.value,
+      sort.value,
+      order.value,
+      appliedSort.value,
+      appliedOrder.value
     )
   ) {
     await refresh();
+    isSearchDialogOpen.value = false;
     return;
   }
 
@@ -124,104 +214,113 @@ const submitFilters = async (): Promise<void> => {
       query: createLibraryQuery(
         searchText.value,
         readingStatus.value,
-        bookStatus.value
+        bookStatus.value,
+        1,
+        sort.value,
+        order.value
       )
     },
     { replace: true }
   );
+  isSearchDialogOpen.value = false;
 };
 
-/**
- * Clears the filters and refreshes the library.
- */
+/** Clears every book-list filter. */
 const clearFilters = async (): Promise<void> => {
   searchText.value = "";
   readingStatus.value = "";
   bookStatus.value = "";
 
-  if (
-    !appliedSearch.value &&
-    !appliedReadingStatus.value &&
-    !appliedBookStatus.value
-  ) {
+  if (!hasAppliedFilters.value) {
     await refresh();
+    isSearchDialogOpen.value = false;
     return;
   }
 
-  await navigateTo({ path: "/", query: {} }, { replace: true });
+  await navigateTo(
+    {
+      path: "/",
+      query: createLibraryQuery(
+        "",
+        "",
+        "",
+        1,
+        appliedSort.value,
+        appliedOrder.value
+      )
+    },
+    { replace: true }
+  );
+  isSearchDialogOpen.value = false;
 };
 
 /**
- * Downloads the current library metadata as a versioned JSON file.
+ * Moves to a one-based page while retaining the active filters.
  */
-const downloadLibraryExport = async (): Promise<void> => {
-  if (isExporting.value) {
-    return;
-  }
-
-  isExporting.value = true;
-  exportMessage.value = "";
-
-  try {
-    const exportData = await exportLibrary();
-    triggerJsonDownload(
-      createLibraryExportFileName(exportData.exportedAt),
-      exportData
-    );
-    exportMessage.value = `Exported ${exportData.books.length} books`;
-  } catch (error) {
-    exportMessage.value = getApiErrorMessage(error, "Export failed");
-  } finally {
-    isExporting.value = false;
-  }
-};
-
-/**
- * Builds the client-side filename matching the server export convention.
- */
-const createLibraryExportFileName = (exportedAt: string): string =>
-  `bookcafe-library-${exportedAt
-    .replaceAll("-", "")
-    .replaceAll(":", "")
-    .replace(/\.\d{3}Z$/, "Z")}.json`;
-
-/**
- * Creates a temporary object URL and clicks a synthetic download link.
- */
-const triggerJsonDownload = (fileName: string, payload: unknown): void => {
-  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
-    type: "application/json"
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = fileName;
-
-  try {
-    document.body.append(link);
-    link.click();
-  } finally {
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
+const changePage = async (event: { page: number }): Promise<void> => {
+  await navigateTo(
+    {
+      path: "/",
+      query: createLibraryQuery(
+        appliedSearch.value,
+        appliedReadingStatus.value,
+        appliedBookStatus.value,
+        event.page + 1,
+        appliedSort.value,
+        appliedOrder.value
+      )
+    },
+    { replace: true }
+  );
 };
 </script>
 
 <template>
   <section class="library">
-    <div class="heading">
-      <h1>Library</h1>
-      <div class="tools">
-        <form
-          class="search"
-          action="/"
-          method="get"
-          @submit.prevent="submitFilters"
-        >
-          <label class="field" for="library-search">
-            <span>Search</span>
-            <input
+    <header class="heading">
+      <div>
+        <p v-if="selectedLibrary" class="page-eyebrow">
+          {{ selectedLibrary.name }}
+        </p>
+        <h1 class="page-title">蔵書</h1>
+      </div>
+      <div class="commands" aria-label="ライブラリ操作">
+        <Button
+          label="検索"
+          icon="pi pi-search"
+          severity="secondary"
+          variant="outlined"
+          aria-haspopup="dialog"
+          aria-controls="library-search-dialog"
+          :aria-expanded="isSearchDialogOpen"
+          :disabled="!selectedLibraryId"
+          @click="openSearchDialog"
+        />
+      </div>
+    </header>
+
+    <Dialog
+      id="library-search-dialog"
+      v-model:visible="isSearchDialogOpen"
+      header="蔵書を検索"
+      modal
+      block-scroll
+      dismissable-mask
+      :draggable="false"
+      :style="{ width: 'min(36rem, calc(100vw - 2rem))' }"
+      :breakpoints="{ '44rem': 'calc(100vw - 2rem)' }"
+      :close-button-props="{ 'aria-label': '検索を閉じる' }"
+    >
+      <form
+        id="library-search-form"
+        class="search"
+        @submit.prevent="submitFilters"
+      >
+        <div class="search-field">
+          <label for="library-search">検索</label>
+          <IconField>
+            <InputIcon class="pi pi-search" />
+            <InputText
               id="library-search"
               v-model="searchText"
               name="q"
@@ -229,238 +328,259 @@ const triggerJsonDownload = (fileName: string, payload: unknown): void => {
               autocomplete="off"
               maxlength="200"
               enterkeyhint="search"
+              placeholder="タイトル、著者、タグ"
+              autofocus
+              fluid
             />
-          </label>
-          <fieldset class="filter">
-            <legend>Reading status</legend>
-            <div class="choices">
-              <label
-                v-for="option in readingStatusFilterOptions"
-                :key="option.value || 'all'"
-                class="choice"
-              >
-                <input
-                  v-model="readingStatus"
-                  type="radio"
-                  name="readingStatus"
-                  :value="option.value"
-                  @change="submitFilters"
-                />
-                <span>{{ option.label }}</span>
-              </label>
-            </div>
-          </fieldset>
-          <fieldset class="filter">
-            <legend>Book status</legend>
-            <div class="choices">
-              <label
-                v-for="option in bookStatusFilterOptions"
-                :key="option.value || 'all'"
-                class="choice"
-              >
-                <input
-                  v-model="bookStatus"
-                  type="radio"
-                  name="bookStatus"
-                  :value="option.value"
-                  @change="submitFilters"
-                />
-                <span>{{ option.label }}</span>
-              </label>
-            </div>
-          </fieldset>
-          <div class="actions">
-            <button type="submit">Search</button>
-            <button v-if="hasActiveFilters" type="button" @click="clearFilters">
-              Clear
-            </button>
-          </div>
-        </form>
-        <div class="commands">
-          <button type="button" @click="() => refresh()">Refresh</button>
-          <button
-            type="button"
-            :disabled="isExporting || Boolean(error)"
-            @click="downloadLibraryExport"
-          >
-            {{ isExporting ? "Exporting" : "Export JSON" }}
-          </button>
+          </IconField>
         </div>
+        <div class="select-field">
+          <span id="reading-filter-label" class="control-label">読書状況</span>
+          <Select
+            v-model="readingStatus"
+            input-id="reading-filter"
+            :options="readingStatusFilterOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="reading-filter-label"
+            fluid
+          />
+        </div>
+        <div class="select-field">
+          <span id="source-filter-label" class="control-label">元ファイル</span>
+          <Select
+            v-model="bookStatus"
+            input-id="source-filter"
+            :options="bookStatusFilterOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="source-filter-label"
+            fluid
+          />
+        </div>
+        <div class="select-field">
+          <span id="book-sort-label" class="control-label">並び順</span>
+          <Select
+            v-model="sort"
+            input-id="book-sort"
+            :options="bookSortOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="book-sort-label"
+            fluid
+          />
+        </div>
+        <div class="select-field">
+          <span id="book-order-label" class="control-label">方向</span>
+          <Select
+            v-model="order"
+            input-id="book-order"
+            :options="sortOrderOptions"
+            option-label="label"
+            option-value="value"
+            aria-labelledby="book-order-label"
+            fluid
+          />
+        </div>
+        <div class="filter-actions">
+          <Button label="検索" icon="pi pi-search" type="submit" />
+          <Button
+            v-if="hasActiveFilters"
+            label="クリア"
+            icon="pi pi-times"
+            severity="secondary"
+            variant="text"
+            type="button"
+            @click="clearFilters"
+          />
+        </div>
+      </form>
+    </Dialog>
+
+    <ClientOnly>
+      <div
+        v-if="librariesLoading || (!librariesLoaded && pending)"
+        class="status"
+        role="status"
+      >
+        <ProgressSpinner class="spinner" stroke-width="4" />
       </div>
-    </div>
-    <LibraryManager v-if="!error" @updated="() => refresh()" />
-    <p v-if="exportMessage" class="message" aria-live="polite">
-      {{ exportMessage }}
-    </p>
-    <p v-if="!pending && !error" class="summary" aria-live="polite">
-      {{ resultSummary }}
-    </p>
-    <p v-if="pending" class="status">Loading</p>
-    <p v-else-if="error" class="status is-error">
-      <span>{{ errorMessage }}</span>
-      <NuxtLink v-if="actionLink" :to="actionLink.to">
-        {{ actionLink.label }}
-      </NuxtLink>
-    </p>
-    <BookList v-else-if="books.length > 0" :books="books" />
-    <p v-else class="status">{{ emptyMessage }}</p>
+      <Message v-else-if="libraryError" severity="error" :closable="false">
+        <span>{{ libraryErrorMessage }}</span>
+        <Button
+          label="再試行"
+          icon="pi pi-refresh"
+          size="small"
+          @click="refreshLibraries"
+        />
+      </Message>
+      <Card v-else-if="!selectedLibraryId" class="empty-card">
+        <template #content>
+          <i class="pi pi-folder-open" aria-hidden="true" />
+          <p>ライブラリは未登録です。</p>
+          <Button
+            as="router-link"
+            label="設定を開く"
+            icon="pi pi-cog"
+            to="/setup"
+          />
+        </template>
+      </Card>
+      <div v-else-if="pending" class="status" role="status">
+        <ProgressSpinner class="spinner" stroke-width="4" />
+      </div>
+      <Message v-else-if="error" severity="error" :closable="false">
+        {{ errorMessage }}
+      </Message>
+      <template v-else>
+        <p class="summary" aria-live="polite">{{ resultSummary }}</p>
+        <BookList
+          v-if="books.length > 0"
+          :books="books"
+          :editing-book-id="
+            isMetadataDialogOpen ? (selectedBook?.id ?? null) : null
+          "
+          @edit="openMetadataDialog"
+        />
+        <Paginator
+          v-if="totalBooks > BOOK_LIST_PAGE_SIZE"
+          :first="firstBookOffset"
+          :rows="BOOK_LIST_PAGE_SIZE"
+          :total-records="totalBooks"
+          template="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
+          current-page-report-template="{currentPage} / {totalPages}"
+          aria-label="蔵書ページ"
+          @page="changePage"
+        />
+        <Card v-else class="empty-card">
+          <template #content>
+            <i class="pi pi-book" aria-hidden="true" />
+            <p>{{ emptyMessage }}</p>
+            <Button
+              v-if="hasActiveFilters"
+              label="絞り込みを解除"
+              severity="secondary"
+              variant="outlined"
+              @click="clearFilters"
+            />
+          </template>
+        </Card>
+      </template>
+    </ClientOnly>
+
+    <BookMetadataDialog
+      v-model:visible="isMetadataDialogOpen"
+      :book="selectedBook"
+      :library-id="selectedLibraryId"
+      @updated="handleMetadataUpdated"
+    />
   </section>
 </template>
 
 <style scoped>
 .library {
   display: grid;
-  gap: 1.25rem;
-  width: min(1100px, 100%);
-  padding: clamp(1rem, 4vw, 2rem);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.4rem;
+  inline-size: min(82rem, 100%);
+  padding: clamp(1.25rem, 4vw, 3.5rem);
   margin: 0 auto;
 }
 
-.heading {
-  display: grid;
-  gap: 1rem;
-}
-
-.heading h1 {
-  margin: 0;
-  font-size: clamp(1.6rem, 5vw, 2.4rem);
-}
-
-.tools {
+.heading,
+.commands,
+.filter-actions {
   display: flex;
+}
+
+.heading {
   align-items: end;
   justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.heading h1,
+.page-eyebrow {
+  margin: 0;
+}
+
+.commands,
+.filter-actions {
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .search {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-items: end;
-  flex: 1 1 30rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  min-width: min(100%, 18rem);
+  gap: 0.8rem;
+  min-inline-size: 0;
 }
 
-.field {
+.search-field,
+.select-field {
   display: grid;
-  flex: 1 1 16rem;
-  gap: 0.35rem;
-  min-width: min(100%, 16rem);
+  gap: 0.38rem;
+  min-inline-size: 0;
 }
 
-.field span {
-  color: var(--muted);
-  font-size: 0.9rem;
+.search label,
+.search .control-label {
+  color: var(--bc-ink-soft);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
-.field input {
-  width: 100%;
-  min-height: 2.5rem;
-  padding: 0 0.75rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  font: inherit;
-}
-
-.filter {
-  display: grid;
-  gap: 0.35rem;
-  min-width: min(100%, 19rem);
-  padding: 0;
-  border: 0;
-  margin: 0;
-}
-
-.filter legend {
-  padding: 0;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.choices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.choice {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 2.5rem;
-  padding: 0 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-
-.choice input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: var(--accent);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.commands {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.tools button {
-  min-height: 2.5rem;
-  padding: 0 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
-  cursor: pointer;
-}
-
-.tools button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.message {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.95rem;
+.filter-actions {
+  justify-content: flex-end;
+  padding-block-start: 0.4rem;
 }
 
 .summary {
   margin: 0;
-  color: var(--muted);
-  font-size: 0.95rem;
+  color: var(--bc-ink-soft);
+  font-family: var(--bc-font-data);
+  font-size: 0.78rem;
 }
 
 .status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--panel);
+  display: grid;
+  min-block-size: 8rem;
+  place-items: center;
 }
 
-.status a {
-  color: var(--text);
+.spinner {
+  inline-size: 2rem;
+  block-size: 2rem;
 }
 
-.is-error {
-  color: var(--danger);
+.empty-card {
+  text-align: center;
+}
+
+.empty-card :deep(.p-card-content) {
+  display: grid;
+  justify-items: center;
+  gap: 0.85rem;
+  padding-block: 2.5rem;
+}
+
+.empty-card i {
+  color: var(--bc-patina);
+  font-size: 2rem;
+}
+
+.empty-card p,
+.dialog-copy {
+  margin: 0;
+  color: var(--bc-ink-soft);
+}
+
+@media (width <= 44rem) {
+  .heading {
+    align-items: start;
+    flex-direction: column;
+  }
 }
 </style>

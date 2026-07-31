@@ -5,8 +5,9 @@ import type { BackgroundJobResponse } from "@bookcafe/contracts";
 import {
   getJobStatusLabel,
   getJobTone,
+  getScanFailureCodeLabel,
+  getScanJobFailureCount,
   getScanJobSummary,
-  getScanJobPath,
   hasActiveJobs,
   listRecentJobs
 } from "./libraryJobs";
@@ -42,11 +43,11 @@ describe("library job utilities", () => {
   });
 
   it("formats status labels and tones", () => {
-    expect(getJobStatusLabel("queued")).toBe("Queued");
-    expect(getJobStatusLabel("running")).toBe("Running");
-    expect(getJobStatusLabel("completed")).toBe("Completed");
-    expect(getJobStatusLabel("failed")).toBe("Failed");
-    expect(getJobStatusLabel("cancelled")).toBe("Cancelled");
+    expect(getJobStatusLabel("queued")).toBe("待機中");
+    expect(getJobStatusLabel("running")).toBe("実行中");
+    expect(getJobStatusLabel("completed")).toBe("完了");
+    expect(getJobStatusLabel("failed")).toBe("失敗");
+    expect(getJobStatusLabel("cancelled")).toBe("キャンセル済み");
 
     expect(getJobTone("queued")).toBe("active");
     expect(getJobTone("running")).toBe("active");
@@ -55,45 +56,61 @@ describe("library job utilities", () => {
     expect(getJobTone("cancelled")).toBe("neutral");
   });
 
-  it("reads a scan target path only from valid object payloads", () => {
-    expect(
-      getScanJobPath(
-        createJob({
-          payload: {
-            collectionRootId: "root-id",
-            path: "/Volumes/sabi/Books/Comic"
-          }
-        })
-      )
-    ).toBe("/Volumes/sabi/Books/Comic");
-    expect(getScanJobPath(createJob({ payload: { path: "" } }))).toBeNull();
-    expect(getScanJobPath(createJob({ payload: null }))).toBeNull();
-  });
-
   it("formats scan result summaries only when count payloads are valid", () => {
     expect(
       getScanJobSummary(
         createJob({
           payload: {
-            discoveredBooks: 3,
-            missingBooks: 1
+            detected: 3,
+            created: 2,
+            updated: 1,
+            missing: 1,
+            archived: 0,
+            failed: 1
           }
         })
       )
-    ).toBe("3 discovered, 1 missing");
+    ).toBe("3冊（新規2・更新1）、解析失敗1、未検出1");
     expect(
       getScanJobSummary(
         createJob({
           payload: {
-            discoveredBooks: 1,
-            missingBooks: 0
+            detected: 1,
+            created: 1,
+            updated: 0,
+            missing: 0,
+            archived: 0
           }
         })
       )
-    ).toBe("1 discovered");
+    ).toBe("1冊（新規1・更新0）");
     expect(
-      getScanJobSummary(createJob({ payload: { discoveredBooks: "3" } }))
+      getScanJobSummary(createJob({ payload: { detected: "3" } }))
     ).toBeNull();
+  });
+
+  it("reads only valid non-negative scan failure counts", () => {
+    expect(
+      getScanJobFailureCount(createJob({ payload: { failed: 123 } }))
+    ).toBe(123);
+    expect(getScanJobFailureCount(createJob({ payload: { failed: -1 } }))).toBe(
+      0
+    );
+    expect(
+      getScanJobFailureCount(createJob({ payload: { failed: "123" } }))
+    ).toBe(0);
+  });
+
+  it("formats stable scan failure codes without exposing raw errors", () => {
+    expect(getScanFailureCodeLabel("PDF_APPLEDOUBLE_FILE")).toBe(
+      "PDFではなくmacOSメタデータです"
+    );
+    expect(getScanFailureCodeLabel("PDF_PROCESS_TIMEOUT")).toBe(
+      "PDF処理が時間切れになりました"
+    );
+    expect(getScanFailureCodeLabel("DIRECTORY_UNREADABLE")).toBe(
+      "ディレクトリを読み取れません"
+    );
   });
 });
 
@@ -104,14 +121,18 @@ const createJob = (
   overrides: Partial<BackgroundJobResponse> = {}
 ): BackgroundJobResponse => ({
   id: overrides.id ?? "job-id",
-  type: overrides.type ?? "scan-collection-root",
+  libraryId: overrides.libraryId ?? "library-id",
+  type: overrides.type ?? "scan-library",
   status: overrides.status ?? "completed",
   payload:
     "payload" in overrides
       ? overrides.payload
       : {
-          collectionRootId: "root-id",
-          path: "/collection"
+          detected: 1,
+          created: 1,
+          updated: 0,
+          missing: 0,
+          archived: 0
         },
   progress: overrides.progress ?? 100,
   error: overrides.error ?? null,

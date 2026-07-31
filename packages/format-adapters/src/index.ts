@@ -5,6 +5,7 @@
 import { createRequire } from "node:module";
 import { open, readFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import type { BookFormat } from "@bookcafe/core";
 import { createCanvas } from "@napi-rs/canvas";
@@ -14,7 +15,7 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { ArchiveReader, libarchiveWasm } from "libarchive-wasm";
 
 import type { PDFDocumentLoadingTask } from "pdfjs-dist/types/src/pdf.js";
-import type { Unzipped } from "fflate";
+import type { UnzipFileInfo, Unzipped } from "fflate";
 import type { LibarchiveWasm } from "libarchive-wasm";
 
 const imageExtensions = new Set([
@@ -101,8 +102,6 @@ interface EpubSpineDocument {
 }
 
 interface EpubPackageDocument {
-  archive: Unzipped;
-  packagePath: string;
   packageDir: string;
   packageRoot: Record<string, unknown>;
 }
@@ -214,14 +213,20 @@ export const sortPageNames = (names: string[]): string[] =>
 export const listArchiveImageEntries = async (
   archivePath: string
 ): Promise<ArchiveImageEntry[]> => {
-  const archive = await readArchive(archivePath);
+  const entries: ArchiveImageEntry[] = [];
+  await readArchive(archivePath, (entry) => {
+    const entryPath = normalizeArchiveEntryPath(entry.name);
 
-  return sortPageNames(
-    Object.keys(archive).filter(isArchiveImageEntryPath)
-  ).map((entryPath) => ({
-    entryPath,
-    size: archive[entryPath]?.byteLength ?? 0
-  }));
+    if (entryPath && isArchiveImageEntryPath(entryPath)) {
+      entries.push({
+        entryPath,
+        size: entry.originalSize
+      });
+    }
+
+    return false;
+  });
+  return sortArchiveImageEntries(entries);
 };
 
 /**
@@ -235,8 +240,17 @@ export const readArchiveImageEntry = async (
     return null;
   }
 
-  const archive = await readArchive(archivePath);
-  return archive[entryPath] ?? null;
+  const normalizedEntryPath = normalizeArchiveEntryPath(entryPath);
+
+  if (!normalizedEntryPath) {
+    return null;
+  }
+
+  const archive = await readArchive(
+    archivePath,
+    (entry) => normalizeArchiveEntryPath(entry.name) === normalizedEntryPath
+  );
+  return archive[normalizedEntryPath] ?? null;
 };
 
 /**
@@ -488,19 +502,28 @@ export const getExtension = (filePath: string): string => {
 };
 
 /**
- * Reads and extracts a ZIP archive into memory.
+ * Reads a ZIP central directory and extracts only entries accepted by `filter`.
+ * The compressed source remains one bounded input buffer because fflate's
+ * random-access API consumes a Uint8Array, but unrelated entries are not
+ * inflated into additional buffers.
  */
-const readArchive = async (archivePath: string): Promise<Unzipped> => {
+const readArchive = async (
+  archivePath: string,
+  filter?: (entry: UnzipFileInfo) => boolean
+): Promise<Unzipped> => {
   const archive = await readFile(archivePath);
-  return unzipArchive(archive);
+  return unzipArchive(archive, filter);
 };
 
 /**
  * Wraps fflate's callback-based unzip API in a Promise.
  */
-const unzipArchive = (archive: Uint8Array): Promise<Unzipped> =>
+const unzipArchive = (
+  archive: Uint8Array,
+  filter?: (entry: UnzipFileInfo) => boolean
+): Promise<Unzipped> =>
   new Promise((resolve, reject) => {
-    unzip(archive, (error, unzipped) => {
+    unzip(archive, filter ? { filter } : {}, (error, unzipped) => {
       if (error) {
         reject(error);
         return;
@@ -566,7 +589,10 @@ const detectZipContainerFormat = async (
   filePath: string
 ): Promise<BookFormat> => {
   try {
-    const archive = await readArchive(filePath);
+    const archive = await readArchive(
+      filePath,
+      (entry) => normalizeArchiveEntryPath(entry.name) === "mimetype"
+    );
     const mimetype = archive.mimetype
       ? textDecoder.decode(archive.mimetype).trim()
       : "";
@@ -627,7 +653,12 @@ const createPackedArchiveReader = async (
     loadLibarchiveModule()
   ]);
 
-  return new ArchiveReader(libarchiveModule, new Int8Array(archiveData));
+  const archiveView = new Int8Array(
+    archiveData.buffer,
+    archiveData.byteOffset,
+    archiveData.byteLength
+  );
+  return new ArchiveReader(libarchiveModule, archiveView);
 };
 
 /**
@@ -690,12 +721,12 @@ const isArchiveImageEntryPath = (entryPath: string): boolean => {
 const createPdfLoadingTask = async (
   pdfPath: string
 ): Promise<PDFDocumentLoadingTask> => {
-  const data = new Uint8Array(await readFile(pdfPath));
-
   const loadingTask = getDocument({
-    data,
+    url: pathToFileURL(pdfPath),
     cMapUrl: pdfCMapUrl,
     cMapPacked: true,
+    disableAutoFetch: true,
+    disableStream: true,
     standardFontDataUrl: pdfStandardFontDataUrl,
     stopAtErrors: true
   });
@@ -791,15 +822,14 @@ const readEpubSpineDocuments = async (
   epubPath: string
 ): Promise<EpubSpineDocument[]> => {
   const publication = await readEpubPackageDocument(epubPath);
-  const { archive, packageDir, packageRoot } = publication;
+  const { packageDir, packageRoot } = publication;
   const manifest = asArray(getObject(packageRoot.manifest).item);
   const spine = asArray(getObject(packageRoot.spine).itemref);
   const manifestById = new Map(
     manifest.map((item) => [getString(getObject(item)["@_id"]), item])
   );
-
-  return spine
-    .map((itemref): EpubSpineDocument | null => {
+  const spineEntries = spine
+    .map((itemref): { href: string } | null => {
       const item = getObject(
         manifestById.get(getString(getObject(itemref)["@_idref"]))
       );
@@ -815,10 +845,20 @@ const readEpubSpineDocuments = async (
         return null;
       }
 
+      return { href };
+    })
+    .filter((item): item is { href: string } => item !== null);
+  const requestedEntries = new Set(spineEntries.map((entry) => entry.href));
+  const archive = await readArchive(epubPath, (entry) => {
+    const normalized = normalizeArchiveEntryPath(entry.name);
+    return normalized ? requestedEntries.has(normalized) : false;
+  });
+
+  return spineEntries
+    .map(({ href }): EpubSpineDocument | null => {
       const text = extractReadableText(
         parseXmlObject(readRequiredArchiveText(archive, href))
       );
-
       return text.length > 0 ? { href, text } : null;
     })
     .filter((item): item is EpubSpineDocument => item !== null);
@@ -830,9 +870,13 @@ const readEpubSpineDocuments = async (
 const readEpubPackageDocument = async (
   epubPath: string
 ): Promise<EpubPackageDocument> => {
-  const archive = await readArchive(epubPath);
+  const containerArchive = await readArchive(
+    epubPath,
+    (entry) =>
+      normalizeArchiveEntryPath(entry.name) === "META-INF/container.xml"
+  );
   const container = parseXmlObject(
-    readRequiredArchiveText(archive, "META-INF/container.xml")
+    readRequiredArchiveText(containerArchive, "META-INF/container.xml")
   );
   const rootfile = asArray(
     getObject(getObject(container.container).rootfiles).rootfile
@@ -845,14 +889,16 @@ const readEpubPackageDocument = async (
     throw new Error("EPUB package document is missing.");
   }
 
+  const packageArchive = await readArchive(
+    epubPath,
+    (entry) => normalizeArchiveEntryPath(entry.name) === packagePath
+  );
   const packageDocument = parseXmlObject(
-    readRequiredArchiveText(archive, packagePath)
+    readRequiredArchiveText(packageArchive, packagePath)
   );
   const packageRoot = getObject(packageDocument.package);
 
   return {
-    archive,
-    packagePath,
     packageDir: posix.dirname(packagePath),
     packageRoot
   };

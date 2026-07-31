@@ -8,18 +8,28 @@ import {
 const emit = defineEmits<{
   navigate: [];
 }>();
+const { dark = false } = defineProps<{ dark?: boolean }>();
 
 const route = useRoute();
+const hasHydrated = ref(false);
 const browseItems = appNavigationItems.filter(
   ({ group }) => group === "browse"
 );
 const manageItems = appNavigationItems.filter(
   ({ group }) => group === "manage"
 );
+const currentHash = computed(() => (hasHydrated.value ? route.hash : ""));
+const currentFullPath = computed(() =>
+  hasHydrated.value ? route.fullPath : route.path
+);
+
+onMounted(() => {
+  hasHydrated.value = true;
+});
 
 /** Returns whether the destination represents the current route location. */
 const isActive = (item: AppNavigationItem): boolean =>
-  isAppNavigationItemActive(item, route.path, route.hash);
+  isAppNavigationItemActive(item, route.path, currentHash.value);
 
 /** Returns the appropriate ARIA current value for a selected destination. */
 const getAriaCurrent = (
@@ -29,14 +39,18 @@ const getAriaCurrent = (
     return undefined;
   }
 
-  return route.fullPath === item.to ? "page" : "location";
+  return currentFullPath.value === item.to ? "page" : "location";
 };
 </script>
 
 <template>
-  <nav class="navigation" aria-label="Primary">
+  <nav
+    class="navigation"
+    :class="{ 'is-dark': dark }"
+    aria-label="主要ナビゲーション"
+  >
     <div class="group">
-      <p class="group-label">Browse</p>
+      <p class="group-label">読む</p>
       <ul class="link-list">
         <li v-for="item in browseItems" :key="item.to">
           <NuxtLink
@@ -47,17 +61,14 @@ const getAriaCurrent = (
             @click="emit('navigate')"
           >
             <span class="spine" aria-hidden="true" />
-            <span class="link-copy">
-              <strong>{{ item.label }}</strong>
-              <small>{{ item.description }}</small>
-            </span>
+            <strong>{{ item.label }}</strong>
           </NuxtLink>
         </li>
       </ul>
     </div>
 
     <div class="group">
-      <p class="group-label">Manage</p>
+      <p class="group-label">管理</p>
       <ul class="link-list">
         <li v-for="item in manageItems" :key="item.to">
           <NuxtLink
@@ -68,10 +79,7 @@ const getAriaCurrent = (
             @click="emit('navigate')"
           >
             <span class="spine" aria-hidden="true" />
-            <span class="link-copy">
-              <strong>{{ item.label }}</strong>
-              <small>{{ item.description }}</small>
-            </span>
+            <strong>{{ item.label }}</strong>
           </NuxtLink>
         </li>
       </ul>
@@ -84,6 +92,14 @@ const getAriaCurrent = (
   display: grid;
   align-content: start;
   gap: 1.5rem;
+}
+
+.navigation.is-dark {
+  --muted: rgb(247 249 248 / 68%);
+  --text: #f7f9f8;
+  --line: rgb(255 255 255 / 18%);
+  --panel: rgb(255 255 255 / 10%);
+  --accent: #aebcff;
 }
 
 .group {
@@ -114,7 +130,7 @@ const getAriaCurrent = (
   grid-template-columns: 0.35rem minmax(0, 1fr);
   gap: 0.7rem;
   align-items: center;
-  min-height: 3.75rem;
+  min-height: 3rem;
   padding: 0.6rem 0.75rem 0.6rem 0.55rem;
   border: 1px solid transparent;
   border-radius: 8px;
@@ -131,7 +147,7 @@ const getAriaCurrent = (
 .nav-link.is-active {
   border-color: var(--line);
   color: var(--text);
-  background: var(--panel);
+  background: rgb(255 255 255 / 12%);
   box-shadow: 0 0.25rem 1rem rgb(36 30 20 / 5%);
 }
 
@@ -162,25 +178,10 @@ const getAriaCurrent = (
   background: color-mix(in oklab, var(--accent) 45%, var(--line));
 }
 
-.link-copy {
-  display: grid;
-  gap: 0.15rem;
-  min-width: 0;
-}
-
-.link-copy strong {
+.nav-link strong {
   color: inherit;
   font-size: 0.94rem;
   font-weight: 650;
-}
-
-.link-copy small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 0.74rem;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: no-preference) {

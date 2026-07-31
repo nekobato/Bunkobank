@@ -7,7 +7,6 @@
 /** One primary destination rendered by the application shell. */
 export interface AppNavigationItem {
   label: string;
-  description: string;
   to: string;
   group: "browse" | "manage";
 }
@@ -15,26 +14,22 @@ export interface AppNavigationItem {
 /** Primary destinations from the README Web UI plan. */
 export const appNavigationItems = [
   {
-    label: "Library",
-    description: "Browse and search your books",
+    label: "ライブラリ",
     to: "/",
     group: "browse"
   },
   {
-    label: "Collections",
-    description: "Manage folders and start scans",
-    to: "/#collections",
-    group: "manage"
+    label: "アーカイブ",
+    to: "/archived",
+    group: "browse"
   },
   {
-    label: "Jobs",
-    description: "Review scan progress and results",
-    to: "/#jobs",
-    group: "manage"
+    label: "コレクション",
+    to: "/collections",
+    group: "browse"
   },
   {
-    label: "Setup",
-    description: "Configure access and storage",
+    label: "設定",
     to: "/setup",
     group: "manage"
   }

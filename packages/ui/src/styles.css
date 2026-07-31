@@ -1,0 +1,147 @@
+@layer bookcafe {
+  :root {
+    color-scheme: light;
+    --bc-deep-shelf: #17353c;
+    --bc-fog: #eef2f2;
+    --bc-paper: #f7f9f8;
+    --bc-panel: #ffffff;
+    --bc-ink: #17353c;
+    --bc-ink-soft: #526a68;
+    --bc-line: #c7d4d3;
+    --bc-line-soft: #dce5e4;
+    --bc-ink-blue: #3159a8;
+    --bc-spine-coral: #f26f4f;
+    --bc-patina: #75a59b;
+    --bc-success: #28734e;
+    --bc-warning: #a75f12;
+    --bc-danger: #b23b30;
+    --bc-focus: #536bc0;
+    --bc-shadow-low: 0 0.4rem 1.2rem rgb(23 53 60 / 7%);
+    --bc-shadow-high: 0 1.25rem 3rem rgb(23 53 60 / 14%);
+    --bc-font-display:
+      "Avenir Next", "Hiragino Sans", "Yu Gothic UI", system-ui, sans-serif;
+    --bc-font-body:
+      Inter, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    --bc-font-data: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+
+  :where(html, body) {
+    min-inline-size: 20rem;
+    margin: 0;
+  }
+
+  body {
+    background: var(--bc-fog);
+    color: var(--bc-ink);
+    font-family: var(--bc-font-body);
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+  }
+
+  :where(button, input, select, textarea) {
+    font: inherit;
+  }
+
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 0.1875rem solid var(--bc-focus);
+    outline-offset: 0.1875rem;
+  }
+
+  :where(a, button) {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  ::selection {
+    background: var(--bc-ink-blue);
+    color: #ffffff;
+  }
+
+  .visually-hidden:where(:not(:focus-within, :active)) {
+    position: absolute !important;
+    inline-size: 1px !important;
+    block-size: 1px !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+
+  .tone-neutral {
+    --bc-status-color: var(--bc-ink-soft);
+  }
+
+  .tone-info {
+    --bc-status-color: var(--bc-ink-blue);
+  }
+
+  .tone-success {
+    --bc-status-color: var(--bc-success);
+  }
+
+  .tone-warning {
+    --bc-status-color: var(--bc-warning);
+  }
+
+  .tone-danger {
+    --bc-status-color: var(--bc-danger);
+  }
+
+  .status-spine {
+    border-inline-start: 0.35rem solid var(--bc-status-color);
+  }
+
+  .password-toggle {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 50%;
+    inset-inline-end: 0.45rem;
+    display: inline-grid;
+    place-items: center;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    translate: 0 -50%;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--bc-ink-soft);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .password-toggle:hover {
+    background: color-mix(in oklab, var(--bc-ink-blue) 10%, transparent);
+    color: var(--bc-ink-blue);
+  }
+
+  .password-toggle:focus-visible {
+    outline: 0.1875rem solid var(--bc-focus);
+    outline-offset: 0.125rem;
+  }
+
+  .p-button:disabled {
+    opacity: 1;
+    color: var(--bc-ink-soft);
+  }
+
+  .p-message.p-message-error {
+    color: var(--bc-danger);
+  }
+
+  @media (pointer: coarse) {
+    :where(button, a, input, select, textarea) {
+      min-block-size: 3rem;
+    }
+  }
+
+  @media (forced-colors: active) {
+    :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+      outline-color: Highlight;
+    }
+
+    .status-spine {
+      border-inline-start-color: CanvasText;
+    }
+  }
+}

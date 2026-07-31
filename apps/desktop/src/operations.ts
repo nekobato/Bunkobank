@@ -4,7 +4,9 @@
 
 import type { AppConfig } from "@bookcafe/config/shared";
 import {
+  apiErrorResponseSchema,
   setupStatusSchema,
+  type ApiErrorCode,
   type InitialSetupRequest,
   type SetupStatusResponse
 } from "@bookcafe/contracts";
@@ -54,6 +56,11 @@ export type InitialSetupSubmitter = (
 export type InitialSetupStatusReader = (
   activeServerConfig: Pick<AppConfig, "host" | "port">
 ) => Promise<InitialSetupStatusRead>;
+
+export type ManagedServerApiError = Error & {
+  status: number;
+  code: ApiErrorCode | null;
+};
 
 export interface ManagedServerChild {
   pid: number;
@@ -130,12 +137,10 @@ export const createInitialSetupSubmitter =
     const payload = await readResponsePayload(response);
 
     if (!response.ok) {
-      const message = getApiErrorMessage(payload);
-
-      throw new Error(
-        message
-          ? `Initial setup failed (HTTP ${response.status}): ${message}`
-          : `Initial setup failed (HTTP ${response.status}).`
+      throw createManagedServerApiError(
+        "Initial setup",
+        response.status,
+        payload
       );
     }
 
@@ -168,12 +173,10 @@ export const createInitialSetupStatusReader =
     const payload = await readResponsePayload(response);
 
     if (!response.ok) {
-      const message = getApiErrorMessage(payload);
-
-      throw new Error(
-        message
-          ? `Setup status failed (HTTP ${response.status}): ${message}`
-          : `Setup status failed (HTTP ${response.status}).`
+      throw createManagedServerApiError(
+        "Setup status",
+        response.status,
+        payload
       );
     }
 
@@ -382,6 +385,38 @@ const getApiErrorMessage = (payload: unknown): string | null => {
 
   return message || null;
 };
+
+/**
+ * Creates a normal Error carrying stable HTTP and BookCafe API identifiers.
+ */
+const createManagedServerApiError = (
+  operation: string,
+  status: number,
+  payload: unknown
+): ManagedServerApiError => {
+  const parsed = apiErrorResponseSchema.safeParse(payload);
+  const message = getApiErrorMessage(payload);
+  const error = new Error(
+    message
+      ? `${operation} failed (HTTP ${status}): ${message}`
+      : `${operation} failed (HTTP ${status}).`
+  ) as ManagedServerApiError;
+  error.status = status;
+  error.code = parsed.success ? parsed.data.code : null;
+  return error;
+};
+
+/**
+ * Returns whether an unknown failure carries BookCafe API error metadata.
+ */
+export const isManagedServerApiError = (
+  error: unknown
+): error is ManagedServerApiError =>
+  error instanceof Error &&
+  "status" in error &&
+  typeof error.status === "number" &&
+  "code" in error &&
+  (typeof error.code === "string" || error.code === null);
 
 /**
  * Rejects unknown or unsafe process identifiers before a child operation.

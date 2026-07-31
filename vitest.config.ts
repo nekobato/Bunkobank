@@ -20,7 +20,7 @@ export default defineConfig({
       ...[
         ["@bookcafe/contracts", "./packages/contracts/src/index.ts"],
         ["@bookcafe/core", "./packages/core/src/index.ts"],
-        ["@bookcafe/db", "./packages/db/src/index.ts"],
+        ["@bookcafe/db", "./packages/db/src/library.ts"],
         [
           "@bookcafe/format-adapters",
           "./packages/format-adapters/src/index.ts"

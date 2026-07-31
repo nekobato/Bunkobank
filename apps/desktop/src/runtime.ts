@@ -84,6 +84,7 @@ export type ManagedServerRuntimeEvent =
 export interface TauriDesktopRuntime {
   readEnvironment: () => Promise<DesktopEnvironment>;
   readServerConfig: () => Promise<AppConfig | null>;
+  writeServerPort: (port: number) => Promise<AppConfig>;
   pickDirectory: () => Promise<string | null>;
   pickDirectories: () => Promise<string[]>;
   spawnManagedServer: (
@@ -92,6 +93,7 @@ export interface TauriDesktopRuntime {
   ) => Promise<ManagedServerSpawnResult>;
   stopManagedServer: (pid: number) => Promise<void>;
   openUrl: (url: string) => Promise<void>;
+  openLogDirectory: () => Promise<void>;
   readMacLaunchAgentPlist: () => Promise<string | null>;
   installMacLaunchAgent: (plist: string) => Promise<void>;
   removeMacLaunchAgent: () => Promise<void>;
@@ -182,6 +184,7 @@ export const createTauriDesktopRuntime = (
   return {
     readEnvironment: () => bindings.invoke("get_desktop_environment"),
     readServerConfig: () => bindings.invoke("read_server_config"),
+    writeServerPort: (port) => bindings.invoke("write_server_port", { port }),
     pickDirectory: async () =>
       getSingleDirectory(await bindings.openDirectory(false)),
     pickDirectories: async () =>
@@ -189,6 +192,7 @@ export const createTauriDesktopRuntime = (
     spawnManagedServer,
     stopManagedServer,
     openUrl: bindings.openUrl,
+    openLogDirectory: () => bindings.invoke("open_log_directory"),
     readMacLaunchAgentPlist: () =>
       bindings.invoke("read_mac_launch_agent_plist"),
     installMacLaunchAgent: (plist) =>

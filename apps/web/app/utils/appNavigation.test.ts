@@ -15,23 +15,19 @@ import {
 describe("app navigation", () => {
   it("defines direct routes for every planned primary destination", () => {
     expect(appNavigationItems.map(({ label, to }) => ({ label, to }))).toEqual([
-      { label: "Library", to: "/" },
-      { label: "Collections", to: "/#collections" },
-      { label: "Jobs", to: "/#jobs" },
-      { label: "Setup", to: "/setup" }
+      { label: "ライブラリ", to: "/" },
+      { label: "アーカイブ", to: "/archived" },
+      { label: "コレクション", to: "/collections" },
+      { label: "設定", to: "/setup" }
     ]);
   });
 
-  it("selects hash destinations without selecting the library item", () => {
+  it("selects the archive destination without selecting the library item", () => {
     const libraryItem = appNavigationItems[0];
-    const collectionsItem = appNavigationItems[1];
+    const archiveItem = appNavigationItems[1];
 
-    expect(isAppNavigationItemActive(libraryItem, "/", "#collections")).toBe(
-      false
-    );
-    expect(
-      isAppNavigationItemActive(collectionsItem, "/", "#collections")
-    ).toBe(true);
+    expect(isAppNavigationItemActive(libraryItem, "/archived", "")).toBe(false);
+    expect(isAppNavigationItemActive(archiveItem, "/archived", "")).toBe(true);
   });
 
   it("keeps the library destination active on book detail pages", () => {

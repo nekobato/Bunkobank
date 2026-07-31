@@ -22,7 +22,7 @@ export const createBookCoverPlaceholder = (
   initials: getBookCoverInitials(book.title),
   formatLabel: getBookCoverFormatLabel(book.format),
   pageLabel: getBookPageLabel(book.pageCount),
-  accessibleName: `Read ${book.title}; no thumbnail available`
+  accessibleName: `${book.title}を読む（表紙画像なし）`
 });
 
 /**
@@ -31,7 +31,7 @@ export const createBookCoverPlaceholder = (
 export const getBookCoverFormatLabel = (format: BookFormat): string => {
   switch (format) {
     case "image-folder":
-      return "Images";
+      return "画像";
     case "zip":
       return "ZIP";
     case "cbz":
@@ -47,7 +47,7 @@ export const getBookCoverFormatLabel = (format: BookFormat): string => {
     case "seven-zip":
       return "7z";
     default:
-      return "Book";
+      return "書籍";
   }
 };
 
@@ -73,5 +73,5 @@ const getBookCoverInitials = (title: string): string => {
  */
 const getBookPageLabel = (pageCount: number): string => {
   const safePageCount = Math.max(Math.trunc(pageCount), 1);
-  return safePageCount === 1 ? "1 page" : `${safePageCount} pages`;
+  return `${safePageCount}ページ`;
 };

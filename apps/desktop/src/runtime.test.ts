@@ -124,8 +124,7 @@ describe("createTauriDesktopRuntime", () => {
       dataDir: "C:\\Users\\alice\\BookCafe",
       host: "127.0.0.1" as const,
       port: 4510,
-      thumbnails: { enabled: true },
-      setupComplete: true
+      thumbnails: { enabled: true }
     };
     const invoke = vi.fn(async (command: string) =>
       command === "get_desktop_environment" ? environment : serverConfig
@@ -146,6 +145,8 @@ describe("createTauriDesktopRuntime", () => {
 
     await expect(runtime.readEnvironment()).resolves.toEqual(environment);
     await expect(runtime.readServerConfig()).resolves.toEqual(serverConfig);
+    await expect(runtime.writeServerPort(4511)).resolves.toEqual(serverConfig);
+    await runtime.openLogDirectory();
     await runtime.openUrl("http://127.0.0.1:4510/");
     await expect(runtime.isWindowsAutostartEnabled()).resolves.toBe(true);
     await runtime.enableWindowsAutostart();
@@ -153,6 +154,10 @@ describe("createTauriDesktopRuntime", () => {
 
     expect(invoke).toHaveBeenNthCalledWith(1, "get_desktop_environment");
     expect(invoke).toHaveBeenNthCalledWith(2, "read_server_config");
+    expect(invoke).toHaveBeenNthCalledWith(3, "write_server_port", {
+      port: 4511
+    });
+    expect(invoke).toHaveBeenNthCalledWith(4, "open_log_directory");
     expect(openUrl).toHaveBeenCalledWith("http://127.0.0.1:4510/");
     expect(enableAutostart).toHaveBeenCalledTimes(1);
     expect(disableAutostart).toHaveBeenCalledTimes(1);
