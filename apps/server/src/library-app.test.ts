@@ -19,7 +19,27 @@ import {
   openBookCafeDatabase,
   persistScannedBook
 } from "@bookcafe/db";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const authMigration = vi.hoisted(() => ({ failuresRemaining: 0 }));
+
+vi.mock("./auth.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth.js")>();
+
+  return {
+    ...actual,
+    runAuthMigrations: async (
+      ...args: Parameters<typeof actual.runAuthMigrations>
+    ) => {
+      if (authMigration.failuresRemaining > 0) {
+        authMigration.failuresRemaining -= 1;
+        throw new Error("transient migration failure");
+      }
+
+      return actual.runAuthMigrations(...args);
+    }
+  };
+});
 
 import { createApp as createProductionApp } from "./library-app.js";
 import { createBookCafeJobQueue } from "./job-queue.js";
@@ -42,6 +62,8 @@ const createApp = (
   });
 
 afterEach(() => {
+  authMigration.failuresRemaining = 0;
+
   for (const directory of tempDirs.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -82,6 +104,38 @@ describe("single database Hono app", () => {
     } finally {
       closeDatabase(database);
     }
+  });
+
+  it("reports a corrupt shared database as unavailable", async () => {
+    const fixture = createFixture();
+    const databasePath = resolveStatePaths(fixture.stateDir).databasePath;
+    writeFileSync(databasePath, "not a sqlite database");
+    const app = createApp(fixture);
+
+    const response = await app.request("/api/setup/status");
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      code: "DATA_UNAVAILABLE",
+      message: "BookCafe data is unavailable."
+    });
+  });
+
+  it("retries readiness after a transient migration failure", async () => {
+    const fixture = createFixture();
+    const app = createApp(fixture);
+    authMigration.failuresRemaining = 1;
+
+    const unavailable = await app.request("/api/setup/status");
+    const recovered = await app.request("/api/setup/status");
+
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({
+      code: "DATA_UNAVAILABLE",
+      message: "BookCafe data is unavailable."
+    });
+    expect(recovered.status).toBe(200);
+    expect(await recovered.json()).toEqual({ setupComplete: false });
   });
 
   it("requires authentication and returns an empty library instead of samples", async () => {

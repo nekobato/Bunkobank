@@ -161,7 +161,7 @@ export const createApp = (options: AppOptions = {}) => {
   /**
    * Applies auth and domain migrations once before serving database requests.
    */
-  const ensureReady = (): Promise<void> => {
+  const ensureReady = async (): Promise<void> => {
     readyPromise ??= (async () => {
       await runAuthMigrations(auth);
       const database = openBookCafeDatabase(paths.databasePath);
@@ -173,7 +173,17 @@ export const createApp = (options: AppOptions = {}) => {
       }
     })();
 
-    return readyPromise;
+    const attempt = readyPromise;
+
+    try {
+      await attempt;
+    } catch (error) {
+      if (readyPromise === attempt) {
+        readyPromise = null;
+      }
+
+      throw error;
+    }
   };
 
   /**
@@ -225,7 +235,21 @@ export const createApp = (options: AppOptions = {}) => {
   );
 
   app.use("/api/*", async (c, next) => {
-    await ensureReady();
+    if (readState().status === "unavailable") {
+      return c.json(
+        createApiError("DATA_UNAVAILABLE", "BookCafe data is unavailable."),
+        503
+      );
+    }
+
+    try {
+      await ensureReady();
+    } catch {
+      return c.json(
+        createApiError("DATA_UNAVAILABLE", "BookCafe data is unavailable."),
+        503
+      );
+    }
 
     if (isPublicApiRoute(c.req.path)) {
       await next();
