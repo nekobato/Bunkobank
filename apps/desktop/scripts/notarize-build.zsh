@@ -10,7 +10,7 @@ readonly script_dir="${0:A:h}"
 readonly desktop_dir="${script_dir:h}"
 readonly env_file="${desktop_dir}/.env.notarization"
 readonly app_path="${desktop_dir}/src-tauri/target/release/bundle/macos/BookCafe.app"
-readonly dmg_path="${desktop_dir}/src-tauri/target/release/bundle/dmg/BookCafe_0.1.0_aarch64.dmg"
+readonly dmg_path="${desktop_dir}/src-tauri/target/release/bundle/dmg/BookCafe_2.0.0_aarch64.dmg"
 
 if [[ ! -f "${env_file}" ]]; then
   print -u2 "Missing notarization environment file: ${env_file}"
