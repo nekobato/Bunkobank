@@ -20,7 +20,50 @@ trap cleanup EXIT
 readonly script_dir="${0:A:h}"
 readonly desktop_dir="${script_dir:h}"
 readonly env_file="${desktop_dir}/.env.notarization"
-readonly dmg_path="${desktop_dir}/src-tauri/target/release/bundle/dmg/BookCafe_2.0.0_aarch64.dmg"
+
+typeset build_target=""
+typeset expects_target="false"
+typeset argument
+
+for argument in "$@"; do
+  if [[ "${expects_target}" == "true" ]]; then
+    build_target="${argument}"
+    expects_target="false"
+    continue
+  fi
+
+  case "${argument}" in
+    --target)
+      expects_target="true"
+      ;;
+    --target=*)
+      build_target="${argument#--target=}"
+      ;;
+  esac
+done
+
+typeset target_dir="${desktop_dir}/src-tauri/target"
+
+if [[ -n "${build_target}" ]]; then
+  target_dir="${target_dir}/${build_target}"
+else
+  build_target="$(rustc -vV | sed -n 's/^host: //p')"
+fi
+
+case "${build_target}" in
+  aarch64-apple-darwin)
+    readonly dmg_arch="aarch64"
+    ;;
+  x86_64-apple-darwin)
+    readonly dmg_arch="x64"
+    ;;
+  *)
+    print -u2 "Unsupported macOS release target: ${build_target}"
+    exit 1
+    ;;
+esac
+
+readonly dmg_path="${target_dir}/release/bundle/dmg/BookCafe_2.0.0_${dmg_arch}.dmg"
 
 if [[ ! -f "${env_file}" ]]; then
   print -u2 "Missing notarization environment file: ${env_file}"

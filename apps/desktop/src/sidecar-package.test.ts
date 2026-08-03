@@ -9,7 +9,8 @@ import {
   createSidecarPackagePlan,
   parseRustHost,
   resolvePkgTarget,
-  resolveRustHostArch
+  resolveRustHostArch,
+  resolveRustTarget
 } from "../scripts/sidecar-plan.mjs";
 
 describe("parseRustHost", () => {
@@ -22,6 +23,26 @@ describe("parseRustHost", () => {
   it("rejects compiler output without a host", () => {
     expect(() => parseRustHost("rustc 1.88.0\n")).toThrow(
       "rustc -vV did not report a host target."
+    );
+  });
+});
+
+describe("resolveRustTarget", () => {
+  const rustVersionOutput =
+    "rustc 1.96.1\nbinary: rustc\nhost: aarch64-apple-darwin\n";
+
+  it("uses Tauri's cross-compilation target", () => {
+    expect(
+      resolveRustTarget({
+        rustVersionOutput,
+        tauriTargetTriple: "x86_64-apple-darwin"
+      })
+    ).toBe("x86_64-apple-darwin");
+  });
+
+  it("falls back to the Rust compiler host", () => {
+    expect(resolveRustTarget({ rustVersionOutput })).toBe(
+      "aarch64-apple-darwin"
     );
   });
 });
@@ -72,6 +93,31 @@ describe("createSidecarPackagePlan", () => {
         "node24-macos-arm64",
         "--output",
         "/workspace/apps/desktop/src-tauri/binaries/bookcafe-server-aarch64-apple-darwin",
+        "/workspace/apps/server/package.json"
+      ]
+    });
+  });
+
+  it("creates an Intel macOS sidecar for a cross-compilation target", () => {
+    expect(
+      createSidecarPackagePlan({
+        platform: "darwin",
+        arch: "x64",
+        rustHost: "x86_64-apple-darwin",
+        serverPackagePath: "/workspace/apps/server/package.json",
+        binariesDir: "/workspace/apps/desktop/src-tauri/binaries"
+      })
+    ).toEqual({
+      outputPath:
+        "/workspace/apps/desktop/src-tauri/binaries/bookcafe-server-x86_64-apple-darwin",
+      pkgArguments: [
+        "--sea",
+        "--compress",
+        "Brotli",
+        "--targets",
+        "node24-macos-x64",
+        "--output",
+        "/workspace/apps/desktop/src-tauri/binaries/bookcafe-server-x86_64-apple-darwin",
         "/workspace/apps/server/package.json"
       ]
     });

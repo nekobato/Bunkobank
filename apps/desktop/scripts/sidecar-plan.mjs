@@ -40,6 +40,15 @@ export const parseRustHost = (output) => {
 };
 
 /**
+ * Resolves the Rust target requested by Tauri, falling back to the compiler host.
+ *
+ * @param {{ rustVersionOutput: string; tauriTargetTriple?: string }} options Target inputs.
+ * @returns {string} The Rust target triple used for the sidecar filename and runtime.
+ */
+export const resolveRustTarget = ({ rustVersionOutput, tauriTargetTriple }) =>
+  tauriTargetTriple?.trim() || parseRustHost(rustVersionOutput);
+
+/**
  * Resolves the host-specific `pkg` target used by the Tauri sidecar.
  *
  * @param {{ platform: NodeJS.Platform; arch: string }} environment Host values.

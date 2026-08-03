@@ -1,5 +1,5 @@
 /**
- * Packages the built Hono server as a host-native Enhanced SEA sidecar.
+ * Packages the built Hono server as a target-specific Enhanced SEA sidecar.
  */
 
 import { execFileSync } from "node:child_process";
@@ -18,7 +18,8 @@ import { createRequire } from "node:module";
 import {
   createSidecarDeployPlan,
   createSidecarPackagePlan,
-  parseRustHost
+  resolveRustHostArch,
+  resolveRustTarget
 } from "./sidecar-plan.mjs";
 import { materializeSidecarStage } from "./sidecar-stage.mjs";
 
@@ -95,10 +96,14 @@ try {
     encoding: "utf8",
     timeout: 30_000
   });
+  const rustTarget = resolveRustTarget({
+    rustVersionOutput,
+    tauriTargetTriple: process.env.TAURI_ENV_TARGET_TRIPLE
+  });
   const plan = createSidecarPackagePlan({
     platform: process.platform,
-    arch: process.arch,
-    rustHost: parseRustHost(rustVersionOutput),
+    arch: resolveRustHostArch(rustTarget),
+    rustHost: rustTarget,
     serverPackagePath: stagePackagePath,
     binariesDir
   });

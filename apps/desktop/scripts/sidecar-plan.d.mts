@@ -3,6 +3,12 @@
 /** Reads the Rust host target from `rustc -vV` output. */
 export declare const parseRustHost: (output: string) => string;
 
+/** Resolves Tauri's Rust target, falling back to the compiler host. */
+export declare const resolveRustTarget: (options: {
+  rustVersionOutput: string;
+  tauriTargetTriple?: string;
+}) => string;
+
 /** Resolves the host-specific `pkg` target used by the Tauri sidecar. */
 export declare const resolvePkgTarget: (environment: {
   platform: NodeJS.Platform;
