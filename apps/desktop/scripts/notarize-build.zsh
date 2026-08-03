@@ -4,12 +4,22 @@
 
 set -euo pipefail
 
-trap 'unset APPLE_PASSWORD 2>/dev/null || true' EXIT
+typeset mount_dir=""
+
+cleanup() {
+  if [[ -n "${mount_dir}" && -d "${mount_dir}" ]]; then
+    hdiutil detach "${mount_dir}" >/dev/null 2>&1 || true
+    rmdir "${mount_dir}" >/dev/null 2>&1 || true
+  fi
+
+  unset APPLE_PASSWORD 2>/dev/null || true
+}
+
+trap cleanup EXIT
 
 readonly script_dir="${0:A:h}"
 readonly desktop_dir="${script_dir:h}"
 readonly env_file="${desktop_dir}/.env.notarization"
-readonly app_path="${desktop_dir}/src-tauri/target/release/bundle/macos/BookCafe.app"
 readonly dmg_path="${desktop_dir}/src-tauri/target/release/bundle/dmg/BookCafe_2.0.0_aarch64.dmg"
 
 if [[ ! -f "${env_file}" ]]; then
@@ -38,9 +48,26 @@ else
   pnpm exec tauri build --bundles dmg "$@"
 fi
 
-codesign --verify --deep --strict --verbose=2 "${app_path}"
-xcrun stapler validate "${app_path}"
+xcrun notarytool submit "${dmg_path}" \
+  --apple-id "${APPLE_ID}" \
+  --password "${APPLE_PASSWORD}" \
+  --team-id "${APPLE_TEAM_ID}" \
+  --wait
+xcrun stapler staple "${dmg_path}"
+
+mount_dir="$(mktemp -d "${TMPDIR:-/tmp}/bookcafe-notarization.XXXXXX")"
+hdiutil attach -readonly -nobrowse -mountpoint "${mount_dir}" "${dmg_path}"
+
+readonly mounted_app_path="${mount_dir}/BookCafe.app"
+
+codesign --verify --deep --strict --verbose=2 "${mounted_app_path}"
+xcrun stapler validate "${mounted_app_path}"
 xcrun stapler validate "${dmg_path}"
-spctl --assess --type execute --verbose=4 "${app_path}"
+spctl --assess --type execute --verbose=4 "${mounted_app_path}"
+spctl --assess --type open --context context:primary-signature --verbose=4 "${dmg_path}"
+
+hdiutil detach "${mount_dir}"
+rmdir "${mount_dir}"
+mount_dir=""
 
 print "Signed and notarized DMG: ${dmg_path}"
