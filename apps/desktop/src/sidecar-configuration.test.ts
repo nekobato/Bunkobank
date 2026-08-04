@@ -22,7 +22,11 @@ interface TauriConfiguration {
   bundle: {
     externalBin?: string[];
     icon?: string[];
-    macOS?: { minimumSystemVersion?: string; signingIdentity?: string };
+    macOS?: {
+      entitlements?: string;
+      minimumSystemVersion?: string;
+      signingIdentity?: string;
+    };
   };
 }
 
@@ -90,6 +94,9 @@ describe("sidecar package configuration", () => {
 
     expect(rootPackage.engines?.node).toBe("24.x");
     expect(buildScript).toContain("nodeMajor !== 24");
+    expect(buildScript).toContain("node_modules/better-sqlite3");
+    expect(buildScript).toContain("npm_config_arch: targetArch");
+    expect(buildScript).toContain("node_modules/.modules.yaml");
   });
 
   it("exposes a standard main entry for every packaged workspace dependency", () => {
@@ -143,6 +150,7 @@ describe("sidecar package configuration", () => {
       expect.arrayContaining(["icons/icon.icns", "icons/icon.ico"])
     );
     expect(tauriConfig.bundle.macOS?.minimumSystemVersion).toBe("13.0");
+    expect(tauriConfig.bundle.macOS?.entitlements).toBe("./Entitlements.plist");
     expect(tauriConfig.bundle.macOS?.signingIdentity).toBe(
       "Developer ID Application: Hayato Koriyama (N5BWSDK26P)"
     );
@@ -155,5 +163,20 @@ describe("sidecar package configuration", () => {
         }
       ]
     });
+  });
+
+  it("grants the packaged Node.js sidecar its required hardened-runtime exceptions", () => {
+    const entitlements = readFileSync(
+      new URL("../src-tauri/Entitlements.plist", import.meta.url),
+      "utf8"
+    );
+
+    expect(entitlements).toContain("com.apple.security.cs.allow-jit");
+    expect(entitlements).toContain(
+      "com.apple.security.cs.allow-unsigned-executable-memory"
+    );
+    expect(entitlements).toContain(
+      "com.apple.security.cs.disable-library-validation"
+    );
   });
 });

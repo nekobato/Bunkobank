@@ -377,6 +377,39 @@ describe("desktop manager controller", () => {
     });
   });
 
+  it("allows a slow first sidecar start while native modules are extracted", async () => {
+    const runtime = createRuntime();
+    const readServerStatus = vi
+      .fn()
+      .mockResolvedValueOnce(createStatus("unreachable"));
+
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      readServerStatus.mockResolvedValueOnce(createStatus("unreachable"));
+    }
+
+    readServerStatus.mockResolvedValueOnce(createStatus("reachable"));
+
+    const manager = createDesktopManagerController({
+      runtime,
+      readServerStatus,
+      readSetupStatus: vi.fn(async () => ({
+        url: "http://127.0.0.1:4510/api/setup/status",
+        status: {
+          setupComplete: false,
+          host: "127.0.0.1" as const,
+          port: 4510,
+          thumbnails: { enabled: true }
+        }
+      })),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined)
+    });
+
+    await manager.initialize();
+    await expect(manager.startServer()).resolves.toBe(true);
+    expect(readServerStatus).toHaveBeenCalledTimes(27);
+  });
+
   it("moves to crashed when the managed sidecar terminates", async () => {
     let emitEvent: ((event: ManagedServerRuntimeEvent) => void) | undefined;
     const runtime = createRuntime({

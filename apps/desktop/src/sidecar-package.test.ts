@@ -155,9 +155,16 @@ describe("createSidecarPackagePlan", () => {
 describe("createSidecarDeployPlan", () => {
   it("uses an isolated production deployment before SEA materialization", () => {
     expect(
-      createSidecarDeployPlan("/workspace/apps/desktop/.sidecar-stage")
+      createSidecarDeployPlan("/workspace/apps/desktop/.sidecar-stage", {
+        platform: "darwin",
+        arch: "x64"
+      })
     ).toEqual({
       arguments: [
+        "--os",
+        "darwin",
+        "--cpu",
+        "x64",
         "--filter",
         "@bookcafe/server",
         "--prod",

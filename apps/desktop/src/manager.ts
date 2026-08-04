@@ -210,7 +210,7 @@ export const createDesktopManagerController = (
     submitInitialSetup:
       dependencies.submitInitialSetup ?? createInitialSetupSubmitter(),
     delay: dependencies.delay ?? wait,
-    maxStartAttempts: dependencies.maxStartAttempts ?? 20
+    maxStartAttempts: dependencies.maxStartAttempts ?? 240
   };
   const listeners = new Set<(state: DesktopManagerState) => void>();
   let state = createInitialManagerState();

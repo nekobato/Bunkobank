@@ -143,15 +143,28 @@ export const createSidecarPackagePlan = ({
  * Creates the pnpm command that stages a portable production server tree.
  *
  * @param {string} stageDir Absolute destination for the generated deployment.
+ * @param {{ platform: NodeJS.Platform; arch: string }} target Target runtime values.
  * @returns {{ arguments: string[] }} The deterministic pnpm deploy plan.
  */
-export const createSidecarDeployPlan = (stageDir) => {
+export const createSidecarDeployPlan = (stageDir, target) => {
   if (!stageDir.trim()) {
     throw new Error("A sidecar staging directory is required.");
   }
 
+  if (!pkgPlatformByNodePlatform[target.platform]) {
+    throw new Error(`Unsupported sidecar platform: ${target.platform}`);
+  }
+
+  if (!pkgArchByNodeArch[target.arch]) {
+    throw new Error(`Unsupported sidecar architecture: ${target.arch}`);
+  }
+
   return {
     arguments: [
+      "--os",
+      target.platform,
+      "--cpu",
+      target.arch,
       "--filter",
       "@bookcafe/server",
       "--prod",

@@ -32,13 +32,22 @@ const serverWebEntryPath = join(workspaceDir, "apps/server/public/200.html");
 const binariesDir = join(desktopDir, "src-tauri/binaries");
 const stageDir = join(desktopDir, ".sidecar-stage");
 const stagePackagePath = join(stageDir, "package.json");
-const workspaceStatePath = join(
-  workspaceDir,
-  "node_modules/.pnpm-workspace-state-v1.json"
-);
+const workspaceMetadataPaths = [
+  join(workspaceDir, "node_modules/.modules.yaml"),
+  join(workspaceDir, "node_modules/.pnpm-workspace-state-v1.json")
+];
 const pkgPackagePath = require.resolve("@yao-pkg/pkg/package.json");
 const pkgManifest = JSON.parse(readFileSync(pkgPackagePath, "utf8"));
 const pkgCliPath = join(dirname(pkgPackagePath), pkgManifest.bin.pkg);
+const rustVersionOutput = execFileSync("rustc", ["-vV"], {
+  encoding: "utf8",
+  timeout: 30_000
+});
+const rustTarget = resolveRustTarget({
+  rustVersionOutput,
+  tauriTargetTriple: process.env.TAURI_ENV_TARGET_TRIPLE
+});
+const targetArch = resolveRustHostArch(rustTarget);
 
 /** Ensures build prerequisites exist before starting the expensive package step. */
 const assertPrerequisites = () => {
@@ -67,11 +76,15 @@ assertPrerequisites();
 rmSync(stageDir, { recursive: true, force: true });
 
 try {
-  const deployPlan = createSidecarDeployPlan(stageDir);
+  const deployPlan = createSidecarDeployPlan(stageDir, {
+    platform: process.platform,
+    arch: targetArch
+  });
   console.log(`Staging portable BookCafe server at ${stageDir}`);
-  const workspaceState = existsSync(workspaceStatePath)
-    ? readFileSync(workspaceStatePath)
-    : undefined;
+  const workspaceMetadata = workspaceMetadataPaths.map((path) => ({
+    path,
+    contents: existsSync(path) ? readFileSync(path) : undefined
+  }));
 
   try {
     execFileSync("pnpm", deployPlan.arguments, {
@@ -80,29 +93,39 @@ try {
       timeout: 5 * 60_000
     });
   } finally {
-    if (workspaceState) {
-      writeFileSync(workspaceStatePath, workspaceState);
-    } else {
-      rmSync(workspaceStatePath, { force: true });
+    for (const metadata of workspaceMetadata) {
+      if (metadata.contents) {
+        writeFileSync(metadata.path, metadata.contents);
+      } else {
+        rmSync(metadata.path, { force: true });
+      }
     }
   }
+
+  console.log(`Preparing better-sqlite3 for ${process.platform}-${targetArch}`);
+  execFileSync(
+    "pnpm",
+    ["--dir", join(stageDir, "node_modules/better-sqlite3"), "run", "install"],
+    {
+      cwd: workspaceDir,
+      env: {
+        ...process.env,
+        npm_config_arch: targetArch,
+        npm_config_platform: process.platform
+      },
+      stdio: "inherit",
+      timeout: 5 * 60_000
+    }
+  );
 
   const materializedPackageCount = materializeSidecarStage(stageDir);
   console.log(
     `Materialized ${materializedPackageCount.toLocaleString("en-US")} staged packages for SEA resolution.`
   );
 
-  const rustVersionOutput = execFileSync("rustc", ["-vV"], {
-    encoding: "utf8",
-    timeout: 30_000
-  });
-  const rustTarget = resolveRustTarget({
-    rustVersionOutput,
-    tauriTargetTriple: process.env.TAURI_ENV_TARGET_TRIPLE
-  });
   const plan = createSidecarPackagePlan({
     platform: process.platform,
-    arch: resolveRustHostArch(rustTarget),
+    arch: targetArch,
     rustHost: rustTarget,
     serverPackagePath: stagePackagePath,
     binariesDir

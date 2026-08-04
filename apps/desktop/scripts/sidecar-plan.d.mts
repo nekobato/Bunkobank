@@ -31,6 +31,9 @@ export declare const createSidecarPackagePlan: (options: {
 };
 
 /** Creates the pnpm command that stages a portable production server tree. */
-export declare const createSidecarDeployPlan: (stageDir: string) => {
+export declare const createSidecarDeployPlan: (
+  stageDir: string,
+  target: { platform: NodeJS.Platform; arch: string }
+) => {
   arguments: string[];
 };

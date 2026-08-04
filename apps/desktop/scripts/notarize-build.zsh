@@ -63,7 +63,7 @@ case "${build_target}" in
     ;;
 esac
 
-readonly dmg_path="${target_dir}/release/bundle/dmg/BookCafe_2.0.0_${dmg_arch}.dmg"
+readonly dmg_path="${target_dir}/release/bundle/dmg/BookCafe_2.0.1_${dmg_arch}.dmg"
 
 if [[ ! -f "${env_file}" ]]; then
   print -u2 "Missing notarization environment file: ${env_file}"
@@ -104,6 +104,7 @@ hdiutil attach -readonly -nobrowse -mountpoint "${mount_dir}" "${dmg_path}"
 readonly mounted_app_path="${mount_dir}/BookCafe.app"
 
 codesign --verify --deep --strict --verbose=2 "${mounted_app_path}"
+zsh "${script_dir}/smoke-test-bundle.zsh" "${mounted_app_path}"
 xcrun stapler validate "${mounted_app_path}"
 xcrun stapler validate "${dmg_path}"
 spctl --assess --type execute --verbose=4 "${mounted_app_path}"
