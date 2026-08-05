@@ -58,6 +58,10 @@ describe("desktop manager presentation", () => {
     ["BookCafe server stopped.", "サーバーを停止しました。"],
     ["Saving BookCafe setup…", "設定を保存しています。"],
     ["BookCafe setup is complete.", "設定を保存しました。"],
+    [
+      "Web UI could not be opened.",
+      "Web UIを開けませんでした。既定のブラウザー設定を確認して、もう一度お試しください。"
+    ],
     ["Login startup enabled.", "自動起動を有効にしました。"],
     ["Login startup disabled.", "自動起動を無効にしました。"]
   ])("translates the status announcement %s", (message, expected) => {

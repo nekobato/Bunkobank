@@ -36,8 +36,20 @@ const statusMeta = computed(() => getShelfmarkToneMeta(presentation.tone));
 const isBusy = computed(() =>
   ["checking", "starting", "stopping"].includes(state.server.phase)
 );
-const webGuidance =
-  "アカウント、ライブラリ、ネットワーク、サムネイルの設定はWeb UIで行います。";
+const webGuidance = computed(() => {
+  switch (state.server.phase) {
+    case "running":
+      return "アカウント、ライブラリ、ネットワーク、サムネイルの設定はWeb UIで行います。";
+    case "checking":
+      return "サーバー状態を確認しています。完了までお待ちください。";
+    case "starting":
+      return "サーバーを起動しています。稼働するとWeb UIを開けます。";
+    case "stopping":
+      return "サーバーを停止しています。完了までお待ちください。";
+    default:
+      return "Web UIを開くには、まずサーバーを起動してください。";
+  }
+});
 </script>
 
 <template>
@@ -82,6 +94,7 @@ const webGuidance =
 
     <div class="monitor-actions" aria-label="サーバー操作">
       <Button
+        class="monitor-button type-primary"
         label="Web UIを開く"
         icon="pi pi-external-link"
         :disabled="state.server.phase !== 'running'"
@@ -89,6 +102,7 @@ const webGuidance =
         @click="$emit('open')"
       />
       <Button
+        class="monitor-button type-secondary"
         label="起動"
         icon="pi pi-play"
         severity="secondary"
@@ -99,6 +113,7 @@ const webGuidance =
         @click="$emit('start')"
       />
       <Button
+        class="monitor-button type-danger"
         label="停止"
         icon="pi pi-stop-circle"
         severity="danger"
@@ -109,6 +124,7 @@ const webGuidance =
         @click="$emit('stop')"
       />
       <Button
+        class="monitor-button type-quiet"
         label="状態を再確認"
         icon="pi pi-refresh"
         severity="secondary"
@@ -271,6 +287,61 @@ const webGuidance =
   gap: 0.65rem;
 }
 
+.monitor-actions :deep(.monitor-button) {
+  min-block-size: 3.15rem;
+  border-width: 1px;
+  font-weight: 750;
+  box-shadow: none;
+}
+
+.monitor-actions :deep(.monitor-button.type-primary:not(:disabled)) {
+  border-color: #d9ddff;
+  background: #d9ddff;
+  color: var(--bc-deep-shelf);
+}
+
+.monitor-actions :deep(.monitor-button.type-primary:not(:disabled):hover) {
+  border-color: #eef0ff;
+  background: #eef0ff;
+}
+
+.monitor-actions :deep(.monitor-button.type-secondary:not(:disabled)) {
+  border-color: #86b8ae;
+  background: transparent;
+  color: #edf4f2;
+}
+
+.monitor-actions :deep(.monitor-button.type-secondary:not(:disabled):hover) {
+  background: rgb(134 184 174 / 14%);
+}
+
+.monitor-actions :deep(.monitor-button.type-danger:not(:disabled)) {
+  border-color: #ff9182;
+  background: transparent;
+  color: #ffb4a8;
+}
+
+.monitor-actions :deep(.monitor-button.type-danger:not(:disabled):hover) {
+  background: rgb(255 145 130 / 12%);
+}
+
+.monitor-actions :deep(.monitor-button.type-quiet:not(:disabled)) {
+  border-color: transparent;
+  background: transparent;
+  color: #cbd9d6;
+}
+
+.monitor-actions :deep(.monitor-button.type-quiet:not(:disabled):hover) {
+  background: rgb(203 217 214 / 10%);
+  color: #edf4f2;
+}
+
+.monitor-actions :deep(.monitor-button:disabled) {
+  border-color: #718784;
+  background: rgb(255 255 255 / 4%);
+  color: #a9bbb7;
+}
+
 .diagnostics {
   margin-block-start: 2rem;
   color: rgb(247 249 248 / 50%);
@@ -297,6 +368,11 @@ const webGuidance =
   .brand-mark {
     border: 1px solid CanvasText;
     box-shadow: none;
+  }
+
+  .monitor-actions :deep(.monitor-button) {
+    border-color: ButtonBorder;
+    color: ButtonText;
   }
 }
 </style>

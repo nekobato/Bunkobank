@@ -36,9 +36,10 @@ interface TauriCapability {
     | {
         identifier: string;
         allow?: Array<{
-          name: string;
-          sidecar: boolean;
-          args: unknown[];
+          name?: string;
+          sidecar?: boolean;
+          args?: unknown[];
+          url?: string;
         }>;
       }
   >;
@@ -162,6 +163,22 @@ describe("sidecar package configuration", () => {
           args: ["--config", { validator: ".+" }]
         }
       ]
+    });
+  });
+
+  it("allows the manager to open only its loopback Web UI", () => {
+    const capability = readJson<TauriCapability>(
+      "../src-tauri/capabilities/default.json"
+    );
+    const openUrlPermission = capability.permissions.find(
+      (permission) =>
+        typeof permission !== "string" &&
+        permission.identifier === "opener:allow-open-url"
+    );
+
+    expect(openUrlPermission).toEqual({
+      identifier: "opener:allow-open-url",
+      allow: [{ url: "http://127.0.0.1:*" }]
     });
   });
 

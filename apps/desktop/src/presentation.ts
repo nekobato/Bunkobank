@@ -101,6 +101,8 @@ const localizedMessages: Record<string, string> = {
     "ポートを変更する前にBookCafeサーバーを停止してください。",
   "Saving BookCafe server port…": "ポートを保存しています。",
   "BookCafe server port saved.": "ポートを保存しました。",
+  "Web UI could not be opened.":
+    "Web UIを開けませんでした。既定のブラウザー設定を確認して、もう一度お試しください。",
   "BookCafe data is unavailable.": "データベースを確認できません。",
   "Initial setup input is invalid.": "入力内容を確認してください。",
   "Username or password is invalid.":

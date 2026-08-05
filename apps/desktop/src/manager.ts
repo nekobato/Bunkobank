@@ -964,8 +964,18 @@ export const createDesktopManagerController = (
     }
 
     const url = state.setup.phase === "required" ? `${rootUrl}setup` : rootUrl;
-    await resolvedDependencies.runtime.openUrl(url);
-    return true;
+
+    try {
+      await resolvedDependencies.runtime.openUrl(url);
+      setState((current) => ({ ...current, error: null }));
+      return true;
+    } catch {
+      setState((current) => ({
+        ...current,
+        error: "Web UI could not be opened."
+      }));
+      return false;
+    }
   };
 
   /**

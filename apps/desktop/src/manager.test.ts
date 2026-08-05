@@ -186,6 +186,35 @@ describe("desktop manager controller", () => {
     expect(runtime.openUrl).toHaveBeenCalledWith("http://127.0.0.1:4510/setup");
   });
 
+  it("reports a native browser launch failure", async () => {
+    const runtime = createRuntime({
+      openUrl: vi.fn(async () => {
+        throw new Error("URL rejected by opener scope");
+      })
+    });
+    const manager = createDesktopManagerController({
+      runtime,
+      readServerStatus: vi.fn(async () => createStatus("reachable")),
+      readSetupStatus: vi.fn(async () => ({
+        url: "http://127.0.0.1:4510/api/setup/status",
+        status: {
+          setupComplete: true,
+          host: "127.0.0.1" as const,
+          port: 4510,
+          thumbnails: { enabled: true }
+        }
+      })),
+      submitInitialSetup: vi.fn(),
+      delay: vi.fn(async () => undefined),
+      maxStartAttempts: 2
+    });
+
+    await manager.initialize();
+
+    await expect(manager.openWebUi()).resolves.toBe(false);
+    expect(manager.getState().error).toBe("Web UI could not be opened.");
+  });
+
   it("opens only the runtime-owned log directory after initialization", async () => {
     const runtime = createRuntime();
     const manager = createDesktopManagerController({
