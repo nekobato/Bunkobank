@@ -1,6 +1,6 @@
 [package]
 name = "bunkobank-desktop"
-version = "2.0.2"
+version = "2.0.3"
 description = "Bunkobank local server manager"
 authors = ["Bunkobank contributors"]
 edition = "2021"
