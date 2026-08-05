@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "bookcafe-desktop"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "serde",
  "serde_json",

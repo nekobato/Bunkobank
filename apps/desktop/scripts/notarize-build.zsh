@@ -63,7 +63,7 @@ case "${build_target}" in
     ;;
 esac
 
-readonly dmg_path="${target_dir}/release/bundle/dmg/BookCafe_2.0.1_${dmg_arch}.dmg"
+readonly dmg_path="${target_dir}/release/bundle/dmg/BookCafe_2.0.2_${dmg_arch}.dmg"
 
 if [[ ! -f "${env_file}" ]]; then
   print -u2 "Missing notarization environment file: ${env_file}"

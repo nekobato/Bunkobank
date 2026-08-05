@@ -1,6 +1,6 @@
 [package]
 name = "bookcafe-desktop"
-version = "2.0.1"
+version = "2.0.2"
 description = "BookCafe local server manager"
 authors = ["BookCafe contributors"]
 edition = "2021"
