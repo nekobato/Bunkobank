@@ -11,7 +11,7 @@ use tauri_plugin_opener::OpenerExt;
 
 const SERVER_CONFIG_FILE: &str = "config.json";
 const SIDECAR_NAME: &str = "binaries/bunkobank-server";
-const LAUNCH_AGENT_LABEL: &str = "dev.bunkobank.server";
+const LAUNCH_AGENT_LABEL: &str = "app.nekobato.bunkobank.server";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -482,6 +482,7 @@ mod tests {
             &expected
         )
         .is_err());
+        assert!(expected.contains("<string>app.nekobato.bunkobank.server</string>"));
         assert!(expected.contains("/Applications/Book&amp;Cafe.app"));
 
         assert_eq!(interpret_launch_agent_lookup(true, Some(0), ""), Ok(true));

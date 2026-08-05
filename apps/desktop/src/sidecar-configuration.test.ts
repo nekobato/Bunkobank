@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { expect, it } from "vitest";
 
+import { createBunkobankServerLaunchAgent } from "./index.js";
+
 interface TauriConfiguration {
   identifier: string;
   bundle: { externalBin?: string[] };
@@ -33,8 +35,12 @@ it("keeps the Tauri identifier, sidecar, and capability aligned", () => {
       permission.identifier === "shell:allow-spawn"
   );
 
-  expect(tauriConfig.identifier).toBe("dev.bunkobank.desktop");
+  expect(tauriConfig.identifier).toBe("app.nekobato.bunkobank");
   expect(tauriConfig.bundle.externalBin).toEqual(["binaries/bunkobank-server"]);
+  expect(
+    createBunkobankServerLaunchAgent({ serverCommand: "/bin/bunkobank-server" })
+      .label
+  ).toBe("app.nekobato.bunkobank.server");
   expect(spawnPermission).toMatchObject({
     allow: [{ name: "binaries/bunkobank-server", sidecar: true }]
   });

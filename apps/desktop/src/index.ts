@@ -351,7 +351,7 @@ export const createMacLaunchAgentPath = (
 export const createBunkobankServerLaunchAgent = (
   options: BunkobankServerLaunchAgentOptions
 ): MacLaunchAgent => ({
-  label: options.label ?? "dev.bunkobank.server",
+  label: options.label ?? "app.nekobato.bunkobank.server",
   programArguments: [options.serverCommand],
   ...(options.configPath
     ? {
