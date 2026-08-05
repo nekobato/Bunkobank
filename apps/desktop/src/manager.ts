@@ -1,16 +1,16 @@
 /**
- * Functional state machine coordinating the BookCafe desktop manager.
+ * Functional state machine coordinating the Bunkobank desktop manager.
  */
 
-import type { AppConfig } from "@bookcafe/config/shared";
+import type { AppConfig } from "@bunkobank/config/shared";
 import {
   initialSetupRequestSchema,
   type ApiErrorCode,
   type InitialSetupRequest
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 
 import {
-  createBookCafeServerLaunchAgent,
+  createBunkobankServerLaunchAgent,
   createDefaultSetupDraft,
   createMacLaunchAgentInstallPlan,
   createManagedServerSidecarLaunchPlan,
@@ -281,7 +281,7 @@ export const createDesktopManagerController = (
   };
 
   /**
-   * Reads setup status after BookCafe health has been confirmed.
+   * Reads setup status after Bunkobank health has been confirmed.
    */
   const refreshSetupStatus = async (): Promise<void> => {
     try {
@@ -331,7 +331,7 @@ export const createDesktopManagerController = (
     if (!options.silent) {
       setState((current) => ({
         ...current,
-        announcement: "Checking the BookCafe server…",
+        announcement: "Checking the Bunkobank server…",
         server: {
           ...current.server,
           phase: "checking"
@@ -408,13 +408,13 @@ export const createDesktopManagerController = (
       },
       error:
         event.code === null
-          ? "BookCafe server terminated."
-          : `BookCafe server exited with code ${event.code}.`
+          ? "Bunkobank server terminated."
+          : `Bunkobank server exited with code ${event.code}.`
     }));
   };
 
   /**
-   * Waits for the spawned sidecar to become a healthy BookCafe server.
+   * Waits for the spawned sidecar to become a healthy Bunkobank server.
    */
   const waitForServerStart = async (
     launchGeneration: number
@@ -460,7 +460,7 @@ export const createDesktopManagerController = (
 
     setState((current) => ({
       ...current,
-      error: "BookCafe server did not become ready in time."
+      error: "Bunkobank server did not become ready in time."
     }));
     return false;
   };
@@ -514,7 +514,7 @@ export const createDesktopManagerController = (
         canStart: false
       },
       error: null,
-      announcement: "Starting BookCafe server…"
+      announcement: "Starting Bunkobank server…"
     }));
 
     try {
@@ -548,8 +548,8 @@ export const createDesktopManagerController = (
       setState((current) => ({
         ...current,
         announcement: started
-          ? "BookCafe server is running."
-          : "BookCafe server could not be started."
+          ? "Bunkobank server is running."
+          : "Bunkobank server could not be started."
       }));
       return started;
     } catch (error) {
@@ -587,7 +587,7 @@ export const createDesktopManagerController = (
         phase: "stopping",
         canStop: false
       },
-      announcement: "Stopping BookCafe server…"
+      announcement: "Stopping Bunkobank server…"
     }));
 
     try {
@@ -596,7 +596,7 @@ export const createDesktopManagerController = (
         ...current,
         server: createStoppedServerState(),
         setup: { phase: "unknown", fieldErrors: {} },
-        announcement: "BookCafe server stopped."
+        announcement: "Bunkobank server stopped."
       }));
       return true;
     } catch (error) {
@@ -630,7 +630,7 @@ export const createDesktopManagerController = (
       ...current,
       setup: { phase: "submitting", fieldErrors: {} },
       error: null,
-      announcement: "Saving BookCafe setup…"
+      announcement: "Saving Bunkobank setup…"
     }));
 
     try {
@@ -648,7 +648,7 @@ export const createDesktopManagerController = (
           confirmPassword: ""
         },
         setup: { phase: "complete", fieldErrors: {} },
-        announcement: "BookCafe setup is complete."
+        announcement: "Bunkobank setup is complete."
       }));
       return true;
     } catch (error) {
@@ -899,10 +899,10 @@ export const createDesktopManagerController = (
           ...current.network,
           phase: "error",
           fieldErrors: {
-            port: "Stop the BookCafe server before changing its port."
+            port: "Stop the Bunkobank server before changing its port."
           }
         },
-        error: "Stop the BookCafe server before changing its port."
+        error: "Stop the Bunkobank server before changing its port."
       }));
       return false;
     }
@@ -915,7 +915,7 @@ export const createDesktopManagerController = (
         fieldErrors: {}
       },
       error: null,
-      announcement: "Saving BookCafe server port…"
+      announcement: "Saving Bunkobank server port…"
     }));
 
     try {
@@ -935,7 +935,7 @@ export const createDesktopManagerController = (
           fieldErrors: {}
         },
         setup: { phase: "unknown", fieldErrors: {} },
-        announcement: "BookCafe server port saved."
+        announcement: "Bunkobank server port saved."
       }));
       await refreshServer();
       return true;
@@ -954,7 +954,7 @@ export const createDesktopManagerController = (
   };
 
   /**
-   * Opens the Web UI only after BookCafe health is confirmed.
+   * Opens the Web UI only after Bunkobank health is confirmed.
    */
   const openWebUi = async (): Promise<boolean> => {
     const rootUrl = state.server.status?.url.replace(/\/api\/health$/, "/");
@@ -1095,7 +1095,7 @@ const createStoppedServerState = (): ManagerServerState => ({
  * Creates the fixed macOS LaunchAgent model from the native environment.
  */
 const createLaunchAgent = (environment: DesktopEnvironment) =>
-  createBookCafeServerLaunchAgent({
+  createBunkobankServerLaunchAgent({
     serverCommand: environment.sidecarPath,
     configPath: environment.configPath,
     logDir: environment.logDir
@@ -1106,18 +1106,18 @@ const getServerCheckAnnouncement = (
   phase: ManagedServerLifecycleStatus["state"]
 ): string => {
   if (phase === "running") {
-    return "Server check complete. BookCafe is running.";
+    return "Server check complete. Bunkobank is running.";
   }
 
   if (phase === "stopped") {
-    return "Server check complete. BookCafe is stopped.";
+    return "Server check complete. Bunkobank is stopped.";
   }
 
   if (phase === "port-conflict") {
     return "Server check complete. The configured port is in use.";
   }
 
-  return "Server check complete. BookCafe needs attention.";
+  return "Server check complete. Bunkobank needs attention.";
 };
 
 const setupApiErrorMessages = {
@@ -1126,10 +1126,10 @@ const setupApiErrorMessages = {
   INVALID_CREDENTIALS: "Username or password is invalid.",
   INVALID_LIBRARY_PATH: "Library path is invalid.",
   SETUP_LOCAL_ONLY: "Initial setup is available only from this device.",
-  SETUP_REQUIRED: "BookCafe setup is required.",
-  ALREADY_INITIALIZED: "BookCafe setup is already complete.",
+  SETUP_REQUIRED: "Bunkobank setup is required.",
+  ALREADY_INITIALIZED: "Bunkobank setup is already complete.",
   SIGN_UP_DISABLED: "Account creation is disabled.",
-  DATA_UNAVAILABLE: "BookCafe data is unavailable.",
+  DATA_UNAVAILABLE: "Bunkobank data is unavailable.",
   LIBRARY_BUSY: "Library is busy.",
   LIBRARY_NAME_CONFLICT: "Library name is already in use.",
   LIBRARY_PATH_CONFLICT: "Library path overlaps another library.",

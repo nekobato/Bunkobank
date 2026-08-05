@@ -1,5 +1,5 @@
 /**
- * Hono application for the single-SQLite, library-scoped BookCafe API.
+ * Hono application for the single-SQLite, library-scoped Bunkobank API.
  */
 
 import { constants } from "node:fs";
@@ -21,7 +21,7 @@ import {
   resolveStatePaths,
   saveConfig,
   type AppConfig
-} from "@bookcafe/config";
+} from "@bunkobank/config";
 import {
   apiErrorResponseSchema,
   backgroundJobListResponseSchema,
@@ -54,7 +54,7 @@ import {
   updateNetworkSettingsRequestSchema,
   updateThumbnailSettingsRequestSchema,
   type ApiErrorCode
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 import {
   addBookToCollection,
   archiveBook,
@@ -78,7 +78,7 @@ import {
   listLibraries,
   listScanFailures,
   markInterruptedJobsFailed,
-  openBookCafeDatabase,
+  openBunkobankDatabase,
   removeBookFromCollection,
   reorderCollectionBooks,
   restoreBook,
@@ -87,18 +87,18 @@ import {
   updateCollection,
   updateLibrary,
   updateReadingProgress,
-  type BookCafeDatabase,
-  type BookCafeDomainError,
+  type BunkobankDatabase,
+  type BunkobankDomainError,
   type CollectionRecord,
   type JobRecord,
   type LibraryRecord,
   type ScanFailureRecord
-} from "@bookcafe/db";
+} from "@bunkobank/db";
 import {
   readArchiveImageEntry,
   readPackedArchiveImageEntry,
   renderEpubPageImage
-} from "@bookcafe/format-adapters";
+} from "@bunkobank/format-adapters";
 import { zValidator } from "@hono/zod-validator";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -111,10 +111,13 @@ import {
   readInitializationState,
   type InitializationState
 } from "./initialization.js";
-import { createBookCafeJobQueue, type BookCafeJobQueue } from "./job-queue.js";
+import {
+  createBunkobankJobQueue,
+  type BunkobankJobQueue
+} from "./job-queue.js";
 import { runLibraryScanJob } from "./library-scan-jobs.js";
 import { isLoopbackAddress } from "./loopback.js";
-import { getBookCafeClientOrigins } from "./origins.js";
+import { getBunkobankClientOrigins } from "./origins.js";
 import { renderPdfPageImageInChildProcess } from "./pdf-process.js";
 import { createBufferResponse, createFileResponse } from "./byte-range.js";
 
@@ -128,13 +131,13 @@ interface AppVariables {
 export interface AppOptions {
   configPath?: string;
   stateDir?: string;
-  jobQueue?: BookCafeJobQueue;
+  jobQueue?: BunkobankJobQueue;
   publicDir?: string;
   readRemoteAddress?: (context: Context) => string | undefined;
 }
 
 /**
- * Creates the BookCafe Hono application.
+ * Creates the Bunkobank Hono application.
  */
 export const createApp = (options: AppOptions = {}) => {
   const stateDir = resolve(options.stateDir ?? getDefaultStateDir());
@@ -149,7 +152,7 @@ export const createApp = (options: AppOptions = {}) => {
     port: initialConfig.port
   });
   const app = new Hono<{ Variables: AppVariables }>();
-  const jobQueue = options.jobQueue ?? createBookCafeJobQueue();
+  const jobQueue = options.jobQueue ?? createBunkobankJobQueue();
   const publicDir = options.publicDir ?? getDefaultPublicDir();
   const readRemoteAddress =
     options.readRemoteAddress ??
@@ -164,7 +167,7 @@ export const createApp = (options: AppOptions = {}) => {
   const ensureReady = async (): Promise<void> => {
     readyPromise ??= (async () => {
       await runAuthMigrations(auth);
-      const database = openBookCafeDatabase(paths.databasePath);
+      const database = openBunkobankDatabase(paths.databasePath);
 
       try {
         markInterruptedJobsFailed(database);
@@ -196,10 +199,10 @@ export const createApp = (options: AppOptions = {}) => {
    * Opens the shared database for one bounded operation.
    */
   const withDatabase = async <Value>(
-    callback: (database: BookCafeDatabase) => Value | Promise<Value>
+    callback: (database: BunkobankDatabase) => Value | Promise<Value>
   ): Promise<Value> => {
     await ensureReady();
-    const database = openBookCafeDatabase(paths.databasePath);
+    const database = openBunkobankDatabase(paths.databasePath);
 
     try {
       return await callback(database);
@@ -219,7 +222,7 @@ export const createApp = (options: AppOptions = {}) => {
   app.use(
     "/api/*",
     cors({
-      origin: getBookCafeClientOrigins(),
+      origin: getBunkobankClientOrigins(),
       allowHeaders: ["Content-Type", "Authorization", "Range", "If-Range"],
       allowMethods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
       exposeHeaders: [
@@ -237,7 +240,7 @@ export const createApp = (options: AppOptions = {}) => {
   app.use("/api/*", async (c, next) => {
     if (readState().status === "unavailable") {
       return c.json(
-        createApiError("DATA_UNAVAILABLE", "BookCafe data is unavailable."),
+        createApiError("DATA_UNAVAILABLE", "Bunkobank data is unavailable."),
         503
       );
     }
@@ -246,7 +249,7 @@ export const createApp = (options: AppOptions = {}) => {
       await ensureReady();
     } catch {
       return c.json(
-        createApiError("DATA_UNAVAILABLE", "BookCafe data is unavailable."),
+        createApiError("DATA_UNAVAILABLE", "Bunkobank data is unavailable."),
         503
       );
     }
@@ -260,7 +263,7 @@ export const createApp = (options: AppOptions = {}) => {
 
     if (state.status === "unavailable") {
       return c.json(
-        createApiError("DATA_UNAVAILABLE", "BookCafe data is unavailable."),
+        createApiError("DATA_UNAVAILABLE", "Bunkobank data is unavailable."),
         503
       );
     }
@@ -292,7 +295,7 @@ export const createApp = (options: AppOptions = {}) => {
     c.json(
       healthResponseSchema.parse({
         ok: true,
-        service: "bookcafe-server"
+        service: "bunkobank-server"
       })
     )
   );
@@ -302,7 +305,7 @@ export const createApp = (options: AppOptions = {}) => {
 
     if (state.status === "unavailable") {
       return c.json(
-        createApiError("DATA_UNAVAILABLE", "BookCafe data is unavailable."),
+        createApiError("DATA_UNAVAILABLE", "Bunkobank data is unavailable."),
         503
       );
     }
@@ -362,7 +365,7 @@ export const createApp = (options: AppOptions = {}) => {
         try {
           await auth.api.signUpEmail({
             body: {
-              email: `${body.username}@bookcafe.local`,
+              email: `${body.username}@bunkobank.local`,
               name: body.username,
               username: body.username,
               password: body.password
@@ -394,7 +397,9 @@ export const createApp = (options: AppOptions = {}) => {
         }
 
         if (readState().status !== "initialized") {
-          throw new Error("Initial user creation did not initialize BookCafe.");
+          throw new Error(
+            "Initial user creation did not initialize Bunkobank."
+          );
         }
 
         return c.json(setupStatusSchema.parse({ setupComplete: true }), 201);
@@ -1271,7 +1276,7 @@ export const createApp = (options: AppOptions = {}) => {
 };
 
 type WithDatabase = <Value>(
-  callback: (database: BookCafeDatabase) => Value | Promise<Value>
+  callback: (database: BunkobankDatabase) => Value | Promise<Value>
 ) => Promise<Value>;
 
 /**
@@ -1280,7 +1285,7 @@ type WithDatabase = <Value>(
 const withScopedLibrary = async <Value>(
   context: Context,
   withDatabase: WithDatabase,
-  callback: (database: BookCafeDatabase, library: LibraryRecord) => Value
+  callback: (database: BunkobankDatabase, library: LibraryRecord) => Value
 ): Promise<Value | Response> =>
   withDatabase((database) => {
     const library = findLibrary(database, context.req.param("libraryId") ?? "");
@@ -1573,7 +1578,7 @@ const handleLibraryDomainError = (
 ): Response => {
   const code =
     error instanceof Error && "code" in error
-      ? (error as BookCafeDomainError).code
+      ? (error as BunkobankDomainError).code
       : null;
 
   if (code === "LIBRARY_NAME_CONFLICT") {
@@ -1608,7 +1613,7 @@ const handleCollectionDomainError = (
 ): Response => {
   const code =
     error instanceof Error && "code" in error
-      ? (error as BookCafeDomainError).code
+      ? (error as BunkobankDomainError).code
       : null;
 
   if (code === "COLLECTION_NAME_CONFLICT") {

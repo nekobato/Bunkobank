@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** PrimeVue control surface for the distraction-free book reader. */
 
-import type { PageLayout, ReadingDirection } from "@bookcafe/core";
+import type { PageLayout, ReadingDirection } from "@bunkobank/core";
 
 type ReaderMode = "paged" | "vertical";
 type ReaderFit = "contain" | "width" | "height" | "actual";

@@ -1,5 +1,5 @@
 {
-  "name": "@bookcafe/web",
+  "name": "@bunkobank/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,9 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@bookcafe/contracts": "workspace:*",
-    "@bookcafe/core": "workspace:*",
-    "@bookcafe/ui": "workspace:*",
+    "@bunkobank/contracts": "workspace:*",
+    "@bunkobank/core": "workspace:*",
+    "@bunkobank/ui": "workspace:*",
     "@vueuse/core": "^14.3.0",
     "better-auth": "^1.6.23",
     "nuxt": "^4.4.8",

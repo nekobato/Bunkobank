@@ -4,7 +4,7 @@
 
 import { z } from "zod";
 
-import { scanFailureCodes, scanFailureKinds } from "@bookcafe/core";
+import { scanFailureCodes, scanFailureKinds } from "@bunkobank/core";
 
 export const bookFormatSchema = z.enum([
   "image-folder",
@@ -164,7 +164,7 @@ export const updateThumbnailSettingsRequestSchema = thumbnailSettingsSchema;
 
 export const healthResponseSchema = z.object({
   ok: z.literal(true),
-  service: z.literal("bookcafe-server")
+  service: z.literal("bunkobank-server")
 });
 
 export const librarySchema = z.object({

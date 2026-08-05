@@ -1,6 +1,6 @@
 /** Pure Japanese presentation models for Desktop Manager lifecycle states. */
 
-import type { ShelfmarkTone } from "@bookcafe/ui";
+import type { ShelfmarkTone } from "@bunkobank/ui";
 
 import type {
   ManagerServerPhase,
@@ -83,45 +83,45 @@ const startupPresentations = {
 } as const satisfies Record<ManagerStartupPhase, PhasePresentation>;
 
 const localizedMessages: Record<string, string> = {
-  "Checking the BookCafe server…": "サーバーを確認しています。",
-  "Starting BookCafe server…": "サーバーを起動しています。",
-  "BookCafe server is running.": "サーバーを起動しました。",
-  "BookCafe server could not be started.": "サーバーを起動できませんでした。",
-  "Stopping BookCafe server…": "サーバーを停止しています。",
-  "BookCafe server stopped.": "サーバーを停止しました。",
-  "Saving BookCafe setup…": "設定を保存しています。",
-  "BookCafe setup is complete.": "設定を保存しました。",
+  "Checking the Bunkobank server…": "サーバーを確認しています。",
+  "Starting Bunkobank server…": "サーバーを起動しています。",
+  "Bunkobank server is running.": "サーバーを起動しました。",
+  "Bunkobank server could not be started.": "サーバーを起動できませんでした。",
+  "Stopping Bunkobank server…": "サーバーを停止しています。",
+  "Bunkobank server stopped.": "サーバーを停止しました。",
+  "Saving Bunkobank setup…": "設定を保存しています。",
+  "Bunkobank setup is complete.": "設定を保存しました。",
   "Login startup enabled.": "自動起動を有効にしました。",
   "Login startup disabled.": "自動起動を無効にしました。",
-  "BookCafe server did not become ready in time.":
-    "BookCafeサーバーの起動を時間内に確認できませんでした。",
+  "Bunkobank server did not become ready in time.":
+    "Bunkobankサーバーの起動を時間内に確認できませんでした。",
   "Review the highlighted setup fields.": "入力内容を確認してください。",
   "Review the highlighted network fields.": "ポートを確認してください。",
-  "Stop the BookCafe server before changing its port.":
-    "ポートを変更する前にBookCafeサーバーを停止してください。",
-  "Saving BookCafe server port…": "ポートを保存しています。",
-  "BookCafe server port saved.": "ポートを保存しました。",
+  "Stop the Bunkobank server before changing its port.":
+    "ポートを変更する前にBunkobankサーバーを停止してください。",
+  "Saving Bunkobank server port…": "ポートを保存しています。",
+  "Bunkobank server port saved.": "ポートを保存しました。",
   "Web UI could not be opened.":
     "Web UIを開けませんでした。既定のブラウザー設定を確認して、もう一度お試しください。",
-  "BookCafe data is unavailable.": "データベースを確認できません。",
+  "Bunkobank data is unavailable.": "データベースを確認できません。",
   "Initial setup input is invalid.": "入力内容を確認してください。",
   "Username or password is invalid.":
     "ユーザー名またはパスワードが正しくありません。",
   "Initial setup is available only from this device.":
     "初期設定はこの端末から実行してください。",
-  "BookCafe setup is required.": "初期設定が必要です。",
-  "BookCafe setup is already complete.": "初期設定は完了しています。",
+  "Bunkobank setup is required.": "初期設定が必要です。",
+  "Bunkobank setup is already complete.": "初期設定は完了しています。",
   "Account creation is disabled.": "アカウントの追加は無効です。",
   "Authentication required.": "ログインが必要です。",
   "Internal server error.": "サーバーエラーが発生しました。",
-  "Server check complete. BookCafe is running.":
-    "サーバーの確認が完了しました。BookCafeは稼働中です。",
-  "Server check complete. BookCafe is stopped.":
-    "サーバーの確認が完了しました。BookCafeは停止しています。",
+  "Server check complete. Bunkobank is running.":
+    "サーバーの確認が完了しました。Bunkobankは稼働中です。",
+  "Server check complete. Bunkobank is stopped.":
+    "サーバーの確認が完了しました。Bunkobankは停止しています。",
   "Server check complete. The configured port is in use.":
     "サーバーの確認が完了しました。設定したポートは使用中です。",
-  "Server check complete. BookCafe needs attention.":
-    "サーバーの確認が完了しました。BookCafeの状態を確認してください。"
+  "Server check complete. Bunkobank needs attention.":
+    "サーバーの確認が完了しました。Bunkobankの状態を確認してください。"
 };
 
 const localizedFieldErrors: Record<string, string> = {
@@ -145,7 +145,7 @@ export const getServerPresentation = (
     label: "稼働中",
     detail: managedByDesktop
       ? ""
-      : "外部で起動したBookCafeは、このアプリから停止できません。",
+      : "外部で起動したBunkobankは、このアプリから停止できません。",
     tone: "success"
   };
 };

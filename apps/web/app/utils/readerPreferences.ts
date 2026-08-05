@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { PageLayout, ReadingDirection } from "@bookcafe/core";
+import type { PageLayout, ReadingDirection } from "@bunkobank/core";
 
 export interface ReaderPreferences {
   direction: ReadingDirection;

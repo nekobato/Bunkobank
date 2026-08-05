@@ -46,13 +46,13 @@ importers:
 
   apps/desktop:
     dependencies:
-      "@bookcafe/config":
+      "@bunkobank/config":
         specifier: workspace:*
         version: link:../../packages/config
-      "@bookcafe/contracts":
+      "@bunkobank/contracts":
         specifier: workspace:*
         version: link:../../packages/contracts
-      "@bookcafe/ui":
+      "@bunkobank/ui":
         specifier: workspace:*
         version: link:../../packages/ui
       "@tauri-apps/api":
@@ -104,22 +104,22 @@ importers:
 
   apps/server:
     dependencies:
-      "@bookcafe/config":
+      "@bunkobank/config":
         specifier: workspace:*
         version: link:../../packages/config
-      "@bookcafe/contracts":
+      "@bunkobank/contracts":
         specifier: workspace:*
         version: link:../../packages/contracts
-      "@bookcafe/core":
+      "@bunkobank/core":
         specifier: workspace:*
         version: link:../../packages/core
-      "@bookcafe/db":
+      "@bunkobank/db":
         specifier: workspace:*
         version: link:../../packages/db
-      "@bookcafe/format-adapters":
+      "@bunkobank/format-adapters":
         specifier: workspace:*
         version: link:../../packages/format-adapters
-      "@bookcafe/scanner":
+      "@bunkobank/scanner":
         specifier: workspace:*
         version: link:../../packages/scanner
       "@hono/node-server":
@@ -165,13 +165,13 @@ importers:
 
   apps/web:
     dependencies:
-      "@bookcafe/contracts":
+      "@bunkobank/contracts":
         specifier: workspace:*
         version: link:../../packages/contracts
-      "@bookcafe/core":
+      "@bunkobank/core":
         specifier: workspace:*
         version: link:../../packages/core
-      "@bookcafe/ui":
+      "@bunkobank/ui":
         specifier: workspace:*
         version: link:../../packages/ui
       "@vueuse/core":
@@ -221,7 +221,7 @@ importers:
 
   packages/contracts:
     dependencies:
-      "@bookcafe/core":
+      "@bunkobank/core":
         specifier: workspace:*
         version: link:../core
       zod:
@@ -246,7 +246,7 @@ importers:
 
   packages/db:
     dependencies:
-      "@bookcafe/core":
+      "@bunkobank/core":
         specifier: workspace:*
         version: link:../core
       better-sqlite3:
@@ -268,7 +268,7 @@ importers:
 
   packages/format-adapters:
     dependencies:
-      "@bookcafe/core":
+      "@bunkobank/core":
         specifier: workspace:*
         version: link:../core
       "@napi-rs/canvas":
@@ -296,10 +296,10 @@ importers:
 
   packages/scanner:
     dependencies:
-      "@bookcafe/core":
+      "@bunkobank/core":
         specifier: workspace:*
         version: link:../core
-      "@bookcafe/format-adapters":
+      "@bunkobank/format-adapters":
         specifier: workspace:*
         version: link:../format-adapters
     devDependencies:

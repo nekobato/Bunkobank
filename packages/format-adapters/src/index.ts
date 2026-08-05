@@ -7,7 +7,7 @@ import { open, readFile } from "node:fs/promises";
 import { dirname, join, posix } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import type { BookFormat } from "@bookcafe/core";
+import type { BookFormat } from "@bunkobank/core";
 import { createCanvas } from "@napi-rs/canvas";
 import { XMLParser } from "fast-xml-parser";
 import { unzip } from "fflate";

@@ -63,7 +63,7 @@ case "${build_target}" in
     ;;
 esac
 
-readonly dmg_path="${target_dir}/release/bundle/dmg/BookCafe_2.0.2_${dmg_arch}.dmg"
+readonly dmg_path="${target_dir}/release/bundle/dmg/Bunkobank_2.0.2_${dmg_arch}.dmg"
 
 if [[ ! -f "${env_file}" ]]; then
   print -u2 "Missing notarization environment file: ${env_file}"
@@ -98,10 +98,10 @@ xcrun notarytool submit "${dmg_path}" \
   --wait
 xcrun stapler staple "${dmg_path}"
 
-mount_dir="$(mktemp -d "${TMPDIR:-/tmp}/bookcafe-notarization.XXXXXX")"
+mount_dir="$(mktemp -d "${TMPDIR:-/tmp}/bunkobank-notarization.XXXXXX")"
 hdiutil attach -readonly -nobrowse -mountpoint "${mount_dir}" "${dmg_path}"
 
-readonly mounted_app_path="${mount_dir}/BookCafe.app"
+readonly mounted_app_path="${mount_dir}/Bunkobank.app"
 
 codesign --verify --deep --strict --verbose=2 "${mounted_app_path}"
 zsh "${script_dir}/smoke-test-bundle.zsh" "${mounted_app_path}"

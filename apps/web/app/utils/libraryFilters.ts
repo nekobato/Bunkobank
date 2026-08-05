@@ -1,5 +1,5 @@
-import type { BookSort, SortOrder } from "@bookcafe/contracts";
-import type { BookStatus, ReadingStatus } from "@bookcafe/core";
+import type { BookSort, SortOrder } from "@bunkobank/contracts";
+import type { BookStatus, ReadingStatus } from "@bunkobank/core";
 
 export type ReadingStatusFilter = "" | ReadingStatus;
 export type BookStatusFilter = "" | BookStatus;

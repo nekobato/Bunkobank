@@ -1,4 +1,4 @@
-const BOOKCAFE_ORIGIN = "http://bookcafe.local";
+const BUNKOBANK_ORIGIN = "http://bunkobank.local";
 
 /**
  * Resolves an untrusted login redirect to a safe in-app destination.
@@ -9,10 +9,10 @@ export const getLoginRedirect = (redirect: unknown): string => {
   }
 
   try {
-    const destination = new URL(redirect, BOOKCAFE_ORIGIN);
+    const destination = new URL(redirect, BUNKOBANK_ORIGIN);
 
     if (
-      destination.origin !== BOOKCAFE_ORIGIN ||
+      destination.origin !== BUNKOBANK_ORIGIN ||
       destination.pathname === "/login"
     ) {
       return "/";

@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { CollectionResponse } from "@bookcafe/contracts";
+import type { CollectionResponse } from "@bunkobank/contracts";
 
 import { getApiErrorMessage } from "../../utils/apiErrors";
 

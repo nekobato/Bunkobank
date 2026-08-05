@@ -1,5 +1,5 @@
 /**
- * Single-SQLite persistence for BookCafe users, libraries, books, pages, and jobs.
+ * Single-SQLite persistence for Bunkobank users, libraries, books, pages, and jobs.
  */
 
 import { randomUUID } from "node:crypto";
@@ -17,7 +17,7 @@ import type {
   ReadingStatus,
   ScanFailureCode,
   ScanFailureKind
-} from "@bookcafe/core";
+} from "@bunkobank/core";
 
 export type JobStatus =
   "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -33,7 +33,7 @@ export type CancelJobResult = "cancelled" | "not-found" | "not-cancellable";
 export type BookPageSourceType =
   "file" | "archive-entry" | "packed-archive-entry" | "pdf-page" | "epub-page";
 
-export interface BookCafeDatabase {
+export interface BunkobankDatabase {
   sqlite: Database.Database;
 }
 
@@ -224,7 +224,7 @@ export interface ThumbnailRecord {
   generatedAt: Date;
 }
 
-export interface BookCafeDomainError extends Error {
+export interface BunkobankDomainError extends Error {
   code:
     | "LEGACY_DATABASE_UNSUPPORTED"
     | "LIBRARY_NAME_CONFLICT"
@@ -326,7 +326,7 @@ interface CollectionRow {
 /**
  * Opens a SQLite handle with foreign keys and WAL enabled.
  */
-export const connectDatabase = (databasePath: string): BookCafeDatabase => {
+export const connectDatabase = (databasePath: string): BunkobankDatabase => {
   mkdirSync(dirname(databasePath), { recursive: true });
 
   const sqlite = new Database(databasePath);
@@ -340,7 +340,7 @@ export const connectDatabase = (databasePath: string): BookCafeDatabase => {
 /**
  * Creates the current single-database schema without transforming a legacy schema.
  */
-export const migrateDatabase = (database: BookCafeDatabase): void => {
+export const migrateDatabase = (database: BunkobankDatabase): void => {
   if (
     tableExists(database, "collection_roots") &&
     !tableExists(database, "libraries")
@@ -556,9 +556,9 @@ export const migrateDatabase = (database: BookCafeDatabase): void => {
 /**
  * Opens a database and ensures the current schema exists.
  */
-export const openBookCafeDatabase = (
+export const openBunkobankDatabase = (
   databasePath: string
-): BookCafeDatabase => {
+): BunkobankDatabase => {
   const database = connectDatabase(databasePath);
 
   try {
@@ -571,9 +571,9 @@ export const openBookCafeDatabase = (
 };
 
 /**
- * Closes a BookCafe SQLite handle.
+ * Closes a Bunkobank SQLite handle.
  */
-export const closeDatabase = (database: BookCafeDatabase): void => {
+export const closeDatabase = (database: BunkobankDatabase): void => {
   database.sqlite.close();
 };
 
@@ -581,7 +581,7 @@ export const closeDatabase = (database: BookCafeDatabase): void => {
  * Creates a named library with one canonical source root.
  */
 export const createLibrary = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   input: CreateLibraryInput
 ): LibraryRecord => {
   const name = normalizeRequiredText(input.name);
@@ -613,7 +613,7 @@ export const createLibrary = (
 /**
  * Lists libraries by case-insensitive display name.
  */
-export const listLibraries = (database: BookCafeDatabase): LibraryRecord[] =>
+export const listLibraries = (database: BunkobankDatabase): LibraryRecord[] =>
   (
     database.sqlite
       .prepare("SELECT * FROM libraries ORDER BY name COLLATE NOCASE, id")
@@ -624,7 +624,7 @@ export const listLibraries = (database: BookCafeDatabase): LibraryRecord[] =>
  * Finds a library by id.
  */
 export const findLibrary = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string
 ): LibraryRecord | null => {
   const row = database.sqlite
@@ -638,7 +638,7 @@ export const findLibrary = (
  * Updates a library name or root unless a scan is active.
  */
 export const updateLibrary = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   input: UpdateLibraryInput
 ): UpdateLibraryResult => {
@@ -683,7 +683,7 @@ export const updateLibrary = (
  * Deletes library-owned metadata and returns central thumbnail paths to unlink.
  */
 export const deleteLibrary = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string
 ): DeleteLibraryResult => {
   if (!findLibrary(database, libraryId)) {
@@ -720,7 +720,7 @@ export const deleteLibrary = (
  * Creates a user-owned collection inside one library.
  */
 export const createCollection = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   name: string
@@ -750,7 +750,7 @@ export const createCollection = (
  * Lists the current user's collections for one selected library.
  */
 export const listCollections = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string
 ): CollectionRecord[] =>
@@ -780,7 +780,7 @@ export const listCollections = (
  * Finds one collection only inside its user and library ownership boundary.
  */
 export const findCollection = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string
@@ -813,7 +813,7 @@ export const findCollection = (
  * Returns a collection with only currently visible member books.
  */
 export const findCollectionDetail = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string
@@ -847,7 +847,7 @@ export const findCollectionDetail = (
  * Renames one user-owned collection.
  */
 export const updateCollection = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string,
@@ -882,7 +882,7 @@ export const updateCollection = (
  * Deletes one collection without changing its source books.
  */
 export const deleteCollection = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string
@@ -898,7 +898,7 @@ export const deleteCollection = (
  * Adds one available, same-library book at the end of a collection.
  */
 export const addBookToCollection = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string,
@@ -968,7 +968,7 @@ export const addBookToCollection = (
  * Removes one book membership and compacts the remaining manual order.
  */
 export const removeBookFromCollection = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string,
@@ -1004,7 +1004,7 @@ export const removeBookFromCollection = (
  * Replaces the visible member order while retaining hidden memberships.
  */
 export const reorderCollectionBooks = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   collectionId: string,
@@ -1073,7 +1073,7 @@ export const reorderCollectionBooks = (
  * Persists one scanned book and replaces its page snapshot atomically.
  */
 export const persistScannedBook = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   input: PersistScannedBookInput
 ): BookDetail => {
   const relativePath = normalizeRelativePath(input.relativePath, true);
@@ -1199,7 +1199,7 @@ export const persistScannedBook = (
  * Marks non-archived books absent from a completed library scan as missing.
  */
 export const markMissingBooksForLibrary = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   activeRelativePaths: readonly string[]
 ): number => {
@@ -1242,7 +1242,7 @@ export const markMissingBooksForLibrary = (
  * Marks visible books not stamped by one completed scan as missing.
  */
 export const markBooksMissingAfterScan = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   scanId: string
 ): number =>
@@ -1261,7 +1261,7 @@ export const markBooksMissingAfterScan = (
  * Marks one visible existing book as unreadable while preserving its snapshot.
  */
 export const markBookScanError = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   relativePath: string,
   scanId?: string
@@ -1287,7 +1287,7 @@ export const markBookScanError = (
  * Lists visible books for one library and optional user.
  */
 export const listBookSummaries = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   userId?: string
 ): BookSummary[] =>
@@ -1299,7 +1299,7 @@ export const listBookSummaries = (
  * Lists archived books for one library and optional user.
  */
 export const listArchivedBookSummaries = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   userId?: string
 ): BookSummary[] =>
@@ -1311,7 +1311,7 @@ export const listArchivedBookSummaries = (
  * Lists one database-bounded page of filtered book summaries.
  */
 export const listBookSummaryPage = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   options: ListBookSummaryPageOptions = {}
 ): BookSummaryPage => {
@@ -1387,7 +1387,7 @@ export const listBookSummaryPage = (
  * Lists archived source locators so scanners can skip them before parsing.
  */
 export const listArchivedRelativePaths = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string
 ): string[] =>
   (
@@ -1405,7 +1405,7 @@ export const listArchivedRelativePaths = (
  * Searches visible books within one library.
  */
 export const searchBookSummaries = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   query: string,
   userId?: string
@@ -1452,7 +1452,7 @@ export const searchBookSummaries = (
  * Finds a book only when it belongs to the requested library.
  */
 export const findBookDetail = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string,
   userId?: string
@@ -1468,7 +1468,7 @@ export const findBookDetail = (
  * Lists the persisted page snapshot for a scoped book.
  */
 export const listBookPages = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string
 ): BookPageRecord[] => {
@@ -1489,7 +1489,7 @@ export const listBookPages = (
  * Finds one page only when its book belongs to the requested library.
  */
 export const findBookPage = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string,
   pageNumber: number
@@ -1509,7 +1509,7 @@ export const findBookPage = (
  * Stores central thumbnail metadata for a scoped book.
  */
 export const setBookThumbnail = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   input: SetBookThumbnailInput
 ): BookDetail | null => {
   if (!findBookDetail(database, input.libraryId, input.bookId)) {
@@ -1556,7 +1556,7 @@ export const setBookThumbnail = (
  * Finds central thumbnail metadata for a scoped book.
  */
 export const findBookThumbnail = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string
 ): ThumbnailRecord | null => {
@@ -1582,7 +1582,7 @@ export const findBookThumbnail = (
  * Updates user-editable metadata without changing the source locator.
  */
 export const updateBookMetadata = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string,
   input: UpdateBookMetadataInput
@@ -1630,7 +1630,7 @@ export const updateBookMetadata = (
  * Stores one user's one-based reading position for a scoped book.
  */
 export const updateReadingProgress = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   bookId: string,
@@ -1668,7 +1668,7 @@ export const updateReadingProgress = (
  * Hides a book from normal lists without deleting its metadata or pages.
  */
 export const archiveBook = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string
 ): BookDetail | null => {
@@ -1689,7 +1689,7 @@ export const archiveBook = (
  * Restores an archived book to normal lists.
  */
 export const restoreBook = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   bookId: string
 ): BookDetail | null => {
@@ -1710,7 +1710,7 @@ export const restoreBook = (
  * Creates a queued library-scoped job.
  */
 export const createJob = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   input: CreateJobInput
 ): JobRecord => {
   const now = Date.now();
@@ -1746,7 +1746,7 @@ export const createJob = (
  * Lists jobs for one library in newest-first order.
  */
 export const listJobs = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string
 ): JobRecord[] =>
   (
@@ -1764,7 +1764,7 @@ export const listJobs = (
  * Finds a job only within the requested library.
  */
 export const findJob = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   jobId: string
 ): JobRecord | null => {
@@ -1779,7 +1779,7 @@ export const findJob = (
  * Persists one path-safe scan failure, updating its classification on duplicates.
  */
 export const createScanFailure = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   input: CreateScanFailureInput
 ): ScanFailureRecord => {
   const relativePath = normalizeRelativePath(input.relativePath, true);
@@ -1825,7 +1825,7 @@ export const createScanFailure = (
  * Lists one bounded page of failures for a library-scoped scan job.
  */
 export const listScanFailures = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   jobId: string,
   options: ListScanFailuresOptions = {}
@@ -1869,7 +1869,7 @@ export const listScanFailures = (
  * Returns whether a library has a queued or running job.
  */
 export const hasActiveLibraryJobs = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string
 ): boolean =>
   Boolean(
@@ -1887,7 +1887,7 @@ export const hasActiveLibraryJobs = (
  * Cancels a queued or running job within one library.
  */
 export const cancelJob = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   jobId: string
 ): CancelJobResult => {
@@ -1912,7 +1912,7 @@ export const cancelJob = (
  * Marks a queued job as running.
  */
 export const markJobRunning = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string
 ): JobRecord | null =>
   updateJobStatus(database, jobId, "running", 5, null, ["queued"]);
@@ -1921,7 +1921,7 @@ export const markJobRunning = (
  * Marks a running job as completed.
  */
 export const markJobCompleted = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string
 ): JobRecord | null =>
   updateJobStatus(database, jobId, "completed", 100, null, ["running"]);
@@ -1930,7 +1930,7 @@ export const markJobCompleted = (
  * Marks a queued or running job as failed.
  */
 export const markJobFailed = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string,
   error: string
 ): JobRecord | null =>
@@ -1940,7 +1940,7 @@ export const markJobFailed = (
  * Updates a running job progress value.
  */
 export const updateJobProgress = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string,
   progress: number
 ): JobRecord | null => {
@@ -1959,7 +1959,7 @@ export const updateJobProgress = (
  * Replaces a running or queued job payload.
  */
 export const updateJobPayload = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string,
   payload: unknown
 ): JobRecord | null => {
@@ -1978,7 +1978,7 @@ export const updateJobPayload = (
  * Marks jobs left active by a stopped server as failed.
  */
 export const markInterruptedJobsFailed = (
-  database: BookCafeDatabase
+  database: BunkobankDatabase
 ): number => {
   const result = database.sqlite
     .prepare(
@@ -1998,7 +1998,7 @@ export const markInterruptedJobsFailed = (
  * Returns the user's selected library id.
  */
 export const getLibraryPreference = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string
 ): string | null => {
   const row = database.sqlite
@@ -2014,7 +2014,7 @@ export const getLibraryPreference = (
  * Stores or clears the user's selected library id.
  */
 export const setLibraryPreference = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string | null
 ): string | null => {
@@ -2037,7 +2037,7 @@ export const setLibraryPreference = (
 /**
  * Tests whether a SQLite table exists.
  */
-const tableExists = (database: BookCafeDatabase, tableName: string): boolean =>
+const tableExists = (database: BunkobankDatabase, tableName: string): boolean =>
   Boolean(
     database.sqlite
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?")
@@ -2048,7 +2048,7 @@ const tableExists = (database: BookCafeDatabase, tableName: string): boolean =>
  * Adds one nullable column when opening a database created by an older build.
  */
 const addColumnIfMissing = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   tableName: string,
   columnName: string,
   definition: string
@@ -2068,18 +2068,18 @@ const addColumnIfMissing = (
  * Creates a typed domain error without a class hierarchy.
  */
 const createDomainError = (
-  code: BookCafeDomainError["code"],
+  code: BunkobankDomainError["code"],
   message: string
-): BookCafeDomainError =>
+): BunkobankDomainError =>
   Object.assign(new Error(message), {
     code
-  }) as BookCafeDomainError;
+  }) as BunkobankDomainError;
 
 /**
  * Rejects a duplicate case-insensitive library name.
  */
 const assertLibraryNameAvailable = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   name: string,
   ignoredLibraryId?: string
 ): void => {
@@ -2105,7 +2105,7 @@ const assertLibraryNameAvailable = (
  * Rejects duplicate collection names inside one user's selected library.
  */
 const assertCollectionNameAvailable = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   userId: string,
   libraryId: string,
   name: string,
@@ -2141,7 +2141,7 @@ const assertCollectionNameAvailable = (
  * Rewrites one collection's positions to a contiguous zero-based sequence.
  */
 const compactCollectionBookPositions = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   collectionId: string
 ): void => {
   const rows = database.sqlite
@@ -2167,7 +2167,7 @@ const compactCollectionBookPositions = (
  * Rejects duplicate, parent, and child canonical roots.
  */
 const assertLibraryPathAvailable = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   canonicalRootPath: string,
   ignoredLibraryId?: string
 ): void => {
@@ -2336,7 +2336,7 @@ const normalizeBookPageInput = (
  * Finds a book row by its stable library-relative locator.
  */
 const findBookRowByRelativePath = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   relativePath: string
 ): BookRow | null =>
@@ -2348,7 +2348,7 @@ const findBookRowByRelativePath = (
  * Lists either visible or archived book rows for one library.
  */
 const listBookRows = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   libraryId: string,
   archived: boolean
 ): BookRow[] =>
@@ -2392,7 +2392,7 @@ const getBookOrderClause = (sort: BookSort, order: SortOrder): string => {
  * Reads one user's saved position or defaults to page one.
  */
 const getCurrentPage = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   bookId: string,
   userId?: string
 ): number => {
@@ -2437,7 +2437,7 @@ const toCollectionRecord = (row: CollectionRow): CollectionRecord => ({
  * Converts a book row into an API summary without absolute paths.
  */
 const toBookSummary = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   row: BookRow,
   userId?: string
 ): BookSummary => ({
@@ -2463,7 +2463,7 @@ const toBookSummary = (
  * Converts a book row into an API detail without absolute paths.
  */
 const toBookDetail = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   row: BookRow,
   userId?: string
 ): BookDetail => ({
@@ -2509,7 +2509,7 @@ const parseStringArray = (value: string): string[] => {
  * Finds a job by id for internal state transitions.
  */
 const findJobById = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string
 ): JobRecord | null => {
   const row = database.sqlite
@@ -2562,7 +2562,7 @@ const parseJsonValue = (value: string): unknown => {
  * Applies one guarded job status transition.
  */
 const updateJobStatus = (
-  database: BookCafeDatabase,
+  database: BunkobankDatabase,
   jobId: string,
   status: JobStatus,
   progress: number,

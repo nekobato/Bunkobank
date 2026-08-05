@@ -1,4 +1,4 @@
-import type { BookStatus } from "@bookcafe/core";
+import type { BookStatus } from "@bunkobank/core";
 
 /**
  * Returns whether a book source can currently provide reader pages.

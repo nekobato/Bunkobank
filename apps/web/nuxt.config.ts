@@ -1,4 +1,4 @@
-import { shelfmarkJapaneseLocale, webShelfmarkTheme } from "@bookcafe/ui";
+import { shelfmarkJapaneseLocale, webShelfmarkTheme } from "@bunkobank/ui";
 
 export default defineNuxtConfig({
   app: {
@@ -13,7 +13,7 @@ export default defineNuxtConfig({
   modules: ["@primevue/nuxt-module"],
   css: [
     "primeicons/primeicons.css",
-    "@bookcafe/ui/styles.css",
+    "@bunkobank/ui/styles.css",
     "~/assets/css/base.css"
   ],
   primevue: {

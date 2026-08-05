@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-window",
-  "description": "System access required by the BookCafe manager window.",
+  "description": "System access required by the Bunkobank manager window.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -17,7 +17,7 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "binaries/bookcafe-server",
+          "name": "binaries/bunkobank-server",
           "sidecar": true,
           "args": ["--config", { "validator": ".+" }]
         }

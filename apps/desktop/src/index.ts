@@ -2,10 +2,10 @@
  * Shared planning surface for the future Tauri manager application.
  */
 
-import { createServerUrl, type AppConfig } from "@bookcafe/config/shared";
-import { healthResponseSchema } from "@bookcafe/contracts";
+import { createServerUrl, type AppConfig } from "@bunkobank/config/shared";
+import { healthResponseSchema } from "@bunkobank/contracts";
 
-import type { InitialSetupRequest } from "@bookcafe/contracts";
+import type { InitialSetupRequest } from "@bunkobank/contracts";
 
 export interface SetupDraft {
   username: string;
@@ -47,7 +47,7 @@ export interface MacLaunchAgent {
   standardErrorPath?: string;
 }
 
-export interface BookCafeServerLaunchAgentOptions {
+export interface BunkobankServerLaunchAgentOptions {
   serverCommand: string;
   configPath?: string;
   label?: string;
@@ -319,7 +319,7 @@ export const createManagedServerStatusReader =
         status: "invalid-response",
         url,
         statusCode: response.status,
-        error: "Health check response did not match BookCafe."
+        error: "Health check response did not match Bunkobank."
       });
     }
 
@@ -346,17 +346,17 @@ export const createMacLaunchAgentPath = (
   joinPosixPath(homeDir, "Library", "LaunchAgents", `${label}.plist`);
 
 /**
- * Creates the LaunchAgent model for the BookCafe server sidecar.
+ * Creates the LaunchAgent model for the Bunkobank server sidecar.
  */
-export const createBookCafeServerLaunchAgent = (
-  options: BookCafeServerLaunchAgentOptions
+export const createBunkobankServerLaunchAgent = (
+  options: BunkobankServerLaunchAgentOptions
 ): MacLaunchAgent => ({
-  label: options.label ?? "dev.bookcafe.server",
+  label: options.label ?? "dev.bunkobank.server",
   programArguments: [options.serverCommand],
   ...(options.configPath
     ? {
         environmentVariables: {
-          BOOKCAFE_CONFIG: options.configPath
+          BUNKOBANK_CONFIG: options.configPath
         }
       }
     : {}),
@@ -408,7 +408,7 @@ export const createMacLaunchAgentPlist = (agent: MacLaunchAgent): string => {
 };
 
 /**
- * Compares the current LaunchAgent plist with the expected BookCafe model.
+ * Compares the current LaunchAgent plist with the expected Bunkobank model.
  */
 export const inspectMacLaunchAgent = (
   input: MacLaunchAgentInspectionInput

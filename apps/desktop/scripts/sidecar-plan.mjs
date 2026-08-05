@@ -1,5 +1,5 @@
 /**
- * Pure build planning helpers for the packaged BookCafe server sidecar.
+ * Pure build planning helpers for the packaged Bunkobank server sidecar.
  */
 
 import { join } from "node:path";
@@ -121,7 +121,7 @@ export const createSidecarPackagePlan = ({
   const executableSuffix = platform === "win32" ? ".exe" : "";
   const outputPath = join(
     binariesDir,
-    `bookcafe-server-${rustHost}${executableSuffix}`
+    `bunkobank-server-${rustHost}${executableSuffix}`
   );
 
   return {
@@ -166,7 +166,7 @@ export const createSidecarDeployPlan = (stageDir, target) => {
       "--cpu",
       target.arch,
       "--filter",
-      "@bookcafe/server",
+      "@bunkobank/server",
       "--prod",
       "deploy",
       "--legacy",

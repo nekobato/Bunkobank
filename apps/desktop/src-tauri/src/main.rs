@@ -1,6 +1,6 @@
 /**
- * Native BookCafe desktop manager entrypoint.
+ * Native Bunkobank desktop manager entrypoint.
  */
 fn main() {
-    bookcafe_desktop_lib::run()
+    bunkobank_desktop_lib::run()
 }

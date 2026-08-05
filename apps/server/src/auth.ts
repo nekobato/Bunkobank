@@ -5,13 +5,13 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { createServerOrigin, type BindHost } from "@bookcafe/config";
+import { createServerOrigin, type BindHost } from "@bunkobank/config";
 import Database from "better-sqlite3";
 import { betterAuth } from "better-auth";
 import { getMigrations } from "better-auth/db/migration";
 import { username } from "better-auth/plugins";
 
-import { getBookCafeClientOrigins } from "./origins.js";
+import { getBunkobankClientOrigins } from "./origins.js";
 
 interface CachedAuth {
   cacheKey: string;
@@ -27,7 +27,7 @@ export interface AuthOptions {
 let cachedAuth: CachedAuth | null = null;
 
 /**
- * Creates a Better Auth instance backed by the shared BookCafe SQLite file.
+ * Creates a Better Auth instance backed by the shared Bunkobank SQLite file.
  */
 export const createAuth = (options: AuthOptions) => {
   const databasePath = resolve(options.databasePath);
@@ -35,7 +35,7 @@ export const createAuth = (options: AuthOptions) => {
   mkdirSync(dirname(databasePath), { recursive: true });
 
   return betterAuth({
-    appName: "BookCafe",
+    appName: "Bunkobank",
     baseURL,
     database: new Database(databasePath),
     emailAndPassword: {
@@ -84,13 +84,13 @@ export const runAuthMigrations = async (
  * Builds the canonical Better Auth server URL for the active config.
  */
 const getAuthBaseURL = (options: AuthOptions): string =>
-  process.env.BOOKCAFE_BASE_URL ?? createServerOrigin(options);
+  process.env.BUNKOBANK_BASE_URL ?? createServerOrigin(options);
 
 /**
  * Builds the origins Better Auth should trust for local app and Nuxt dev usage.
  */
 const getTrustedOrigins = (options: AuthOptions, baseURL: string): string[] =>
-  getBookCafeClientOrigins([
+  getBunkobankClientOrigins([
     baseURL,
     `http://127.0.0.1:${options.port}`,
     `http://localhost:${options.port}`

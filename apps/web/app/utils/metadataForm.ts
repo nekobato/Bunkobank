@@ -1,7 +1,7 @@
 import type {
   BookDetailResponse,
   UpdateBookMetadataRequest
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 
 export interface MetadataForm {
   title: string;

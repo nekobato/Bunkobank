@@ -18,17 +18,17 @@ import {
   markJobCompleted,
   markJobFailed,
   markJobRunning,
-  openBookCafeDatabase,
+  openBunkobankDatabase,
   persistScannedBook,
   updateJobPayload,
   updateJobProgress
-} from "@bookcafe/db";
+} from "@bunkobank/db";
 import {
   readArchiveImageEntry,
   readPackedArchiveImageEntry,
   renderEpubPageImage
-} from "@bookcafe/format-adapters";
-import { scanLibrary } from "@bookcafe/scanner";
+} from "@bunkobank/format-adapters";
+import { scanLibrary } from "@bunkobank/scanner";
 import PQueue from "p-queue";
 
 import {
@@ -41,7 +41,7 @@ import type {
   ListPdfPages,
   ScanCandidateFailure,
   ScannedBookPage
-} from "@bookcafe/scanner";
+} from "@bunkobank/scanner";
 
 const thumbnailConcurrency = 1;
 const maximumPendingThumbnails = 2;
@@ -69,7 +69,7 @@ export const runLibraryScanJob = async (
   dependencies: RunLibraryScanJobDependencies = {}
 ): Promise<void> => {
   options.signal?.throwIfAborted();
-  const database = openBookCafeDatabase(options.databasePath);
+  const database = openBunkobankDatabase(options.databasePath);
   const thumbnailQueue = new PQueue({ concurrency: thumbnailConcurrency });
   thumbnailQueue.on("error", () => undefined);
 
@@ -241,7 +241,7 @@ const getFailedRelativePaths = (
 interface GenerateThumbnailSafelyOptions {
   page: ScannedBookPage;
   bookId: string;
-  database: ReturnType<typeof openBookCafeDatabase>;
+  database: ReturnType<typeof openBunkobankDatabase>;
   libraryId: string;
   rootPath: string;
   thumbnailDir: string;

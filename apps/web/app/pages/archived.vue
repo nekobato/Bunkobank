@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { BookSummary } from "@bookcafe/core";
+import type { BookSummary } from "@bunkobank/core";
 
 import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import { BOOK_LIST_PAGE_SIZE, getRoutePage } from "../utils/libraryFilters";

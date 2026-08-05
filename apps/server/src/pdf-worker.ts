@@ -2,7 +2,7 @@
  * Child-side executor for one isolated PDF operation.
  */
 
-import { listPdfPages, renderPdfPageImage } from "@bookcafe/format-adapters";
+import { listPdfPages, renderPdfPageImage } from "@bunkobank/format-adapters";
 
 import {
   isPdfWorkerRequest,

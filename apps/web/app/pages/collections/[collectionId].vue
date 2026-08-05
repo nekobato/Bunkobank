@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { BookSummary } from "@bookcafe/core";
+import type { BookSummary } from "@bunkobank/core";
 
 import { getApiErrorMessage } from "../../utils/apiErrors";
 import { moveCollectionBook } from "../../utils/collectionOrder";

@@ -5,8 +5,8 @@
  * @module
  */
 
-import type { BookSort, SortOrder } from "@bookcafe/contracts";
-import type { BookSummary } from "@bookcafe/core";
+import type { BookSort, SortOrder } from "@bunkobank/contracts";
+import type { BookSummary } from "@bunkobank/core";
 
 import { getAccessErrorMessage, getApiErrorMessage } from "../utils/apiErrors";
 import {

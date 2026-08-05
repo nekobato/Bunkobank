@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { updateBookMetadataRequestSchema } from "@bookcafe/contracts";
+import { updateBookMetadataRequestSchema } from "@bunkobank/contracts";
 
 import {
   getAccessErrorMessage,

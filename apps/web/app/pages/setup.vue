@@ -8,7 +8,7 @@
 import {
   initialSetupRequestSchema,
   updateNetworkSettingsRequestSchema
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 
 import { getApiErrorMessage } from "../utils/apiErrors";
 import {
@@ -234,7 +234,7 @@ const submitThumbnailSettings = async (): Promise<void> => {
         <span>設定を確認できません</span>
         <span>
           {{
-            getApiErrorMessage(setupError, "BookCafeへ接続できませんでした。")
+            getApiErrorMessage(setupError, "Bunkobankへ接続できませんでした。")
           }}
         </span>
         <Button

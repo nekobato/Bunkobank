@@ -4,7 +4,7 @@
 
 import { statSync } from "node:fs";
 
-import { type BindHost } from "@bookcafe/config";
+import { type BindHost } from "@bunkobank/config";
 import Database from "better-sqlite3";
 
 export type InitializationState =

@@ -1,5 +1,5 @@
 /**
- * CLI argument parsing for the BookCafe server process.
+ * CLI argument parsing for the Bunkobank server process.
  */
 
 export interface ServerCliOptions {

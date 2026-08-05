@@ -5,7 +5,7 @@
  * @module
  */
 
-import { getShelfmarkToneMeta } from "@bookcafe/ui";
+import { getShelfmarkToneMeta } from "@bunkobank/ui";
 import Button from "primevue/button";
 import Card from "primevue/card";
 import InputText from "primevue/inputtext";

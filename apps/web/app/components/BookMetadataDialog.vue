@@ -2,8 +2,8 @@
 import {
   updateBookMetadataRequestSchema,
   type BookDetailResponse
-} from "@bookcafe/contracts";
-import type { BookSummary } from "@bookcafe/core";
+} from "@bunkobank/contracts";
+import type { BookSummary } from "@bunkobank/core";
 
 import { getApiErrorMessage } from "../utils/apiErrors";
 import { createFieldErrorMap } from "../utils/formValidation";

@@ -5,10 +5,10 @@
 import type {
   PdfPageEntry,
   RenderPdfPageImageOptions
-} from "@bookcafe/format-adapters";
+} from "@bunkobank/format-adapters";
 
 /** Command-line marker that starts the server executable as a PDF worker. */
-export const pdfWorkerArgument = "--bookcafe-pdf-worker";
+export const pdfWorkerArgument = "--bunkobank-pdf-worker";
 
 /** Maximum V8 old-generation heap allocated to one PDF worker. */
 export const pdfProcessMaxOldSpaceSizeMiB = 768;

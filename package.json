@@ -1,5 +1,5 @@
 {
-  "name": "bookcafe",
+  "name": "bunkobank",
   "version": "2.0.2",
   "private": true,
   "type": "module",
@@ -8,8 +8,8 @@
   },
   "packageManager": "pnpm@11.10.0",
   "scripts": {
-    "dev": "pnpm -r --parallel --filter @bookcafe/server --filter @bookcafe/web dev",
-    "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @bookcafe/app build && pnpm --filter @bookcafe/web generate && pnpm --filter @bookcafe/server build && pnpm --filter @bookcafe/server copy-web",
+    "dev": "pnpm -r --parallel --filter @bunkobank/server --filter @bunkobank/web dev",
+    "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @bunkobank/app build && pnpm --filter @bunkobank/web generate && pnpm --filter @bunkobank/server build && pnpm --filter @bunkobank/server copy-web",
     "test": "pnpm -r --filter \"./packages/*\" build && pnpm -r --if-present test",
     "lint": "eslint .",
     "format": "prettier --write .",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { LibraryResponse } from "@bookcafe/contracts";
+import type { LibraryResponse } from "@bunkobank/contracts";
 
 const {
   hasSession,
@@ -33,9 +33,9 @@ const updateLibrary = (libraryId: string | null): void => {
 <template>
   <div class="sidebar-panel">
     <NuxtLink class="brand" to="/" @click="emit('navigate')">
-      <span class="brand-mark" aria-hidden="true">BC</span>
+      <span class="brand-mark" aria-hidden="true">BB</span>
       <span class="brand-copy" translate="no">
-        <strong>BookCafe</strong>
+        <strong>Bunkobank</strong>
         <small>Web Library</small>
       </span>
     </NuxtLink>

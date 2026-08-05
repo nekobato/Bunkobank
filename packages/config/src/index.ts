@@ -1,5 +1,5 @@
 /**
- * Configuration loading and persistent state path resolution for BookCafe.
+ * Configuration loading and persistent state path resolution for Bunkobank.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -9,12 +9,15 @@ import { dirname, join, resolve } from "node:path";
 import { appConfigSchema, type AppConfig } from "./shared.js";
 
 /**
- * Runtime values used to resolve the OS-specific BookCafe StateDir.
+ * Runtime values used to resolve the OS-specific Bunkobank StateDir.
  */
 export interface StateDirResolutionOptions {
   environment?: Partial<
     Record<
-      "APPDATA" | "BOOKCAFE_DATA_DIR" | "BOOKCAFE_STATE_DIR" | "XDG_DATA_HOME",
+      | "APPDATA"
+      | "BUNKOBANK_DATA_DIR"
+      | "BUNKOBANK_STATE_DIR"
+      | "XDG_DATA_HOME",
       string
     >
   >;
@@ -36,15 +39,15 @@ export {
 } from "./shared.js";
 
 /**
- * Returns the OS-specific directory containing all mutable BookCafe state.
+ * Returns the OS-specific directory containing all mutable Bunkobank state.
  */
 export const getDefaultStateDir = (
   options: StateDirResolutionOptions = {}
 ): string => {
   const environment = options.environment ?? process.env;
   const configuredStateDir =
-    environment.BOOKCAFE_STATE_DIR?.trim() ||
-    environment.BOOKCAFE_DATA_DIR?.trim();
+    environment.BUNKOBANK_STATE_DIR?.trim() ||
+    environment.BUNKOBANK_DATA_DIR?.trim();
 
   if (configuredStateDir) {
     return resolve(configuredStateDir);
@@ -54,16 +57,16 @@ export const getDefaultStateDir = (
   const runtimePlatform = options.runtimePlatform ?? platform();
 
   if (runtimePlatform === "darwin") {
-    return join(home, "Library", "Application Support", "BookCafe");
+    return join(home, "Library", "Application Support", "Bunkobank");
   }
 
   if (runtimePlatform === "win32") {
-    return join(environment.APPDATA ?? home, "BookCafe");
+    return join(environment.APPDATA ?? home, "Bunkobank");
   }
 
   return join(
     environment.XDG_DATA_HOME ?? join(home, ".local", "share"),
-    "bookcafe"
+    "bunkobank"
   );
 };
 
@@ -72,7 +75,7 @@ export const getDefaultStateDir = (
  */
 export const getDefaultConfigPath = (): string =>
   resolve(
-    process.env.BOOKCAFE_CONFIG ?? join(getDefaultStateDir(), "config.json")
+    process.env.BUNKOBANK_CONFIG ?? join(getDefaultStateDir(), "config.json")
   );
 
 /**
@@ -83,14 +86,14 @@ export const ensureParentDir = (filePath: string): void => {
 };
 
 /**
- * Resolves all filesystem paths derived from the BookCafe StateDir.
+ * Resolves all filesystem paths derived from the Bunkobank StateDir.
  */
 export const resolveStatePaths = (stateDir: string) => {
   const root = resolve(stateDir);
 
   return {
     root,
-    databasePath: join(root, "bookcafe.sqlite"),
+    databasePath: join(root, "bunkobank.sqlite"),
     thumbnailDir: join(root, "thumbnails"),
     cacheDir: join(root, "cache"),
     logDir: join(root, "logs")

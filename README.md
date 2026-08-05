@@ -1,10 +1,10 @@
-# BookCafe
+# Bunkobank
 
-BookCafe is a self-hosted application for organizing and reading digital books
+Bunkobank is a self-hosted application for organizing and reading digital books
 from a web browser.
 
 > [!WARNING]
-> BookCafe is under active development. Its database format and behavior may
+> Bunkobank is under active development. Its database format and behavior may
 > change before the first stable release.
 
 ## Features
@@ -40,7 +40,7 @@ Linux installations use the Web UI and server without the Desktop Manager.
 - Node.js 24
 - pnpm 11
 
-### Run BookCafe
+### Run Bunkobank
 
 ```bash
 pnpm install
@@ -57,18 +57,18 @@ The development servers use these addresses:
 
 ## Configuration and data
 
-BookCafe stores its configuration, SQLite database, thumbnails, cache, and logs
+Bunkobank stores its configuration, SQLite database, thumbnails, cache, and logs
 in a platform-specific state directory.
 
-| Platform | Default state directory                                |
-| -------- | ------------------------------------------------------ |
-| macOS    | `~/Library/Application Support/BookCafe`               |
-| Windows  | `%APPDATA%/BookCafe`                                   |
-| Linux    | `$XDG_DATA_HOME/bookcafe` or `~/.local/share/bookcafe` |
+| Platform | Default state directory                                  |
+| -------- | -------------------------------------------------------- |
+| macOS    | `~/Library/Application Support/Bunkobank`                |
+| Windows  | `%APPDATA%/Bunkobank`                                    |
+| Linux    | `$XDG_DATA_HOME/bunkobank` or `~/.local/share/bunkobank` |
 
-Set `BOOKCAFE_STATE_DIR` to use a different location.
+Set `BUNKOBANK_STATE_DIR` to use a different location.
 
-BookCafe does not delete original book files when a library is removed or a book
+Bunkobank does not delete original book files when a library is removed or a book
 is archived.
 
 ## Development
@@ -86,7 +86,7 @@ pnpm build
 To run the Desktop Manager in development mode:
 
 ```bash
-pnpm --filter @bookcafe/app tauri:dev
+pnpm --filter @bunkobank/app tauri:dev
 ```
 
 Desktop development additionally requires the Rust and platform tooling needed

@@ -1,4 +1,4 @@
-import type { ReadingStatus } from "@bookcafe/core";
+import type { ReadingStatus } from "@bunkobank/core";
 
 /**
  * Returns a bounded page value while preserving explicit unread/finished state.

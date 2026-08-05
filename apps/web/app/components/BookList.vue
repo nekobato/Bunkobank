@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BookSummary } from "@bookcafe/core";
+import type { BookSummary } from "@bunkobank/core";
 
 import {
   getBookSourceStatusLabel,

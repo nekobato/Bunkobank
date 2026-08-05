@@ -1,4 +1,4 @@
-import type { BookFormat } from "@bookcafe/core";
+import type { BookFormat } from "@bunkobank/core";
 
 export interface BookCoverPlaceholderInput {
   title: string;
@@ -65,7 +65,7 @@ const getBookCoverInitials = (title: string): string => {
       : Array.from(words[0] ?? title.trim()).slice(0, 2);
   const initials = letters.join("").toLocaleUpperCase();
 
-  return initials || "BC";
+  return initials || "BB";
 };
 
 /**

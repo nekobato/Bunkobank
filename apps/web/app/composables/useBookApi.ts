@@ -1,5 +1,5 @@
 /**
- * Authenticated API helpers for the BookCafe frontend.
+ * Authenticated API helpers for the Bunkobank frontend.
  *
  * @module
  */
@@ -33,7 +33,7 @@ import type {
   UpdateLibraryPreferenceRequest,
   UpdateNetworkSettingsRequest,
   UpdateThumbnailSettingsRequest
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 
 import {
   createLibraryApiPath,
@@ -77,7 +77,7 @@ export const useBookApi = () => {
       body
     });
 
-  /** Deletes BookCafe records for one library without touching source files. */
+  /** Deletes Bunkobank records for one library without touching source files. */
   const deleteLibrary = (libraryId: string) =>
     $fetch<void>(createLibraryApiPath(apiBase, libraryId), {
       ...requestOptions,

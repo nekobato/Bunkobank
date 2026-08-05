@@ -1,5 +1,5 @@
 {
-  "name": "@bookcafe/db",
+  "name": "@bunkobank/db",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bookcafe/core": "workspace:*",
+    "@bunkobank/core": "workspace:*",
     "better-sqlite3": "^12.4.6",
     "drizzle-orm": "^0.45.2"
   },

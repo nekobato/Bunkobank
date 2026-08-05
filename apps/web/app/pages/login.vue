@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { initialSetupRequestSchema } from "@bookcafe/contracts";
+import { initialSetupRequestSchema } from "@bunkobank/contracts";
 
 import { getApiErrorMessage } from "../utils/apiErrors";
 import { getLoginRedirect } from "../utils/authRedirect";
@@ -74,7 +74,7 @@ const submitLogin = async (): Promise<void> => {
   } catch (error) {
     message.value = getApiErrorMessage(
       error,
-      "サーバーに接続できません。BookCafe Serverが起動しているか確認してから、再度お試しください。"
+      "サーバーに接続できません。Bunkobank Serverが起動しているか確認してから、再度お試しください。"
     );
   } finally {
     isSubmitting.value = false;
@@ -85,7 +85,7 @@ const submitLogin = async (): Promise<void> => {
 <template>
   <section v-if="!hasSession" class="login">
     <div class="intro" aria-hidden="true">
-      <span class="book book-one">BC</span>
+      <span class="book book-one">BB</span>
       <span class="book book-two" />
       <span class="book book-three" />
     </div>

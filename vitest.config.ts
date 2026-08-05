@@ -6,26 +6,26 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: "@bookcafe/config/shared",
+        find: "@bunkobank/config/shared",
         replacement: fileURLToPath(
           new URL("./packages/config/src/shared.ts", import.meta.url)
         )
       },
       {
-        find: "@bookcafe/config",
+        find: "@bunkobank/config",
         replacement: fileURLToPath(
           new URL("./packages/config/src/index.ts", import.meta.url)
         )
       },
       ...[
-        ["@bookcafe/contracts", "./packages/contracts/src/index.ts"],
-        ["@bookcafe/core", "./packages/core/src/index.ts"],
-        ["@bookcafe/db", "./packages/db/src/library.ts"],
+        ["@bunkobank/contracts", "./packages/contracts/src/index.ts"],
+        ["@bunkobank/core", "./packages/core/src/index.ts"],
+        ["@bunkobank/db", "./packages/db/src/library.ts"],
         [
-          "@bookcafe/format-adapters",
+          "@bunkobank/format-adapters",
           "./packages/format-adapters/src/index.ts"
         ],
-        ["@bookcafe/scanner", "./packages/scanner/src/index.ts"]
+        ["@bunkobank/scanner", "./packages/scanner/src/index.ts"]
       ].map(([find, path]) => ({
         find,
         replacement: fileURLToPath(new URL(path, import.meta.url))

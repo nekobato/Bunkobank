@@ -5,7 +5,7 @@
  * @module
  */
 
-import type { ScanFailureResponse } from "@bookcafe/contracts";
+import type { ScanFailureResponse } from "@bunkobank/contracts";
 
 import { getBookCoverFormatLabel } from "../utils/bookCover";
 import { getApiErrorMessage } from "../utils/apiErrors";

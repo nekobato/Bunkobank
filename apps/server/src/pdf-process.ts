@@ -17,7 +17,7 @@ import {
   type PdfWorkerResponse
 } from "./pdf-protocol.js";
 
-import type { RenderPdfPageImageOptions } from "@bookcafe/format-adapters";
+import type { RenderPdfPageImageOptions } from "@bunkobank/format-adapters";
 
 const pdfProcessErrorMessage = "PDF processing failed.";
 const pdfProcessTimeoutMessage = "PDF processing timed out.";

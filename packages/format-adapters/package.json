@@ -1,5 +1,5 @@
 {
-  "name": "@bookcafe/format-adapters",
+  "name": "@bunkobank/format-adapters",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bookcafe/core": "workspace:*",
+    "@bunkobank/core": "workspace:*",
     "@napi-rs/canvas": "^1.0.2",
     "fast-xml-parser": "^5.10.1",
     "fflate": "^0.8.3",

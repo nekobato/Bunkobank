@@ -8,11 +8,11 @@
 import type {
   BackgroundJobResponse,
   LibraryResponse
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 import {
   libraryCreateRequestSchema,
   libraryUpdateRequestSchema
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 import { useIntervalFn } from "@vueuse/core";
 
 import { getApiErrorMessage } from "../utils/apiErrors";

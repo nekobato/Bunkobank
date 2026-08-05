@@ -5,15 +5,15 @@
 set -euo pipefail
 
 if [[ "$#" -ne 1 ]]; then
-  print -u2 "Usage: $0 /path/to/BookCafe.app"
+  print -u2 "Usage: $0 /path/to/Bunkobank.app"
   exit 64
 fi
 
 readonly app_path="${1:A}"
-readonly sidecar_path="${app_path}/Contents/MacOS/bookcafe-server"
+readonly sidecar_path="${app_path}/Contents/MacOS/bunkobank-server"
 
 if [[ ! -x "${sidecar_path}" ]]; then
-  print -u2 "Bundled BookCafe sidecar is not executable: ${sidecar_path}"
+  print -u2 "Bundled Bunkobank sidecar is not executable: ${sidecar_path}"
   exit 66
 fi
 
@@ -48,7 +48,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-smoke_dir="$(mktemp -d "${TMPDIR:-/tmp}/bookcafe-bundle-smoke.XXXXXX")"
+smoke_dir="$(mktemp -d "${TMPDIR:-/tmp}/bunkobank-bundle-smoke.XXXXXX")"
 readonly config_path="${smoke_dir}/config.json"
 readonly state_dir="${smoke_dir}/state"
 readonly stdout_path="${smoke_dir}/stdout.log"
@@ -65,7 +65,7 @@ readonly health_url="http://127.0.0.1:${port}/api/health"
 mkdir -p "${state_dir}"
 print -r -- "{\"host\":\"127.0.0.1\",\"port\":${port},\"thumbnails\":{\"enabled\":false}}" > "${config_path}"
 
-BOOKCAFE_STATE_DIR="${state_dir}" "${sidecar_path}" \
+BUNKOBANK_STATE_DIR="${state_dir}" "${sidecar_path}" \
   --config "${config_path}" \
   >"${stdout_path}" \
   2>"${stderr_path}" &
@@ -86,7 +86,7 @@ for attempt in {1..120}; do
       .then(async (response) => {
         if (!response.ok) process.exit(1);
         const payload = await response.json();
-        if (payload.ok !== true || payload.service !== "bookcafe-server") {
+        if (payload.ok !== true || payload.service !== "bunkobank-server") {
           process.exit(1);
         }
       })

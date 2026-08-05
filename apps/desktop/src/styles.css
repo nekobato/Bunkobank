@@ -1,6 +1,6 @@
 /** Global layout and platform color behavior for the Desktop Manager. */
 
-@layer bookcafe {
+@layer bunkobank {
   :root {
     color-scheme: light dark;
     font-synthesis: none;

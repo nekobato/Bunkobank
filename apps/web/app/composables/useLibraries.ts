@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { LibraryResponse } from "@bookcafe/contracts";
+import type { LibraryResponse } from "@bunkobank/contracts";
 
 import { resolveLibrarySelection } from "../utils/librarySelection";
 
@@ -12,15 +12,18 @@ import { resolveLibrarySelection } from "../utils/librarySelection";
  * Provides library loading, selection, and preference persistence.
  */
 export const useLibraries = () => {
-  const libraries = useState<LibraryResponse[]>("bookcafe-libraries", () => []);
+  const libraries = useState<LibraryResponse[]>(
+    "bunkobank-libraries",
+    () => []
+  );
   const selectedLibraryId = useState<string | null>(
-    "bookcafe-selected-library",
+    "bunkobank-selected-library",
     () => null
   );
-  const loading = useState("bookcafe-libraries-loading", () => false);
-  const loaded = useState("bookcafe-libraries-loaded", () => false);
+  const loading = useState("bunkobank-libraries-loading", () => false);
+  const loaded = useState("bunkobank-libraries-loaded", () => false);
   const error = useState<unknown | null>(
-    "bookcafe-libraries-error",
+    "bunkobank-libraries-error",
     () => null
   );
   const { getLibraryPreference, listLibraries, updateLibraryPreference } =

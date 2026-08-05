@@ -1,4 +1,4 @@
-/** Pure build planning helpers for the packaged BookCafe server sidecar. */
+/** Pure build planning helpers for the packaged Bunkobank server sidecar. */
 
 /** Reads the Rust host target from `rustc -vV` output. */
 export declare const parseRustHost: (output: string) => string;

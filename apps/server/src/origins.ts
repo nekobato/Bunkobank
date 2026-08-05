@@ -12,11 +12,11 @@ const defaultClientOrigins = [
 ] as const;
 
 /**
- * Builds the deduplicated exact-origin allowlist for BookCafe clients.
+ * Builds the deduplicated exact-origin allowlist for Bunkobank clients.
  */
-export const getBookCafeClientOrigins = (
+export const getBunkobankClientOrigins = (
   serverOrigins: readonly string[] = [],
-  extraOrigins = process.env.BOOKCAFE_TRUSTED_ORIGINS ?? ""
+  extraOrigins = process.env.BUNKOBANK_TRUSTED_ORIGINS ?? ""
 ): string[] =>
   Array.from(
     new Set([

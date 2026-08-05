@@ -12,13 +12,13 @@ import {
   resolve
 } from "node:path";
 
-import { scanFailureCodes } from "@bookcafe/core";
+import { scanFailureCodes } from "@bunkobank/core";
 import type {
   BookFormat,
   ScanFailureCode,
   ScanFailureKind
-} from "@bookcafe/core";
-import type { PdfPageEntry } from "@bookcafe/format-adapters";
+} from "@bunkobank/core";
+import type { PdfPageEntry } from "@bunkobank/format-adapters";
 import type { Dirent } from "node:fs";
 import {
   detectFileFormat,
@@ -28,8 +28,8 @@ import {
   listPackedArchiveImageEntries,
   listPdfPages,
   readEpubMetadata
-} from "@bookcafe/format-adapters";
-import { isImageFile, sortPageNames } from "@bookcafe/format-adapters";
+} from "@bunkobank/format-adapters";
+import { isImageFile, sortPageNames } from "@bunkobank/format-adapters";
 
 const excludedNames = new Set(["__macosx", "thumbs.db", "desktop.ini"]);
 const defaultScanConcurrency = 2;

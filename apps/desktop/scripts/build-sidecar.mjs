@@ -80,7 +80,7 @@ try {
     platform: process.platform,
     arch: targetArch
   });
-  console.log(`Staging portable BookCafe server at ${stageDir}`);
+  console.log(`Staging portable Bunkobank server at ${stageDir}`);
   const workspaceMetadata = workspaceMetadataPaths.map((path) => ({
     path,
     contents: existsSync(path) ? readFileSync(path) : undefined
@@ -132,7 +132,7 @@ try {
   });
 
   mkdirSync(binariesDir, { recursive: true });
-  console.log(`Packaging BookCafe sidecar at ${plan.outputPath}`);
+  console.log(`Packaging Bunkobank sidecar at ${plan.outputPath}`);
   execFileSync(process.execPath, [pkgCliPath, ...plan.pkgArguments], {
     cwd: workspaceDir,
     stdio: "inherit",
@@ -148,7 +148,7 @@ try {
   }
 
   console.log(
-    `Packaged BookCafe sidecar (${sidecarStat.size.toLocaleString("en-US")} bytes).`
+    `Packaged Bunkobank sidecar (${sidecarStat.size.toLocaleString("en-US")} bytes).`
   );
 } finally {
   rmSync(stageDir, { recursive: true, force: true });

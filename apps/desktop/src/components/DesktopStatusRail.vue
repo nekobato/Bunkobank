@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Server lifecycle monitor and essential native controls. */
 
-import { getShelfmarkToneMeta } from "@bookcafe/ui";
+import { getShelfmarkToneMeta } from "@bunkobank/ui";
 import Button from "primevue/button";
 import Message from "primevue/message";
 import Tag from "primevue/tag";
@@ -60,9 +60,9 @@ const webGuidance = computed(() => {
     tabindex="-1"
   >
     <header class="brand">
-      <span class="brand-mark" aria-hidden="true">BC</span>
+      <span class="brand-mark" aria-hidden="true">BB</span>
       <div>
-        <h1 id="product-name" class="brand-name">BookCafe</h1>
+        <h1 id="product-name" class="brand-name">Bunkobank</h1>
         <p class="product-kind">Server Monitor</p>
       </div>
     </header>

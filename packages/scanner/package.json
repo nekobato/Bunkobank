@@ -1,5 +1,5 @@
 {
-  "name": "@bookcafe/scanner",
+  "name": "@bunkobank/scanner",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bookcafe/core": "workspace:*",
-    "@bookcafe/format-adapters": "workspace:*"
+    "@bunkobank/core": "workspace:*",
+    "@bunkobank/format-adapters": "workspace:*"
   },
   "devDependencies": {
     "fflate": "^0.8.3",

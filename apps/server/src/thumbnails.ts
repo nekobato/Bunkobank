@@ -1,18 +1,18 @@
 /**
- * Thumbnail generation helpers for scanned BookCafe books.
+ * Thumbnail generation helpers for scanned Bunkobank books.
  */
 
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
-import { setBookThumbnail, type BookCafeDatabase } from "@bookcafe/db";
+import { setBookThumbnail, type BunkobankDatabase } from "@bunkobank/db";
 import sharp from "sharp";
 
 const thumbnailWidth = 320;
 const thumbnailHeight = 480;
 
 export interface GenerateBookThumbnailOptions {
-  database: BookCafeDatabase;
+  database: BunkobankDatabase;
   libraryId: string;
   bookId: string;
   sourcePath?: string;

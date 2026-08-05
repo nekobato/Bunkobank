@@ -2,7 +2,10 @@
  * Extracts a compact user-facing API error message.
  */
 
-import { apiErrorResponseSchema, type ApiErrorCode } from "@bookcafe/contracts";
+import {
+  apiErrorResponseSchema,
+  type ApiErrorCode
+} from "@bunkobank/contracts";
 
 const localizedApiErrors: Record<ApiErrorCode, string> = {
   INVALID_INPUT: "入力内容を確認してください。",
@@ -54,7 +57,7 @@ export const getApiErrorMessage = (
 };
 
 /**
- * Extracts a stable BookCafe error code from Nuxt `$fetch` failures.
+ * Extracts a stable Bunkobank error code from Nuxt `$fetch` failures.
  */
 export const getApiErrorCode = (error: unknown): ApiErrorCode | null => {
   if (!isRecord(error) || !isRecord(error.data)) {

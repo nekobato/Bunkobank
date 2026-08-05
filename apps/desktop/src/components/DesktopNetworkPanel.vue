@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Editable server port controls for the Desktop Manager. */
 
-import { getShelfmarkToneMeta } from "@bookcafe/ui";
+import { getShelfmarkToneMeta } from "@bunkobank/ui";
 import Button from "primevue/button";
 import Card from "primevue/card";
 import InputNumber from "primevue/inputnumber";

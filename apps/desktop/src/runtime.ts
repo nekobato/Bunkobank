@@ -2,7 +2,7 @@
  * Tauri plugin adapters for desktop manager operations.
  */
 
-import type { AppConfig } from "@bookcafe/config/shared";
+import type { AppConfig } from "@bunkobank/config/shared";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl as openExternalUrl } from "@tauri-apps/plugin-opener";

@@ -1,12 +1,12 @@
 /**
- * Browser entrypoint for the BookCafe Tauri manager.
+ * Browser entrypoint for the Bunkobank Tauri manager.
  */
 
 import "primeicons/primeicons.css";
-import "@bookcafe/ui/styles.css";
+import "@bunkobank/ui/styles.css";
 import "./styles.css";
 
-import { desktopShelfmarkTheme, shelfmarkJapaneseLocale } from "@bookcafe/ui";
+import { desktopShelfmarkTheme, shelfmarkJapaneseLocale } from "@bunkobank/ui";
 import PrimeVue from "primevue/config";
 import { createApp, type Plugin } from "vue";
 
@@ -17,7 +17,7 @@ import { createTauriDesktopRuntime } from "./runtime.js";
 const root = document.querySelector<HTMLElement>("#app");
 
 if (!root) {
-  throw new Error("BookCafe manager root element was not found.");
+  throw new Error("Bunkobank manager root element was not found.");
 }
 
 const controller = createDesktopManagerController({

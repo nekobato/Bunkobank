@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Login-startup preference panel for the Desktop Manager. */
 
-import { getShelfmarkToneMeta } from "@bookcafe/ui";
+import { getShelfmarkToneMeta } from "@bunkobank/ui";
 import Card from "primevue/card";
 import Message from "primevue/message";
 import Tag from "primevue/tag";
@@ -23,8 +23,8 @@ const statusMeta = computed(() =>
 );
 const title = computed(() =>
   state.environment?.platform === "macos"
-    ? "ログイン時にBookCafeサーバーを起動"
-    : "ログイン時にBookCafeを起動"
+    ? "ログイン時にBunkobankサーバーを起動"
+    : "ログイン時にBunkobankを起動"
 );
 const canChange = computed(() =>
   ["disabled", "enabled", "outdated"].includes(state.startup.phase)

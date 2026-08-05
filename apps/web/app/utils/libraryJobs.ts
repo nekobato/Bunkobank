@@ -1,7 +1,7 @@
 import type {
   BackgroundJobResponse,
   ScanFailureCode
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 
 export type JobTone = "neutral" | "active" | "success" | "danger";
 

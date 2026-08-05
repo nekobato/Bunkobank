@@ -1,5 +1,5 @@
 /**
- * Client-side route guard for every authenticated BookCafe page.
+ * Client-side route guard for every authenticated Bunkobank page.
  *
  * @module
  */

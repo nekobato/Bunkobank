@@ -1,5 +1,5 @@
 /**
- * Shared domain types and small pure helpers for BookCafe.
+ * Shared domain types and small pure helpers for Bunkobank.
  */
 
 export type ReaderMode = "paged" | "vertical";

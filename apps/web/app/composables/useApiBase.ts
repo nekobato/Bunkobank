@@ -1,5 +1,5 @@
 /**
- * Returns the configured BookCafe API base URL.
+ * Returns the configured Bunkobank API base URL.
  */
 export const useApiBase = (): string => {
   const config = useRuntimeConfig();

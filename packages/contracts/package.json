@@ -1,5 +1,5 @@
 {
-  "name": "@bookcafe/contracts",
+  "name": "@bunkobank/contracts",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bookcafe/core": "workspace:*",
+    "@bunkobank/core": "workspace:*",
     "zod": "^4.2.1"
   },
   "devDependencies": {

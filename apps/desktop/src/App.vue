@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** Minimal server monitor shell for the BookCafe desktop application. */
+/** Minimal server monitor shell for the Bunkobank desktop application. */
 
 import { computed, onMounted, onUnmounted, shallowRef } from "vue";
 

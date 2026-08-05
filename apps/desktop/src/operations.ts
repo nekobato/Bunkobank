@@ -2,14 +2,14 @@
  * Effectful desktop manager operations built from the pure plans in index.ts.
  */
 
-import type { AppConfig } from "@bookcafe/config/shared";
+import type { AppConfig } from "@bunkobank/config/shared";
 import {
   apiErrorResponseSchema,
   setupStatusSchema,
   type ApiErrorCode,
   type InitialSetupRequest,
   type SetupStatusResponse
-} from "@bookcafe/contracts";
+} from "@bunkobank/contracts";
 
 import {
   createInitialSetupRequest,
@@ -147,7 +147,7 @@ export const createInitialSetupSubmitter =
     const parsed = setupStatusSchema.safeParse(payload);
 
     if (!parsed.success) {
-      throw new Error("Initial setup response did not match BookCafe.");
+      throw new Error("Initial setup response did not match Bunkobank.");
     }
 
     return {
@@ -183,7 +183,7 @@ export const createInitialSetupStatusReader =
     const parsed = setupStatusSchema.safeParse(payload);
 
     if (!parsed.success) {
-      throw new Error("Setup status response did not match BookCafe.");
+      throw new Error("Setup status response did not match Bunkobank.");
     }
 
     return {
@@ -387,7 +387,7 @@ const getApiErrorMessage = (payload: unknown): string | null => {
 };
 
 /**
- * Creates a normal Error carrying stable HTTP and BookCafe API identifiers.
+ * Creates a normal Error carrying stable HTTP and Bunkobank API identifiers.
  */
 const createManagedServerApiError = (
   operation: string,
@@ -407,7 +407,7 @@ const createManagedServerApiError = (
 };
 
 /**
- * Returns whether an unknown failure carries BookCafe API error metadata.
+ * Returns whether an unknown failure carries Bunkobank API error metadata.
  */
 export const isManagedServerApiError = (
   error: unknown

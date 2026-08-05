@@ -3,7 +3,7 @@ import type {
   BookDetail,
   PageLayout,
   ReaderKeyboardAction
-} from "@bookcafe/core";
+} from "@bunkobank/core";
 import {
   clampPage,
   clampScale,
@@ -12,7 +12,7 @@ import {
   getReaderKeyboardAction,
   getSpreadAnchorPage,
   getVisibleReaderPages
-} from "@bookcafe/core";
+} from "@bunkobank/core";
 import { useElementSize, useLocalStorage, useSwipe } from "@vueuse/core";
 import {
   computed,
@@ -55,7 +55,7 @@ const defaultPreferences = normalizeReaderPreferences(
   book.readingDirection
 );
 const storedPreferences = useLocalStorage<ReaderPreferences>(
-  "bookcafe-reader-preferences",
+  "bunkobank-reader-preferences",
   defaultPreferences,
   { mergeDefaults: true }
 );

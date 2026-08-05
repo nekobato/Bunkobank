@@ -1,12 +1,12 @@
 /**
- * Node.js entrypoint for the BookCafe Hono server.
+ * Node.js entrypoint for the Bunkobank Hono server.
  */
 
 import {
   getDefaultStateDir,
   loadConfig,
   resolveStatePaths
-} from "@bookcafe/config";
+} from "@bunkobank/config";
 import { serve } from "@hono/node-server";
 
 import { createApp } from "./library-app.js";
@@ -36,7 +36,7 @@ const startServer = (): void => {
 
   if (initializationState.status === "unavailable") {
     console.error(
-      "BookCafe data is unavailable. The server is restricted to loopback.",
+      "Bunkobank data is unavailable. The server is restricted to loopback.",
       initializationState.cause
     );
   }
@@ -49,7 +49,7 @@ const startServer = (): void => {
     },
     (info) => {
       console.log(
-        `BookCafe server listening on http://${info.address}:${info.port}`
+        `Bunkobank server listening on http://${info.address}:${info.port}`
       );
     }
   );

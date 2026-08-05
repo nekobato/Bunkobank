@@ -1,5 +1,5 @@
 /**
- * Portable staging helpers for the packaged BookCafe server sidecar.
+ * Portable staging helpers for the packaged Bunkobank server sidecar.
  */
 
 import {

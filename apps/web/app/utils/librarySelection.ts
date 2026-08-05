@@ -4,7 +4,7 @@
  * @module
  */
 
-import type { LibraryResponse } from "@bookcafe/contracts";
+import type { LibraryResponse } from "@bunkobank/contracts";
 
 /** Result of reconciling persisted selection with the current libraries. */
 export interface LibrarySelectionResolution {

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-/** Responsive PrimeVue application shell for the BookCafe Web Library. */
+/** Responsive PrimeVue application shell for the Bunkobank Web Library. */
 
 import { isReaderRoute } from "./utils/appNavigation";
 
 useHead({
-  titleTemplate: (title) => (title ? `BookCafe - ${title}` : "BookCafe")
+  titleTemplate: (title) => (title ? `Bunkobank - ${title}` : "Bunkobank")
 });
 
 const route = useRoute();

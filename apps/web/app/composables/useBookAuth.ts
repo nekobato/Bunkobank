@@ -12,7 +12,7 @@ interface UsernameSignInInput {
 }
 
 /**
- * Creates the Better Auth Vue client for a BookCafe API base URL.
+ * Creates the Better Auth Vue client for a Bunkobank API base URL.
  */
 const createBookAuthClient = (apiBase: string) => {
   const authPath = `${apiBase}/auth`;
@@ -49,7 +49,7 @@ const isAbsoluteUrl = (url: string): boolean =>
   url.startsWith("http://") || url.startsWith("https://");
 
 /**
- * Creates small authentication helpers for the BookCafe frontend.
+ * Creates small authentication helpers for the Bunkobank frontend.
  */
 export const useBookAuth = () => {
   const authClient = getBookAuthClient(useApiBase());

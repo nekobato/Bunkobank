@@ -1,4 +1,4 @@
-/** Shared Shelfmark theme primitives for the BookCafe Vue applications. */
+/** Shared Shelfmark theme primitives for the Bunkobank Vue applications. */
 
 import { definePreset } from "@primeuix/themes";
 import Aura from "@primeuix/themes/aura";
@@ -292,7 +292,7 @@ export const desktopShelfmarkTheme = {
   options: {
     prefix: "p",
     darkModeSelector: "system",
-    cssLayer: { name: "primevue", order: "primevue, bookcafe" }
+    cssLayer: { name: "primevue", order: "primevue, bunkobank" }
   }
 } as const;
 
@@ -302,6 +302,6 @@ export const webShelfmarkTheme = {
   options: {
     prefix: "p",
     darkModeSelector: false,
-    cssLayer: { name: "primevue", order: "primevue, bookcafe" }
+    cssLayer: { name: "primevue", order: "primevue, bunkobank" }
   }
 } as const;

@@ -1,4 +1,4 @@
-//! Native shell and narrowly scoped OS operations for the BookCafe manager.
+//! Native shell and narrowly scoped OS operations for the Bunkobank manager.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,8 +10,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 const SERVER_CONFIG_FILE: &str = "config.json";
-const SIDECAR_NAME: &str = "binaries/bookcafe-server";
-const LAUNCH_AGENT_LABEL: &str = "dev.bookcafe.server";
+const SIDECAR_NAME: &str = "binaries/bunkobank-server";
+const LAUNCH_AGENT_LABEL: &str = "dev.bunkobank.server";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,7 +62,7 @@ fn get_desktop_environment(app: AppHandle) -> Result<DesktopEnvironment, String>
     })
 }
 
-/// Reads the fixed BookCafe server config file when it exists.
+/// Reads the fixed Bunkobank server config file when it exists.
 #[tauri::command]
 fn read_server_config(app: AppHandle) -> Result<Option<ServerConfig>, String> {
     let config_path = app
@@ -100,7 +100,7 @@ fn write_server_port(app: AppHandle, port: u16) -> Result<ServerConfig, String> 
     Ok(config)
 }
 
-/// Opens only BookCafe's fixed application log directory.
+/// Opens only Bunkobank's fixed application log directory.
 #[tauri::command]
 fn open_log_directory(app: AppHandle) -> Result<(), String> {
     let log_dir = app.path().app_log_dir().map_err(display_error)?;
@@ -110,7 +110,7 @@ fn open_log_directory(app: AppHandle) -> Result<(), String> {
         .map_err(display_error)
 }
 
-/// Reads the fixed per-user BookCafe LaunchAgent plist on macOS.
+/// Reads the fixed per-user Bunkobank LaunchAgent plist on macOS.
 #[tauri::command]
 fn read_mac_launch_agent_plist(app: AppHandle) -> Result<Option<String>, String> {
     #[cfg(target_os = "macos")]
@@ -138,7 +138,7 @@ fn read_mac_launch_agent_plist(app: AppHandle) -> Result<Option<String>, String>
     }
 }
 
-/// Atomically writes and activates the fixed BookCafe LaunchAgent on macOS.
+/// Atomically writes and activates the fixed Bunkobank LaunchAgent on macOS.
 #[tauri::command]
 fn install_mac_launch_agent(app: AppHandle, plist: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -156,7 +156,7 @@ fn install_mac_launch_agent(app: AppHandle, plist: String) -> Result<(), String>
 
         if !sidecar_path.is_file() {
             return Err(format!(
-                "Bundled BookCafe sidecar does not exist: {}",
+                "Bundled Bunkobank sidecar does not exist: {}",
                 display_path(&sidecar_path)
             ));
         }
@@ -183,7 +183,7 @@ fn install_mac_launch_agent(app: AppHandle, plist: String) -> Result<(), String>
     }
 }
 
-/// Deactivates and removes the fixed BookCafe LaunchAgent on macOS.
+/// Deactivates and removes the fixed Bunkobank LaunchAgent on macOS.
 #[tauri::command]
 fn remove_mac_launch_agent(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -211,7 +211,7 @@ fn remove_mac_launch_agent(app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// Starts the BookCafe desktop manager and its platform plugins.
+/// Starts the Bunkobank desktop manager and its platform plugins.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -237,7 +237,7 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running BookCafe desktop manager");
+        .expect("error while running Bunkobank desktop manager");
 }
 
 /// Returns the same defaults used by the shared TypeScript config schema.
@@ -256,9 +256,9 @@ fn resolve_bundled_sidecar_path() -> Result<PathBuf, String> {
         .parent()
         .ok_or_else(|| "Desktop executable path has no parent directory.".to_string())?;
     let file_name = if cfg!(target_os = "windows") {
-        "bookcafe-server.exe"
+        "bunkobank-server.exe"
     } else {
-        "bookcafe-server"
+        "bunkobank-server"
     };
 
     Ok(directory.join(file_name))
@@ -318,7 +318,7 @@ fn create_expected_launch_agent_plist(app: &AppHandle) -> Result<String, String>
 }
 
 #[cfg(target_os = "macos")]
-/// Serializes the fixed BookCafe LaunchAgent using the frontend line format.
+/// Serializes the fixed Bunkobank LaunchAgent using the frontend line format.
 fn create_launch_agent_plist(sidecar_path: &str, config_path: &str, log_dir: &str) -> String {
     let sidecar_path = escape_plist_xml(sidecar_path);
     let config_path = escape_plist_xml(config_path);
@@ -346,7 +346,7 @@ fn create_launch_agent_plist(sidecar_path: &str, config_path: &str, log_dir: &st
         format!("  <string>{standard_error_path}</string>"),
         "  <key>EnvironmentVariables</key>".to_string(),
         "  <dict>".to_string(),
-        "    <key>BOOKCAFE_CONFIG</key>".to_string(),
+        "    <key>BUNKOBANK_CONFIG</key>".to_string(),
         format!("    <string>{config_path}</string>"),
         "  </dict>".to_string(),
         "</dict>".to_string(),
@@ -360,7 +360,7 @@ fn create_launch_agent_plist(sidecar_path: &str, config_path: &str, log_dir: &st
 /// Rejects any LaunchAgent payload that differs from the fixed native model.
 fn validate_launch_agent_plist(plist: &str, expected: &str) -> Result<(), String> {
     if plist != expected {
-        return Err("LaunchAgent plist did not match the fixed BookCafe service.".to_string());
+        return Err("LaunchAgent plist did not match the fixed Bunkobank service.".to_string());
     }
 
     Ok(())
@@ -453,7 +453,7 @@ fn interpret_launch_agent_lookup(
 
     let message = stderr.trim();
     Err(if message.is_empty() {
-        "Unable to inspect the BookCafe LaunchAgent.".to_string()
+        "Unable to inspect the Bunkobank LaunchAgent.".to_string()
     } else {
         message.to_string()
     })
@@ -466,27 +466,24 @@ mod tests {
     };
 
     #[test]
-    fn accepts_only_the_exact_fixed_bookcafe_launch_agent() {
+    fn validates_the_fixed_bunkobank_launch_agent_contract() {
         let expected = create_launch_agent_plist(
-            "/Applications/Book&Cafe.app/Contents/MacOS/bookcafe-server",
-            "/Users/alice/Library/Application Support/BookCafe/config.json",
-            "/Users/alice/Library/Logs/BookCafe",
+            "/Applications/Book&Cafe.app/Contents/MacOS/bunkobank-server",
+            "/Users/alice/Library/Application Support/Bunkobank/config.json",
+            "/Users/alice/Library/Logs/Bunkobank",
         );
 
         assert!(validate_launch_agent_plist(&expected, &expected).is_ok());
         assert!(validate_launch_agent_plist(
             &expected.replace(
-                "/Applications/Book&amp;Cafe.app/Contents/MacOS/bookcafe-server",
+                "/Applications/Book&amp;Cafe.app/Contents/MacOS/bunkobank-server",
                 "/bin/sh"
             ),
             &expected
         )
         .is_err());
         assert!(expected.contains("/Applications/Book&amp;Cafe.app"));
-    }
 
-    #[test]
-    fn distinguishes_an_absent_launch_agent_from_a_lookup_failure() {
         assert_eq!(interpret_launch_agent_lookup(true, Some(0), ""), Ok(true));
         assert_eq!(
             interpret_launch_agent_lookup(false, Some(113), "Could not find service"),

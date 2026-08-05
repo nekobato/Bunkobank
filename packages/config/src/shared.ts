@@ -1,5 +1,5 @@
 /**
- * Runtime-neutral BookCafe configuration schemas and URL helpers.
+ * Runtime-neutral Bunkobank configuration schemas and URL helpers.
  */
 
 import { z } from "zod";

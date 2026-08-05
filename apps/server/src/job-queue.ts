@@ -4,7 +4,7 @@
 
 import PQueue from "p-queue";
 
-export interface BookCafeJobQueue {
+export interface BunkobankJobQueue {
   add: (jobId: string, task: (signal: AbortSignal) => Promise<void>) => void;
   cancel: (jobId: string) => boolean;
   onIdle: () => Promise<void>;
@@ -13,7 +13,7 @@ export interface BookCafeJobQueue {
 /**
  * Creates the server-local background job queue.
  */
-export const createBookCafeJobQueue = (concurrency = 1): BookCafeJobQueue => {
+export const createBunkobankJobQueue = (concurrency = 1): BunkobankJobQueue => {
   const queue = new PQueue({ concurrency });
   const controllers = new Map<string, AbortController>();
 

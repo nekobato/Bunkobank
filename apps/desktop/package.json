@@ -1,5 +1,5 @@
 {
-  "name": "@bookcafe/app",
+  "name": "@bunkobank/app",
   "version": "2.0.2",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "build": "vue-tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "sidecar:prepare": "pnpm --dir ../.. -r --filter @bookcafe/config --filter @bookcafe/contracts --filter @bookcafe/core --filter @bookcafe/db --filter @bookcafe/format-adapters --filter @bookcafe/scanner --filter @bookcafe/ui build && pnpm --dir ../.. --filter @bookcafe/web generate && pnpm --dir ../.. --filter @bookcafe/server build && pnpm --dir ../.. --filter @bookcafe/server copy-web",
+    "sidecar:prepare": "pnpm --dir ../.. -r --filter @bunkobank/config --filter @bunkobank/contracts --filter @bunkobank/core --filter @bunkobank/db --filter @bunkobank/format-adapters --filter @bunkobank/scanner --filter @bunkobank/ui build && pnpm --dir ../.. --filter @bunkobank/web generate && pnpm --dir ../.. --filter @bunkobank/server build && pnpm --dir ../.. --filter @bunkobank/server copy-web",
     "sidecar:build": "pnpm sidecar:prepare && node scripts/build-sidecar.mjs",
     "notarize:build": "zsh scripts/notarize-build.zsh",
     "tauri": "tauri",
@@ -17,9 +17,9 @@
     "typecheck": "vue-tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bookcafe/config": "workspace:*",
-    "@bookcafe/contracts": "workspace:*",
-    "@bookcafe/ui": "workspace:*",
+    "@bunkobank/config": "workspace:*",
+    "@bunkobank/contracts": "workspace:*",
+    "@bunkobank/ui": "workspace:*",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
