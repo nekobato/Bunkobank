@@ -21,6 +21,7 @@ import {
   focusFormErrorSummary
 } from "../utils/formValidation";
 import {
+  findActiveScanJob,
   getJobStatusLabel,
   getJobTone,
   getScanJobFailureCount,
@@ -55,7 +56,7 @@ const {
 } = useLibraries();
 const name = ref("");
 const rootPath = ref("");
-const jobs = ref<BackgroundJobResponse[]>([]);
+const allJobs = ref<BackgroundJobResponse[]>([]);
 const jobsPending = ref(false);
 const jobsError = ref("");
 const message = ref("");
@@ -75,8 +76,15 @@ const createFieldErrors = ref<Record<string, string>>({});
 const editFieldErrors = ref<Record<string, string>>({});
 const createErrorSummary = useTemplateRef<HTMLElement>("create-error-summary");
 const editErrorSummary = useTemplateRef<HTMLElement>("edit-error-summary");
+const jobs = computed(() =>
+  selectedLibraryId.value
+    ? allJobs.value.filter(
+        ({ libraryId }) => libraryId === selectedLibraryId.value
+      )
+    : []
+);
 const recentJobs = computed(() => listRecentJobs(jobs.value));
-const activeJobs = computed(() => hasActiveJobs(jobs.value));
+const activeJobs = computed(() => hasActiveJobs(allJobs.value));
 
 const { pause, resume, isActive } = useIntervalFn(refreshJobs, 2500, {
   immediate: false
@@ -87,6 +95,13 @@ watch(
   () => {
     failureDialogVisible.value = false;
     failureDialogJob.value = null;
+  },
+  { immediate: true }
+);
+
+watch(
+  () => libraries.value.map(({ id }) => id).join("\0"),
+  () => {
     void refreshJobs();
   },
   { immediate: true }
@@ -204,7 +219,7 @@ const scanLibrary = async (libraryId: string): Promise<void> => {
 
   try {
     await selectLibrary(libraryId);
-    await createScanJob(libraryId);
+    upsertJob(await createScanJob(libraryId));
     await refreshJobs();
     messageSeverity.value = "success";
     message.value = "スキャンを開始しました。";
@@ -220,28 +235,63 @@ const scanLibrary = async (libraryId: string): Promise<void> => {
 };
 
 /** Cancels one queued or running scan. */
-const cancelScanJob = async (jobId: string): Promise<void> => {
-  if (!selectedLibraryId.value) {
-    return;
-  }
-
+const cancelScanJob = async (
+  libraryId: string,
+  jobId: string
+): Promise<void> => {
   cancellingJobId.value = jobId;
   message.value = "";
 
   try {
-    await cancelJob(selectedLibraryId.value, jobId);
+    upsertJob(await cancelJob(libraryId, jobId));
     await refreshJobs();
     messageSeverity.value = "success";
-    message.value = "スキャンをキャンセルしました。";
+    message.value = "スキャンを停止しました。";
   } catch (error) {
     messageSeverity.value = "error";
     message.value = getApiErrorMessage(
       error,
-      "スキャンをキャンセルできませんでした。"
+      "スキャンを停止できませんでした。"
     );
   } finally {
     cancellingJobId.value = null;
   }
+};
+
+/** Starts or stops the scan associated with one library row. */
+const toggleLibraryScan = async (libraryId: string): Promise<void> => {
+  const activeJob = getActiveScanJob(libraryId);
+
+  if (activeJob) {
+    await cancelScanJob(libraryId, activeJob.id);
+    return;
+  }
+
+  await scanLibrary(libraryId);
+};
+
+/** Returns the queued or running scan for one library. */
+const getActiveScanJob = (libraryId: string): BackgroundJobResponse | null =>
+  findActiveScanJob(allJobs.value, libraryId);
+
+/** Prevents library mutations while a scan is starting or active. */
+const isLibraryScanning = (libraryId: string): boolean =>
+  scanningLibraryId.value === libraryId || getActiveScanJob(libraryId) !== null;
+
+/** Returns whether one library's active scan is being stopped. */
+const isStoppingLibraryScan = (libraryId: string): boolean =>
+  cancellingJobId.value === getActiveScanJob(libraryId)?.id;
+
+/** Returns whether one library's scan action is waiting for the API. */
+const isUpdatingLibraryScan = (libraryId: string): boolean =>
+  scanningLibraryId.value === libraryId || isStoppingLibraryScan(libraryId);
+
+/** Replaces one locally cached job with its newest API representation. */
+const upsertJob = (updatedJob: BackgroundJobResponse): void => {
+  allJobs.value = [
+    updatedJob,
+    ...allJobs.value.filter(({ id }) => id !== updatedJob.id)
+  ];
 };
 
 /** Opens the paginated failure diagnostics for one completed scan. */
@@ -278,12 +328,12 @@ const confirmLibraryDeletion = async (): Promise<void> => {
   }
 };
 
-/** Reloads jobs for the current library. */
+/** Reloads jobs for every configured library. */
 async function refreshJobs(): Promise<void> {
-  const libraryId = selectedLibraryId.value;
+  const libraryIds = libraries.value.map(({ id }) => id);
 
-  if (!libraryId) {
-    jobs.value = [];
+  if (libraryIds.length === 0) {
+    allJobs.value = [];
     jobsError.value = "";
     return;
   }
@@ -292,7 +342,10 @@ async function refreshJobs(): Promise<void> {
   jobsError.value = "";
 
   try {
-    jobs.value = (await listJobs(libraryId)).jobs;
+    const responses = await Promise.all(
+      libraryIds.map((libraryId) => listJobs(libraryId))
+    );
+    allJobs.value = responses.flatMap(({ jobs: libraryJobs }) => libraryJobs);
   } catch (error) {
     jobsError.value = getApiErrorMessage(
       error,
@@ -442,31 +495,47 @@ const localizeLibraryFieldErrors = (
           type="button"
           @click="selectLibrary(library.id)"
         >
-          <strong>{{ library.name }}</strong>
+          <span class="library-title">
+            <strong>{{ library.name }}</strong>
+            <Tag
+              v-if="getActiveScanJob(library.id)"
+              value="スキャン中"
+              severity="info"
+              rounded
+            />
+          </span>
           <code>{{ library.rootPath }}</code>
         </button>
         <div class="row-actions">
           <Button
-            label="スキャン"
-            icon="pi pi-sync"
+            :label="getActiveScanJob(library.id) ? 'スキャン停止' : 'スキャン'"
+            :icon="
+              getActiveScanJob(library.id) ? 'pi pi-stop-circle' : 'pi pi-sync'
+            "
             size="small"
-            :loading="scanningLibraryId === library.id"
-            @click="scanLibrary(library.id)"
+            :severity="getActiveScanJob(library.id) ? 'danger' : undefined"
+            :loading="isUpdatingLibraryScan(library.id)"
+            :disabled="isStoppingLibraryScan(library.id)"
+            @click="toggleLibraryScan(library.id)"
           />
           <Button
-            label="編集"
             icon="pi pi-pencil"
             size="small"
             severity="secondary"
             variant="outlined"
+            rounded
+            :aria-label="`${library.name}を編集`"
+            :disabled="isLibraryScanning(library.id)"
             @click="openEditDialog(library)"
           />
           <Button
-            label="削除"
             icon="pi pi-trash"
             size="small"
             severity="danger"
             variant="text"
+            rounded
+            :aria-label="`${library.name}を削除`"
+            :disabled="isLibraryScanning(library.id)"
             @click="deletingLibrary = library"
           />
         </div>
@@ -525,7 +594,7 @@ const localizeLibraryFieldErrors = (
                 variant="text"
                 :loading="cancellingJobId === job.id"
                 :disabled="cancellingJobId !== null"
-                @click="cancelScanJob(job.id)"
+                @click="cancelScanJob(job.libraryId, job.id)"
               />
             </div>
             <ProgressBar
@@ -791,6 +860,18 @@ const localizeLibraryFieldErrors = (
   padding: 0.25rem;
   text-align: start;
   cursor: pointer;
+}
+
+.library-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-inline-size: 0;
+}
+
+.library-title :deep(.p-tag) {
+  font-size: 0.68rem;
 }
 
 .library-label code {

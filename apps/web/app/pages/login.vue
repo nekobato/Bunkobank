@@ -92,7 +92,7 @@ const submitLogin = async (): Promise<void> => {
 
     <Card class="login-card status-spine tone-info">
       <template #title>
-        <h1>ログイン</h1>
+        <h1 class="title">ログイン</h1>
       </template>
       <template #content>
         <form
@@ -204,6 +204,10 @@ const submitLogin = async (): Promise<void> => {
 </template>
 
 <style scoped>
+.title {
+  font-size: 24px;
+}
+
 .login {
   display: grid;
   grid-template-columns: minmax(12rem, 0.75fr) minmax(20rem, 1fr);

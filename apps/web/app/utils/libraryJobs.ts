@@ -12,6 +12,19 @@ export const hasActiveJobs = (jobs: BackgroundJobResponse[]): boolean =>
   jobs.some((job) => job.status === "queued" || job.status === "running");
 
 /**
+ * Finds the active scan for one library, if it is queued or running.
+ */
+export const findActiveScanJob = (
+  jobs: BackgroundJobResponse[],
+  libraryId: string
+): BackgroundJobResponse | null =>
+  jobs.find(
+    (job) =>
+      job.libraryId === libraryId &&
+      (job.status === "queued" || job.status === "running")
+  ) ?? null;
+
+/**
  * Sorts jobs by their last update time and keeps the newest entries.
  */
 export const listRecentJobs = (
