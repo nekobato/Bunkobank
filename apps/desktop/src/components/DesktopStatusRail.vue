@@ -2,9 +2,14 @@
 /** Server lifecycle monitor and essential native controls. */
 
 import { getShelfmarkToneMeta } from "@bunkobank/ui";
-import Button from "primevue/button";
-import Message from "primevue/message";
-import Tag from "primevue/tag";
+import {
+  FolderOpened,
+  Refresh,
+  TopRight,
+  VideoPause,
+  VideoPlay
+} from "@element-plus/icons-vue";
+import { ElAlert, ElButton, ElTag } from "element-plus";
 import { computed } from "vue";
 
 import type { DesktopManagerState } from "../manager.js";
@@ -74,11 +79,9 @@ const webGuidance = computed(() => {
     >
       <div class="status-heading">
         <h2 id="server-state" class="server-heading">サーバー</h2>
-        <Tag
-          :value="presentation.label"
-          :severity="statusMeta.severity"
-          rounded
-        />
+        <ElTag :type="statusMeta.type" round>
+          {{ presentation.label }}
+        </ElTag>
       </div>
       <p v-if="presentation.detail" class="server-detail">
         {{ presentation.detail }}
@@ -86,54 +89,52 @@ const webGuidance = computed(() => {
       <code class="endpoint">{{ endpoint }}</code>
     </section>
 
-    <Message v-if="errorMessage" severity="error" :closable="false">
+    <ElAlert v-if="errorMessage" type="error" :closable="false" show-icon>
       {{ errorMessage }}
-    </Message>
+    </ElAlert>
 
     <p class="web-guidance">{{ webGuidance }}</p>
 
     <div class="monitor-actions" aria-label="サーバー操作">
-      <Button
-        class="monitor-button type-primary"
-        label="Web UIを開く"
-        icon="pi pi-external-link"
+      <ElButton
+        class="monitor-button type-primary fluid-control"
+        :icon="TopRight"
         :disabled="state.server.phase !== 'running'"
-        fluid
         @click="$emit('open')"
-      />
-      <Button
-        class="monitor-button type-secondary"
-        label="起動"
-        icon="pi pi-play"
-        severity="secondary"
-        variant="outlined"
+      >
+        Web UIを開く
+      </ElButton>
+      <ElButton
+        class="monitor-button type-secondary fluid-control"
+        :icon="VideoPlay"
+        plain
         :loading="state.server.phase === 'starting'"
         :disabled="!state.server.canStart || isBusy"
-        fluid
         @click="$emit('start')"
-      />
-      <Button
-        class="monitor-button type-danger"
-        label="停止"
-        icon="pi pi-stop-circle"
-        severity="danger"
-        variant="outlined"
+      >
+        起動
+      </ElButton>
+      <ElButton
+        class="monitor-button type-danger fluid-control"
+        :icon="VideoPause"
+        type="danger"
+        plain
         :loading="state.server.phase === 'stopping'"
         :disabled="!state.server.canStop || isBusy"
-        fluid
         @click="$emit('stop')"
-      />
-      <Button
-        class="monitor-button type-quiet"
-        label="状態を再確認"
-        icon="pi pi-refresh"
-        severity="secondary"
-        variant="text"
+      >
+        停止
+      </ElButton>
+      <ElButton
+        class="monitor-button type-quiet fluid-control"
+        :icon="Refresh"
+        text
         :loading="state.server.phase === 'checking'"
         :disabled="isBusy"
-        fluid
         @click="$emit('refresh')"
-      />
+      >
+        状態を再確認
+      </ElButton>
     </div>
 
     <details class="diagnostics">
@@ -147,15 +148,15 @@ const webGuidance = computed(() => {
           <span>ログフォルダー</span>
           <code>{{ state.environment?.logDir ?? "確認中…" }}</code>
         </div>
-        <Button
-          label="ログフォルダーを開く"
-          icon="pi pi-folder-open"
+        <ElButton
+          :icon="FolderOpened"
           size="small"
-          severity="secondary"
-          variant="outlined"
+          plain
           :disabled="!state.environment"
           @click="$emit('openLogs')"
-        />
+        >
+          ログフォルダーを開く
+        </ElButton>
         <p v-if="processMessage" class="process-message">
           {{ processMessage }}
         </p>
@@ -166,6 +167,7 @@ const webGuidance = computed(() => {
 
 <style scoped>
 .server-monitor {
+  box-sizing: border-box;
   display: grid;
   align-content: start;
   inline-size: min(100%, 34rem);

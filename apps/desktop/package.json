@@ -20,13 +20,14 @@
     "@bunkobank/config": "workspace:*",
     "@bunkobank/contracts": "workspace:*",
     "@bunkobank/ui": "workspace:*",
+    "@element-plus/icons-vue": "^2.3.2",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-shell": "^2.3.5",
-    "primeicons": "^7.0.0",
-    "primevue": "^4.5.5",
+    "dayjs": "^1.11.21",
+    "element-plus": "^2.14.4",
     "vue": "^3.5.24"
   },
   "devDependencies": {

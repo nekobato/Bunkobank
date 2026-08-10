@@ -40,6 +40,10 @@ const networkMessage = ref("");
 const networkMessageSeverity = ref<"success" | "error">("success");
 const thumbnailMessage = ref("");
 const thumbnailMessageSeverity = ref<"success" | "error">("success");
+const hostOptions = [
+  { label: "この端末のみ", value: "127.0.0.1" },
+  { label: "ローカルネットワーク", value: "0.0.0.0" }
+] as const;
 const isSavingSetup = ref(false);
 const isSavingNetwork = ref(false);
 const isSavingThumbnails = ref(false);
@@ -226,10 +230,11 @@ const submitThumbnailSettings = async (): Promise<void> => {
     </header>
 
     <ClientOnly>
-      <Message
+      <ElAlert
         v-if="setupRequestStatus === 'error'"
-        severity="error"
+        type="error"
         :closable="false"
+        show-icon
       >
         <span>設定を確認できません</span>
         <span>
@@ -237,25 +242,26 @@ const submitThumbnailSettings = async (): Promise<void> => {
             getApiErrorMessage(setupError, "Bunkobankへ接続できませんでした。")
           }}
         </span>
-        <Button
-          label="再試行"
-          icon="pi pi-refresh"
+        <ElButton
+          :icon="ElIconRefresh"
           size="small"
           @click="() => refreshSetupStatus()"
-        />
-      </Message>
+        >
+          再試行
+        </ElButton>
+      </ElAlert>
 
       <div
         v-else-if="['idle', 'pending'].includes(setupRequestStatus)"
         class="loading"
         role="status"
       >
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
 
-      <Card v-else-if="setupStatus?.setupComplete === false">
-        <template #title>初期設定</template>
-        <template #content>
+      <ElCard v-else-if="setupStatus?.setupComplete === false">
+        <template #header>初期設定</template>
+        <template #default>
           <form
             class="form"
             :action="`${apiBase}/setup/initial-user`"
@@ -281,7 +287,7 @@ const submitThumbnailSettings = async (): Promise<void> => {
             </div>
             <div class="field">
               <label for="setup-username">ユーザー名</label>
-              <InputText
+              <ElInput
                 id="setup-username"
                 v-model="username"
                 name="username"
@@ -290,10 +296,10 @@ const submitThumbnailSettings = async (): Promise<void> => {
                 maxlength="30"
                 pattern="[A-Za-z0-9_.]+"
                 required
-                fluid
-                :invalid="Boolean(setupFieldErrors.username)"
                 :aria-invalid="Boolean(setupFieldErrors.username)"
                 aria-describedby="setup-username-error"
+                class="fluid-control"
+                :class="{ 'is-invalid': Boolean(setupFieldErrors.username) }"
               />
               <small
                 v-if="setupFieldErrors.username"
@@ -305,7 +311,7 @@ const submitThumbnailSettings = async (): Promise<void> => {
             </div>
             <div class="field">
               <label for="setup-password">パスワード</label>
-              <InputText
+              <ElInput
                 id="setup-password"
                 v-model="password"
                 name="password"
@@ -313,11 +319,12 @@ const submitThumbnailSettings = async (): Promise<void> => {
                 autocomplete="new-password"
                 minlength="8"
                 maxlength="128"
+                show-password
                 required
-                fluid
-                :invalid="Boolean(setupFieldErrors.password)"
                 :aria-invalid="Boolean(setupFieldErrors.password)"
                 aria-describedby="setup-password-error"
+                class="fluid-control"
+                :class="{ 'is-invalid': Boolean(setupFieldErrors.password) }"
               />
               <small
                 v-if="setupFieldErrors.password"
@@ -327,55 +334,55 @@ const submitThumbnailSettings = async (): Promise<void> => {
                 {{ setupFieldErrors.password }}
               </small>
             </div>
-            <Button
-              label="保存"
-              icon="pi pi-check"
-              type="submit"
+            <ElButton
+              :icon="ElIconCheck"
+              native-type="submit"
               :loading="isSavingSetup"
-            />
-            <Message
+            >
+              保存
+            </ElButton>
+            <ElAlert
               v-if="setupMessage"
-              :severity="setupMessageSeverity"
+              :type="setupMessageSeverity"
               :closable="false"
+              show-icon
             >
               {{ setupMessage }}
-            </Message>
+            </ElAlert>
           </form>
         </template>
-      </Card>
+      </ElCard>
 
-      <Card v-else-if="!authenticated">
-        <template #content>
-          <Button
-            as="router-link"
-            label="ログイン"
-            icon="pi pi-sign-in"
-            to="/login"
-          />
+      <ElCard v-else-if="!authenticated">
+        <template #default>
+          <NuxtLink class="button-link" to="/login">
+            <ElButton :icon="ElIconRight">ログイン</ElButton>
+          </NuxtLink>
         </template>
-      </Card>
+      </ElCard>
 
       <template v-else>
-        <Message v-if="libraryError" severity="error" :closable="false">
+        <ElAlert v-if="libraryError" type="error" :closable="false" show-icon>
           <span>{{ libraryErrorMessage }}</span>
-          <Button
-            label="再試行"
-            icon="pi pi-refresh"
+          <ElButton
+            :icon="ElIconRefresh"
             size="small"
             @click="refreshLibraries"
-          />
-        </Message>
+          >
+            再試行
+          </ElButton>
+        </ElAlert>
 
-        <Card>
-          <template #content>
+        <ElCard>
+          <template #default>
             <LibraryManager />
           </template>
-        </Card>
+        </ElCard>
 
         <div class="settings-grid">
-          <Card>
-            <template #title>ネットワーク</template>
-            <template #content>
+          <ElCard>
+            <template #header>ネットワーク</template>
+            <template #default>
               <form class="form" @submit.prevent="submitNetworkSettings">
                 <div
                   v-if="Object.keys(networkFieldErrors).length > 0"
@@ -395,48 +402,56 @@ const submitThumbnailSettings = async (): Promise<void> => {
                   </ul>
                 </div>
                 <div class="field">
-                  <span id="network-host-label" class="control-label">
+                  <label
+                    id="network-host-label"
+                    class="control-label"
+                    for="network-host"
+                  >
                     待受アドレス
-                  </span>
-                  <Select
+                  </label>
+                  <ElSelect
+                    id="network-host"
                     v-model="host"
-                    input-id="network-host"
-                    :options="[
-                      { label: 'この端末のみ', value: '127.0.0.1' },
-                      { label: 'ローカルネットワーク', value: '0.0.0.0' }
-                    ]"
-                    option-label="label"
-                    option-value="value"
                     aria-labelledby="network-host-label"
-                    :invalid="Boolean(networkFieldErrors.host)"
-                    fluid
-                  />
+                    class="fluid-control"
+                    :class="{
+                      'is-invalid': Boolean(networkFieldErrors.host)
+                    }"
+                    :aria-invalid="Boolean(networkFieldErrors.host)"
+                  >
+                    <ElOption
+                      v-for="option in hostOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </ElSelect>
                   <small v-if="networkFieldErrors.host" class="field-error">
                     {{ networkFieldErrors.host }}
                   </small>
                 </div>
-                <Message
+                <ElAlert
                   v-if="host === '0.0.0.0'"
-                  severity="warn"
+                  type="warning"
                   :closable="false"
+                  show-icon
                 >
                   すべてのネットワークインターフェースで待ち受けます。ファイアウォールを確認してください。
-                </Message>
+                </ElAlert>
                 <div class="field">
                   <label for="network-port">ポート</label>
-                  <InputNumber
+                  <ElInputNumber
+                    id="network-port"
                     v-model="port"
-                    input-id="network-port"
                     :min="1"
                     :max="65535"
-                    :use-grouping="false"
-                    required
-                    fluid
-                    :invalid="Boolean(networkFieldErrors.port)"
-                    :input-props="{
-                      'aria-invalid': Boolean(networkFieldErrors.port),
-                      'aria-describedby': 'network-port-error'
+                    :controls="false"
+                    aria-describedby="network-port-error"
+                    class="fluid-control"
+                    :class="{
+                      'is-invalid': Boolean(networkFieldErrors.port)
                     }"
+                    :aria-invalid="Boolean(networkFieldErrors.port)"
                   />
                   <small
                     v-if="networkFieldErrors.port"
@@ -446,56 +461,57 @@ const submitThumbnailSettings = async (): Promise<void> => {
                     {{ networkFieldErrors.port }}
                   </small>
                 </div>
-                <Button
-                  label="保存"
-                  icon="pi pi-check"
-                  type="submit"
+                <ElButton
+                  :icon="ElIconCheck"
+                  native-type="submit"
                   :loading="isSavingNetwork"
-                />
-                <Message
+                >
+                  保存
+                </ElButton>
+                <ElAlert
                   v-if="networkMessage"
-                  :severity="networkMessageSeverity"
+                  :type="networkMessageSeverity"
                   :closable="false"
+                  show-icon
                 >
                   {{ networkMessage }}
-                </Message>
+                </ElAlert>
               </form>
             </template>
-          </Card>
+          </ElCard>
 
-          <Card>
-            <template #title>サムネイル</template>
-            <template #content>
+          <ElCard>
+            <template #header>サムネイル</template>
+            <template #default>
               <form class="form" @submit.prevent="submitThumbnailSettings">
                 <label class="toggle" for="thumbnail-enabled">
                   <span>生成する</span>
-                  <ToggleSwitch
-                    v-model="thumbnailEnabled"
-                    input-id="thumbnail-enabled"
-                  />
+                  <ElSwitch id="thumbnail-enabled" v-model="thumbnailEnabled" />
                 </label>
-                <Button
-                  label="保存"
-                  icon="pi pi-check"
-                  type="submit"
+                <ElButton
+                  :icon="ElIconCheck"
+                  native-type="submit"
                   :loading="isSavingThumbnails"
-                />
-                <Message
+                >
+                  保存
+                </ElButton>
+                <ElAlert
                   v-if="thumbnailMessage"
-                  :severity="thumbnailMessageSeverity"
+                  :type="thumbnailMessageSeverity"
                   :closable="false"
+                  show-icon
                 >
                   {{ thumbnailMessage }}
-                </Message>
+                </ElAlert>
               </form>
             </template>
-          </Card>
+          </ElCard>
         </div>
       </template>
 
       <template #fallback>
         <div class="loading" role="status">
-          <ProgressSpinner class="spinner" stroke-width="4" />
+          <LoadingIndicator class="spinner" />
         </div>
       </template>
     </ClientOnly>
@@ -536,6 +552,10 @@ const submitThumbnailSettings = async (): Promise<void> => {
 .field-error {
   color: var(--bc-danger);
   font-size: 0.75rem;
+}
+
+.button-link {
+  text-decoration: none;
 }
 
 .error-summary {

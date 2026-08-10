@@ -46,19 +46,25 @@ const updateLibrary = (libraryId: string | null): void => {
         class="library-picker"
         :aria-labelledby="libraryLabelId"
       >
-        <span :id="libraryLabelId" class="control-label">ライブラリ</span>
-        <Select
-          :input-id="libraryInputId"
+        <label :id="libraryLabelId" class="control-label" :for="libraryInputId">
+          ライブラリ
+        </label>
+        <ElSelect
+          :id="libraryInputId"
           :model-value="selectedLibraryId"
-          :options="libraries"
-          option-label="name"
-          option-value="id"
           :placeholder="libraryPlaceholder"
           :loading="librariesLoading"
           :disabled="libraries.length === 0"
           :aria-labelledby="libraryLabelId"
           @update:model-value="updateLibrary"
-        />
+        >
+          <ElOption
+            v-for="library in libraries"
+            :key="library.id"
+            :label="library.name"
+            :value="library.id"
+          />
+        </ElSelect>
       </section>
       <template #fallback>
         <span class="library-placeholder" aria-hidden="true" />
@@ -73,26 +79,20 @@ const updateLibrary = (libraryId: string | null): void => {
           {{ userLabel.slice(0, 1).toUpperCase() }}
         </span>
         <span class="user" :title="userLabel">{{ userLabel }}</span>
-        <Button
+        <ElButton
           class="logout-button"
-          icon="pi pi-sign-out"
-          severity="secondary"
-          variant="text"
-          rounded
+          :icon="ElIconSwitchButton"
+          type="info"
+          text
+          circle
           aria-label="ログアウト"
           title="ログアウト"
           @click="emit('signOut')"
         />
       </section>
-      <Button
-        v-else
-        as="router-link"
-        class="login-button"
-        label="ログイン"
-        icon="pi pi-sign-in"
-        to="/login"
-        @click="emit('navigate')"
-      />
+      <NuxtLink v-else class="login-link" to="/login" @click="emit('navigate')">
+        <ElButton class="login-button" :icon="ElIconRight">ログイン</ElButton>
+      </NuxtLink>
       <template #fallback>
         <span class="session-placeholder" aria-hidden="true" />
       </template>
@@ -171,15 +171,18 @@ const updateLibrary = (libraryId: string | null): void => {
   letter-spacing: 0.08em;
 }
 
-.library-picker :deep(.p-select) {
+.library-picker :deep(.el-select) {
   inline-size: 100%;
   min-inline-size: 0;
+}
+
+.library-picker :deep(.el-select__wrapper) {
   border-color: rgb(255 255 255 / 20%);
   background: rgb(255 255 255 / 9%);
 }
 
-.library-picker :deep(.p-select-label),
-.library-picker :deep(.p-select-dropdown) {
+.library-picker :deep(.el-select__selected-item),
+.library-picker :deep(.el-select__caret) {
   color: #f7f9f8;
 }
 
@@ -233,6 +236,10 @@ const updateLibrary = (libraryId: string | null): void => {
 
 .login-button {
   inline-size: 100%;
+}
+
+.login-link {
+  text-decoration: none;
 }
 
 .session-placeholder {

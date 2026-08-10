@@ -3,6 +3,8 @@
   "compilerOptions": {
     "declaration": false,
     "declarationMap": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "rootDir": "src",
     "outDir": "dist",
     "types": ["vite/client", "node"]

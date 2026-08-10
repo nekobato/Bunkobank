@@ -90,11 +90,11 @@ const submitLogin = async (): Promise<void> => {
       <span class="book book-three" />
     </div>
 
-    <Card class="login-card status-spine tone-info">
-      <template #title>
+    <ElCard class="login-card status-spine tone-info">
+      <template #header>
         <h1 class="title">ログイン</h1>
       </template>
-      <template #content>
+      <template #default>
         <form
           class="form"
           :action="`${apiBase}/auth/sign-in/username`"
@@ -119,7 +119,7 @@ const submitLogin = async (): Promise<void> => {
           </div>
           <div class="field">
             <label for="username">ユーザー名</label>
-            <InputText
+            <ElInput
               id="username"
               v-model="username"
               name="username"
@@ -129,10 +129,10 @@ const submitLogin = async (): Promise<void> => {
               minlength="3"
               maxlength="30"
               required
-              fluid
-              :invalid="Boolean(fieldErrors.username)"
               :aria-invalid="Boolean(fieldErrors.username)"
               aria-describedby="login-username-error"
+              class="fluid-control"
+              :class="{ 'is-invalid': Boolean(fieldErrors.username) }"
             />
             <small v-if="fieldErrors.username" id="login-username-error">
               {{ fieldErrors.username }}
@@ -141,71 +141,49 @@ const submitLogin = async (): Promise<void> => {
 
           <div class="field">
             <label for="current-password">パスワード</label>
-            <Password
+            <ElInput
+              id="current-password"
               v-model="password"
-              input-id="current-password"
               name="password"
-              :feedback="false"
-              toggle-mask
+              type="password"
+              autocomplete="current-password"
+              minlength="8"
+              maxlength="128"
+              aria-describedby="login-password-error"
+              show-password
               required
-              fluid
-              :input-props="{
-                autocomplete: 'current-password',
-                minlength: 8,
-                maxlength: 128,
-                'aria-invalid': Boolean(fieldErrors.password),
-                'aria-describedby': 'login-password-error'
-              }"
-              :invalid="Boolean(fieldErrors.password)"
-            >
-              <template #unmaskicon="{ toggleCallback }">
-                <button
-                  class="password-toggle"
-                  type="button"
-                  aria-label="パスワードを表示"
-                  @click="toggleCallback"
-                >
-                  <i class="pi pi-eye" aria-hidden="true" />
-                </button>
-              </template>
-              <template #maskicon="{ toggleCallback }">
-                <button
-                  class="password-toggle"
-                  type="button"
-                  aria-label="パスワードを隠す"
-                  @click="toggleCallback"
-                >
-                  <i class="pi pi-eye-slash" aria-hidden="true" />
-                </button>
-              </template>
-            </Password>
+              class="fluid-control"
+              :class="{ 'is-invalid': Boolean(fieldErrors.password) }"
+              :aria-invalid="Boolean(fieldErrors.password)"
+            />
             <small v-if="fieldErrors.password" id="login-password-error">
               {{ fieldErrors.password }}
             </small>
           </div>
 
-          <Message v-if="message" severity="error" :closable="false">
+          <ElAlert v-if="message" type="error" :closable="false" show-icon>
             {{ message }}
-          </Message>
+          </ElAlert>
 
           <div class="actions">
-            <Button
-              label="ログイン"
-              icon="pi pi-sign-in"
-              type="submit"
+            <ElButton
+              :icon="ElIconRight"
+              native-type="submit"
               :loading="isSubmitting"
-            />
+            >
+              ログイン
+            </ElButton>
             <NuxtLink v-if="hasSession" to="/">ライブラリへ戻る</NuxtLink>
           </div>
         </form>
       </template>
-    </Card>
+    </ElCard>
   </section>
 </template>
 
 <style scoped>
 .title {
-  font-size: 24px;
+  font-size: 1.5rem;
 }
 
 .login {

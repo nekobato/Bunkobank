@@ -1,5 +1,3 @@
-import { shelfmarkJapaneseLocale, webShelfmarkTheme } from "@bunkobank/ui";
-
 export default defineNuxtConfig({
   app: {
     head: {
@@ -10,19 +8,14 @@ export default defineNuxtConfig({
     }
   },
   compatibilityDate: "2026-07-09",
-  modules: ["@primevue/nuxt-module"],
+  modules: ["@element-plus/nuxt"],
   css: [
-    "primeicons/primeicons.css",
+    "element-plus/dist/index.css",
     "@bunkobank/ui/styles.css",
     "~/assets/css/base.css"
   ],
-  primevue: {
-    autoImport: true,
-    options: {
-      ripple: true,
-      theme: webShelfmarkTheme,
-      locale: shelfmarkJapaneseLocale
-    }
+  elementPlus: {
+    importStyle: false
   },
   runtimeConfig: {
     public: {

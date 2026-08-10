@@ -2,13 +2,15 @@
  * Browser entrypoint for the Bunkobank Tauri manager.
  */
 
-import "primeicons/primeicons.css";
+import "element-plus/dist/index.css";
 import "@bunkobank/ui/styles.css";
+import "element-plus/theme-chalk/dark/css-vars.css";
 import "./styles.css";
 
-import { desktopShelfmarkTheme, shelfmarkJapaneseLocale } from "@bunkobank/ui";
-import PrimeVue from "primevue/config";
-import { createApp, type Plugin } from "vue";
+import ElementPlus from "element-plus";
+import ja from "element-plus/es/locale/lang/ja";
+import "dayjs/locale/ja";
+import { createApp } from "vue";
 
 import App from "./App.vue";
 import { createDesktopManagerController } from "./manager.js";
@@ -26,12 +28,16 @@ const controller = createDesktopManagerController({
 
 const app = createApp(App, { controller });
 
-// PrimeVue's package-level re-export loses its default Plugin type under
-// NodeNext, although the runtime default is the documented Vue plugin.
-app.use(PrimeVue as unknown as Plugin, {
-  theme: desktopShelfmarkTheme,
-  ripple: true,
-  locale: shelfmarkJapaneseLocale
-});
+const systemDarkMode = window.matchMedia("(prefers-color-scheme: dark)");
+const syncSystemColorScheme = (
+  preference: MediaQueryList | MediaQueryListEvent
+): void => {
+  document.documentElement.classList.toggle("dark", preference.matches);
+};
+
+syncSystemColorScheme(systemDarkMode);
+systemDarkMode.addEventListener("change", syncSystemColorScheme);
+
+app.use(ElementPlus, { locale: ja });
 
 app.mount(root);

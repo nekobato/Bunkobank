@@ -2,11 +2,8 @@
 /** Editable server port controls for the Desktop Manager. */
 
 import { getShelfmarkToneMeta } from "@bunkobank/ui";
-import Button from "primevue/button";
-import Card from "primevue/card";
-import InputNumber from "primevue/inputnumber";
-import Message from "primevue/message";
-import Tag from "primevue/tag";
+import { Check } from "@element-plus/icons-vue";
+import { ElAlert, ElButton, ElCard, ElInputNumber, ElTag } from "element-plus";
 import { computed } from "vue";
 
 import type { DesktopManagerState } from "../manager.js";
@@ -58,34 +55,32 @@ const portError = computed(() =>
 </script>
 
 <template>
-  <Card class="network-card status-spine" :class="phaseMeta.className">
-    <template #title>
+  <ElCard class="network-card status-spine" :class="phaseMeta.className">
+    <template #header>
       <div class="card-heading">
         <h2>ネットワーク</h2>
-        <Tag :value="phaseLabel" :severity="phaseMeta.severity" rounded />
+        <ElTag :type="phaseMeta.type" round>{{ phaseLabel }}</ElTag>
       </div>
     </template>
-    <template #content>
+    <template #default>
       <form class="network-form" novalidate @submit.prevent="emit('save')">
         <div class="field">
           <label for="desktop-server-port">ポート</label>
-          <InputNumber
-            input-id="desktop-server-port"
+          <ElInputNumber
+            id="desktop-server-port"
+            class="fluid-control"
             name="port"
             :model-value="state.network.portDraft"
             :min="1"
             :max="65535"
-            :use-grouping="false"
+            :controls="false"
             :disabled="!canEdit"
-            :invalid="Boolean(state.network.fieldErrors.port)"
-            :input-props="{
-              required: true,
-              'aria-invalid': Boolean(state.network.fieldErrors.port),
-              'aria-describedby':
-                'desktop-server-port-help desktop-server-port-error'
+            :class="{
+              'is-invalid': Boolean(state.network.fieldErrors.port)
             }"
-            fluid
-            @update:model-value="emit('update-port', $event)"
+            :aria-invalid="Boolean(state.network.fieldErrors.port)"
+            aria-describedby="desktop-server-port-help desktop-server-port-error"
+            @update:model-value="emit('update-port', $event ?? null)"
           />
           <small id="desktop-server-port-help">
             サーバー停止中に変更できます。
@@ -98,23 +93,25 @@ const portError = computed(() =>
             {{ portError }}
           </small>
         </div>
-        <Button
-          label="ポートを保存"
-          icon="pi pi-check"
-          type="submit"
+        <ElButton
+          :icon="Check"
+          native-type="submit"
           :loading="state.network.phase === 'saving'"
           :disabled="!canEdit"
-        />
-        <Message
+        >
+          ポートを保存
+        </ElButton>
+        <ElAlert
           v-if="state.network.phase === 'saved'"
-          severity="success"
+          type="success"
           :closable="false"
+          show-icon
         >
           保存しました。次回のサーバー起動から使用します。
-        </Message>
+        </ElAlert>
       </form>
     </template>
-  </Card>
+  </ElCard>
 </template>
 
 <style scoped>

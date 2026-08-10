@@ -75,3 +75,23 @@
     }
   }
 }
+
+/* Retain the Shelfmark palette after Element Plus applies its dark defaults. */
+html.dark {
+  --el-color-primary: #9bb1ff;
+  --el-color-primary-light-3: #788bc9;
+  --el-color-primary-light-5: #5e6da5;
+  --el-color-primary-light-7: #43507e;
+  --el-color-primary-light-8: #343f68;
+  --el-color-primary-light-9: #263052;
+  --el-color-primary-dark-2: #b7c4ff;
+  --el-color-success: #7dd3a5;
+  --el-color-warning: #f2b665;
+  --el-color-danger: #ff9182;
+  --el-color-error: #ff9182;
+  --el-color-info: #a9bbb7;
+  --el-font-family:
+    Inter, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --el-box-shadow-light: 0 0.4rem 1.2rem rgb(0 0 0 / 20%);
+  --el-box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 38%);
+}

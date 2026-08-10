@@ -6,12 +6,8 @@
  */
 
 import { getShelfmarkToneMeta } from "@bunkobank/ui";
-import Button from "primevue/button";
-import Card from "primevue/card";
-import InputText from "primevue/inputtext";
-import Message from "primevue/message";
-import Password from "primevue/password";
-import Tag from "primevue/tag";
+import { Check } from "@element-plus/icons-vue";
+import { ElAlert, ElButton, ElCard, ElInput, ElTag } from "element-plus";
 import { computed, useTemplateRef } from "vue";
 
 import type { DesktopManagerState } from "../manager.js";
@@ -51,25 +47,24 @@ const fieldError = (field: string): string =>
 </script>
 
 <template>
-  <Card class="setup-card status-spine" :class="setupMeta.className">
-    <template #title>
+  <ElCard class="setup-card status-spine" :class="setupMeta.className">
+    <template #header>
       <div class="card-heading">
         <h2 id="setup-title">アカウント</h2>
-        <Tag
-          :value="setupPresentation.label"
-          :severity="setupMeta.severity"
-          rounded
-        />
+        <ElTag :type="setupMeta.type" round>
+          {{ setupPresentation.label }}
+        </ElTag>
       </div>
     </template>
-    <template #content>
-      <Message
+    <template #default>
+      <ElAlert
         v-if="state.setup.phase === 'unavailable'"
-        severity="error"
+        type="error"
         :closable="false"
+        show-icon
       >
         データベースを確認できません。
-      </Message>
+      </ElAlert>
 
       <p v-else-if="setupComplete" class="complete">初期設定済み</p>
 
@@ -85,7 +80,7 @@ const fieldError = (field: string): string =>
       >
         <div class="field">
           <label for="setup-username">ユーザー名</label>
-          <InputText
+          <ElInput
             id="setup-username"
             name="username"
             autocomplete="username"
@@ -93,9 +88,12 @@ const fieldError = (field: string): string =>
             maxlength="30"
             pattern="[A-Za-z0-9_.]+"
             required
-            fluid
+            class="fluid-control"
             :model-value="state.draft.username"
-            :invalid="Boolean(state.setup.fieldErrors.username)"
+            :class="{
+              'is-invalid': Boolean(state.setup.fieldErrors.username)
+            }"
+            :aria-invalid="Boolean(state.setup.fieldErrors.username)"
             aria-describedby="username-error"
             @update:model-value="
               $emit('update-text', 'username', String($event))
@@ -109,21 +107,22 @@ const fieldError = (field: string): string =>
         <div class="password-grid">
           <div class="field">
             <label for="setup-password">パスワード</label>
-            <Password
-              input-id="setup-password"
+            <ElInput
+              id="setup-password"
+              type="password"
               name="password"
-              :feedback="false"
-              toggle-mask
-              fluid
+              autocomplete="new-password"
+              minlength="8"
+              maxlength="128"
+              aria-describedby="password-error"
+              class="fluid-control"
+              show-password
               required
               :model-value="state.draft.password"
-              :invalid="Boolean(state.setup.fieldErrors.password)"
-              :input-props="{
-                autocomplete: 'new-password',
-                minlength: 8,
-                maxlength: 128,
-                'aria-describedby': 'password-error'
+              :class="{
+                'is-invalid': Boolean(state.setup.fieldErrors.password)
               }"
+              :aria-invalid="Boolean(state.setup.fieldErrors.password)"
               @update:model-value="
                 $emit('update-text', 'password', String($event ?? ''))
               "
@@ -135,21 +134,22 @@ const fieldError = (field: string): string =>
 
           <div class="field">
             <label for="setup-confirm-password">パスワード（確認）</label>
-            <Password
-              input-id="setup-confirm-password"
+            <ElInput
+              id="setup-confirm-password"
+              type="password"
               name="confirmPassword"
-              :feedback="false"
-              toggle-mask
-              fluid
+              autocomplete="new-password"
+              minlength="8"
+              maxlength="128"
+              aria-describedby="confirm-password-error"
+              class="fluid-control"
+              show-password
               required
               :model-value="state.draft.confirmPassword"
-              :invalid="Boolean(state.setup.fieldErrors.confirmPassword)"
-              :input-props="{
-                autocomplete: 'new-password',
-                minlength: 8,
-                maxlength: 128,
-                'aria-describedby': 'confirm-password-error'
+              :class="{
+                'is-invalid': Boolean(state.setup.fieldErrors.confirmPassword)
               }"
+              :aria-invalid="Boolean(state.setup.fieldErrors.confirmPassword)"
               @update:model-value="
                 $emit('update-text', 'confirmPassword', String($event ?? ''))
               "
@@ -160,15 +160,16 @@ const fieldError = (field: string): string =>
           </div>
         </div>
 
-        <Button
-          label="保存"
-          icon="pi pi-check"
-          type="submit"
+        <ElButton
+          :icon="Check"
+          native-type="submit"
           :loading="state.setup.phase === 'submitting'"
-        />
+        >
+          保存
+        </ElButton>
       </form>
     </template>
-  </Card>
+  </ElCard>
 </template>
 
 <style scoped>

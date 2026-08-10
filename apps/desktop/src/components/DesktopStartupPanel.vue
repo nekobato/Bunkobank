@@ -2,10 +2,7 @@
 /** Login-startup preference panel for the Desktop Manager. */
 
 import { getShelfmarkToneMeta } from "@bunkobank/ui";
-import Card from "primevue/card";
-import Message from "primevue/message";
-import Tag from "primevue/tag";
-import ToggleSwitch from "primevue/toggleswitch";
+import { ElAlert, ElCard, ElSwitch, ElTag } from "element-plus";
 import { computed } from "vue";
 
 import type { DesktopManagerState } from "../manager.js";
@@ -32,18 +29,16 @@ const canChange = computed(() =>
 </script>
 
 <template>
-  <Card class="startup-card status-spine" :class="statusMeta.className">
-    <template #title>
+  <ElCard class="startup-card status-spine" :class="statusMeta.className">
+    <template #header>
       <div class="card-heading">
         <h2 id="startup-title">自動起動</h2>
-        <Tag
-          :value="presentation.label"
-          :severity="statusMeta.severity"
-          rounded
-        />
+        <ElTag :type="statusMeta.type" round>
+          {{ presentation.label }}
+        </ElTag>
       </div>
     </template>
-    <template #content>
+    <template #default>
       <div
         class="preference-row"
         :aria-busy="state.startup.phase === 'updating'"
@@ -53,30 +48,32 @@ const canChange = computed(() =>
             {{ title }}
           </label>
         </div>
-        <ToggleSwitch
-          input-id="startup-toggle"
+        <ElSwitch
+          id="startup-toggle"
           :model-value="state.startup.enabled"
           :disabled="!canChange"
           aria-labelledby="startup-toggle-label"
-          @update:model-value="$emit('change', $event)"
+          @update:model-value="$emit('change', Boolean($event))"
         />
       </div>
-      <Message
+      <ElAlert
         v-if="state.startup.phase === 'unsupported'"
-        severity="secondary"
+        type="info"
         :closable="false"
+        show-icon
       >
         この環境の自動起動はDesktop Managerから管理できません。
-      </Message>
-      <Message
+      </ElAlert>
+      <ElAlert
         v-else-if="state.startup.phase === 'outdated'"
-        severity="warn"
+        type="warning"
         :closable="false"
+        show-icon
       >
         起動設定が古くなっています。スイッチを入れ直すと現在の設定へ更新します。
-      </Message>
+      </ElAlert>
     </template>
-  </Card>
+  </ElCard>
 </template>
 
 <style scoped>
@@ -123,7 +120,7 @@ const canChange = computed(() =>
   font-weight: 750;
 }
 
-.p-message {
+.el-alert {
   margin-block-start: 0.85rem;
 }
 

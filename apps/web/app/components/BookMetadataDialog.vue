@@ -227,31 +227,24 @@ const localizeFieldErrors = (
 </script>
 
 <template>
-  <Dialog
+  <ElDialog
     :id="dialogId"
-    :visible="visible"
-    :header="dialogTitle"
-    modal
-    block-scroll
+    :model-value="visible"
+    :title="dialogTitle"
     :draggable="false"
-    :style="{ width: 'min(44rem, calc(100vw - 2rem))' }"
-    :breakpoints="{ '48rem': 'calc(100vw - 2rem)' }"
-    :close-button-props="{ 'aria-label': '書籍情報の編集を閉じる' }"
-    @update:visible="updateVisibility"
+    width="min(44rem, calc(100vw - 2rem))"
+    @update:model-value="updateVisibility"
   >
     <div v-if="loading" class="loading" role="status">
-      <ProgressSpinner class="spinner" stroke-width="4" />
+      <LoadingIndicator class="spinner" />
       <span>書籍情報を読み込んでいます。</span>
     </div>
-    <Message v-else-if="loadError" severity="error" :closable="false">
+    <ElAlert v-else-if="loadError" type="error" :closable="false" show-icon>
       {{ loadError }}
-      <Button
-        label="再試行"
-        icon="pi pi-refresh"
-        size="small"
-        @click="loadMetadata"
-      />
-    </Message>
+      <ElButton :icon="ElIconRefresh" size="small" @click="loadMetadata">
+        再試行
+      </ElButton>
+    </ElAlert>
     <form
       v-else-if="detail"
       id="book-metadata-dialog-form"
@@ -297,7 +290,7 @@ const localizeFieldErrors = (
         <legend>書誌情報</legend>
         <label class="field" for="dialog-book-title">
           <span>タイトル</span>
-          <InputText
+          <ElInput
             id="dialog-book-title"
             v-model="form.title"
             name="title"
@@ -306,10 +299,10 @@ const localizeFieldErrors = (
             maxlength="300"
             autocomplete="off"
             autofocus
-            fluid
-            :invalid="Boolean(fieldErrors.title)"
             :aria-invalid="Boolean(fieldErrors.title)"
             aria-describedby="dialog-book-title-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(fieldErrors.title) }"
           />
           <small v-if="fieldErrors.title" id="dialog-book-title-error">
             {{ fieldErrors.title }}
@@ -317,17 +310,18 @@ const localizeFieldErrors = (
         </label>
         <label class="field" for="dialog-book-authors">
           <span>著者</span>
-          <Textarea
+          <ElInput
             id="dialog-book-authors"
             v-model="form.authors"
             name="authors"
-            rows="3"
+            type="textarea"
+            :rows="3"
             maxlength="10000"
             autocomplete="off"
-            fluid
-            :invalid="Boolean(fieldErrors.authors)"
             :aria-invalid="Boolean(fieldErrors.authors)"
             aria-describedby="dialog-authors-help dialog-book-authors-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(fieldErrors.authors) }"
           />
           <small id="dialog-authors-help">
             1行またはカンマで区切ります。
@@ -339,17 +333,17 @@ const localizeFieldErrors = (
         <div class="split">
           <label class="field" for="dialog-book-publisher">
             <span>出版社</span>
-            <InputText
+            <ElInput
               id="dialog-book-publisher"
               v-model="form.publisher"
               name="publisher"
               type="text"
               maxlength="200"
               autocomplete="organization"
-              fluid
-              :invalid="Boolean(fieldErrors.publisher)"
               :aria-invalid="Boolean(fieldErrors.publisher)"
               aria-describedby="dialog-book-publisher-error"
+              class="fluid-control"
+              :class="{ 'is-invalid': Boolean(fieldErrors.publisher) }"
             />
             <small
               v-if="fieldErrors.publisher"
@@ -360,7 +354,7 @@ const localizeFieldErrors = (
           </label>
           <label class="field" for="dialog-book-isbn">
             <span>ISBN</span>
-            <InputText
+            <ElInput
               id="dialog-book-isbn"
               v-model="form.isbn"
               name="isbn"
@@ -368,10 +362,10 @@ const localizeFieldErrors = (
               maxlength="32"
               autocomplete="off"
               inputmode="numeric"
-              fluid
-              :invalid="Boolean(fieldErrors.isbn)"
               :aria-invalid="Boolean(fieldErrors.isbn)"
               aria-describedby="dialog-book-isbn-error"
+              class="fluid-control"
+              :class="{ 'is-invalid': Boolean(fieldErrors.isbn) }"
             />
             <small v-if="fieldErrors.isbn" id="dialog-book-isbn-error">
               {{ fieldErrors.isbn }}
@@ -380,16 +374,16 @@ const localizeFieldErrors = (
         </div>
         <label class="field" for="dialog-book-purchased-at">
           <span>購入日</span>
-          <InputText
+          <ElInput
             id="dialog-book-purchased-at"
             v-model="form.purchasedAt"
             name="purchasedAt"
             type="date"
             autocomplete="off"
-            fluid
-            :invalid="Boolean(fieldErrors.purchasedAt)"
             :aria-invalid="Boolean(fieldErrors.purchasedAt)"
             aria-describedby="dialog-book-purchased-at-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(fieldErrors.purchasedAt) }"
           />
           <small
             v-if="fieldErrors.purchasedAt"
@@ -409,33 +403,33 @@ const localizeFieldErrors = (
           :aria-invalid="Boolean(fieldErrors.readingStatus)"
           aria-describedby="dialog-reading-status-error"
         >
-          <label class="choice" for="dialog-reading-unread">
-            <RadioButton
-              v-model="form.readingStatus"
-              input-id="dialog-reading-unread"
-              name="readingStatus"
-              value="unread"
-            />
-            <span>未読</span>
-          </label>
-          <label class="choice" for="dialog-reading-reading">
-            <RadioButton
-              v-model="form.readingStatus"
-              input-id="dialog-reading-reading"
-              name="readingStatus"
-              value="reading"
-            />
-            <span>読書中</span>
-          </label>
-          <label class="choice" for="dialog-reading-finished">
-            <RadioButton
-              v-model="form.readingStatus"
-              input-id="dialog-reading-finished"
-              name="readingStatus"
-              value="finished"
-            />
-            <span>読了</span>
-          </label>
+          <ElRadio
+            id="dialog-reading-unread"
+            v-model="form.readingStatus"
+            class="choice"
+            name="readingStatus"
+            value="unread"
+          >
+            未読
+          </ElRadio>
+          <ElRadio
+            id="dialog-reading-reading"
+            v-model="form.readingStatus"
+            class="choice"
+            name="readingStatus"
+            value="reading"
+          >
+            読書中
+          </ElRadio>
+          <ElRadio
+            id="dialog-reading-finished"
+            v-model="form.readingStatus"
+            class="choice"
+            name="readingStatus"
+            value="finished"
+          >
+            読了
+          </ElRadio>
         </div>
         <small
           v-if="fieldErrors.readingStatus"
@@ -445,17 +439,17 @@ const localizeFieldErrors = (
         </small>
         <label class="field" for="dialog-book-tags">
           <span>タグ</span>
-          <InputText
+          <ElInput
             id="dialog-book-tags"
             v-model="form.tags"
             name="tags"
             type="text"
             maxlength="3200"
             autocomplete="off"
-            fluid
-            :invalid="Boolean(fieldErrors.tags)"
             :aria-invalid="Boolean(fieldErrors.tags)"
             aria-describedby="dialog-tags-help dialog-book-tags-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(fieldErrors.tags) }"
           />
           <small id="dialog-tags-help">カンマ区切り</small>
           <small v-if="fieldErrors.tags" id="dialog-book-tags-error">
@@ -464,17 +458,18 @@ const localizeFieldErrors = (
         </label>
         <label class="field" for="dialog-book-notes">
           <span>メモ</span>
-          <Textarea
+          <ElInput
             id="dialog-book-notes"
             v-model="form.notes"
             name="notes"
-            rows="5"
+            type="textarea"
+            :rows="5"
             maxlength="10000"
             autocomplete="off"
-            fluid
-            :invalid="Boolean(fieldErrors.notes)"
             :aria-invalid="Boolean(fieldErrors.notes)"
             aria-describedby="dialog-book-notes-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(fieldErrors.notes) }"
           />
           <small v-if="fieldErrors.notes" id="dialog-book-notes-error">
             {{ fieldErrors.notes }}
@@ -482,35 +477,38 @@ const localizeFieldErrors = (
         </label>
       </fieldset>
 
-      <Message
+      <ElAlert
         v-if="statusMessage || formError"
-        :severity="formError ? 'error' : 'success'"
+        :type="formError ? 'error' : 'success'"
         :closable="false"
+        show-icon
         aria-live="polite"
       >
         {{ formError || statusMessage }}
-      </Message>
+      </ElAlert>
     </form>
 
     <template #footer>
-      <Button
-        label="閉じる"
-        type="button"
-        severity="secondary"
-        variant="text"
+      <ElButton
+        native-type="button"
+        type="info"
+        text
         :disabled="saving"
         @click="updateVisibility(false)"
-      />
-      <Button
-        label="変更を保存"
-        icon="pi pi-check"
-        type="submit"
+      >
+        閉じる
+      </ElButton>
+      <ElButton
+        :icon="ElIconCheck"
+        native-type="submit"
         form="book-metadata-dialog-form"
         :loading="saving"
         :disabled="loading || Boolean(loadError) || !detail"
-      />
+      >
+        変更を保存
+      </ElButton>
     </template>
-  </Dialog>
+  </ElDialog>
 </template>
 
 <style scoped>

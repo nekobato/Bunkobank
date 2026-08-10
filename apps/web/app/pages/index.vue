@@ -104,9 +104,6 @@ const { data, error, pending, refresh } = await useAsyncData(
 );
 const books = computed(() => data.value?.books ?? []);
 const totalBooks = computed(() => data.value?.total ?? 0);
-const firstBookOffset = computed(
-  () => (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE
-);
 const statusCode = computed(() => error.value?.statusCode);
 const hasActiveFilters = computed(() =>
   Boolean(
@@ -257,7 +254,7 @@ const clearFilters = async (): Promise<void> => {
 /**
  * Moves to a one-based page while retaining the active filters.
  */
-const changePage = async (event: { page: number }): Promise<void> => {
+const changePage = async (page: number): Promise<void> => {
   await navigateTo(
     {
       path: "/",
@@ -265,7 +262,7 @@ const changePage = async (event: { page: number }): Promise<void> => {
         appliedSearch.value,
         appliedReadingStatus.value,
         appliedBookStatus.value,
-        event.page + 1,
+        page,
         appliedSort.value,
         appliedOrder.value
       )
@@ -285,31 +282,27 @@ const changePage = async (event: { page: number }): Promise<void> => {
         <h1 class="page-title">蔵書</h1>
       </div>
       <div class="commands" aria-label="ライブラリ操作">
-        <Button
-          label="検索"
-          icon="pi pi-search"
-          severity="secondary"
-          variant="outlined"
+        <ElButton
+          :icon="ElIconSearch"
+          type="info"
+          plain
           aria-haspopup="dialog"
           aria-controls="library-search-dialog"
           :aria-expanded="isSearchDialogOpen"
           :disabled="!selectedLibraryId"
           @click="openSearchDialog"
-        />
+        >
+          検索
+        </ElButton>
       </div>
     </header>
 
-    <Dialog
+    <ElDialog
       id="library-search-dialog"
-      v-model:visible="isSearchDialogOpen"
-      header="蔵書を検索"
-      modal
-      block-scroll
-      dismissable-mask
+      v-model="isSearchDialogOpen"
+      title="蔵書を検索"
       :draggable="false"
-      :style="{ width: 'min(36rem, calc(100vw - 2rem))' }"
-      :breakpoints="{ '44rem': 'calc(100vw - 2rem)' }"
-      :close-button-props="{ 'aria-label': '検索を閉じる' }"
+      width="min(36rem, calc(100vw - 2rem))"
     >
       <form
         id="library-search-form"
@@ -318,84 +311,115 @@ const changePage = async (event: { page: number }): Promise<void> => {
       >
         <div class="search-field">
           <label for="library-search">検索</label>
-          <IconField>
-            <InputIcon class="pi pi-search" />
-            <InputText
-              id="library-search"
-              v-model="searchText"
-              name="q"
-              type="search"
-              autocomplete="off"
-              maxlength="200"
-              enterkeyhint="search"
-              placeholder="タイトル、著者、タグ"
-              autofocus
-              fluid
-            />
-          </IconField>
+          <ElInput
+            id="library-search"
+            v-model="searchText"
+            name="q"
+            type="search"
+            autocomplete="off"
+            maxlength="200"
+            enterkeyhint="search"
+            placeholder="タイトル、著者、タグ"
+            :prefix-icon="ElIconSearch"
+            autofocus
+            class="fluid-control"
+          />
         </div>
         <div class="select-field">
-          <span id="reading-filter-label" class="control-label">読書状況</span>
-          <Select
+          <label
+            id="reading-filter-label"
+            class="control-label"
+            for="reading-filter"
+          >
+            読書状況
+          </label>
+          <ElSelect
+            id="reading-filter"
             v-model="readingStatus"
-            input-id="reading-filter"
-            :options="readingStatusFilterOptions"
-            option-label="label"
-            option-value="value"
             aria-labelledby="reading-filter-label"
-            fluid
-          />
+            class="fluid-control"
+          >
+            <ElOption
+              v-for="option in readingStatusFilterOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </ElSelect>
         </div>
         <div class="select-field">
-          <span id="source-filter-label" class="control-label">元ファイル</span>
-          <Select
+          <label
+            id="source-filter-label"
+            class="control-label"
+            for="source-filter"
+          >
+            元ファイル
+          </label>
+          <ElSelect
+            id="source-filter"
             v-model="bookStatus"
-            input-id="source-filter"
-            :options="bookStatusFilterOptions"
-            option-label="label"
-            option-value="value"
             aria-labelledby="source-filter-label"
-            fluid
-          />
+            class="fluid-control"
+          >
+            <ElOption
+              v-for="option in bookStatusFilterOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </ElSelect>
         </div>
         <div class="select-field">
-          <span id="book-sort-label" class="control-label">並び順</span>
-          <Select
+          <label id="book-sort-label" class="control-label" for="book-sort">
+            並び順
+          </label>
+          <ElSelect
+            id="book-sort"
             v-model="sort"
-            input-id="book-sort"
-            :options="bookSortOptions"
-            option-label="label"
-            option-value="value"
             aria-labelledby="book-sort-label"
-            fluid
-          />
+            class="fluid-control"
+          >
+            <ElOption
+              v-for="option in bookSortOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </ElSelect>
         </div>
         <div class="select-field">
-          <span id="book-order-label" class="control-label">方向</span>
-          <Select
+          <label id="book-order-label" class="control-label" for="book-order">
+            方向
+          </label>
+          <ElSelect
+            id="book-order"
             v-model="order"
-            input-id="book-order"
-            :options="sortOrderOptions"
-            option-label="label"
-            option-value="value"
             aria-labelledby="book-order-label"
-            fluid
-          />
+            class="fluid-control"
+          >
+            <ElOption
+              v-for="option in sortOrderOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </ElSelect>
         </div>
         <div class="filter-actions">
-          <Button label="検索" icon="pi pi-search" type="submit" />
-          <Button
+          <ElButton :icon="ElIconSearch" native-type="submit">検索</ElButton>
+          <ElButton
             v-if="hasActiveFilters"
-            label="クリア"
-            icon="pi pi-times"
-            severity="secondary"
-            variant="text"
-            type="button"
+            :icon="ElIconClose"
+            type="info"
+            text
+            native-type="button"
             @click="clearFilters"
-          />
+          >
+            クリア
+          </ElButton>
         </div>
       </form>
-    </Dialog>
+    </ElDialog>
 
     <ClientOnly>
       <div
@@ -403,35 +427,34 @@ const changePage = async (event: { page: number }): Promise<void> => {
         class="status"
         role="status"
       >
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="libraryError" severity="error" :closable="false">
+      <ElAlert
+        v-else-if="libraryError"
+        type="error"
+        :closable="false"
+        show-icon
+      >
         <span>{{ libraryErrorMessage }}</span>
-        <Button
-          label="再試行"
-          icon="pi pi-refresh"
-          size="small"
-          @click="refreshLibraries"
-        />
-      </Message>
-      <Card v-else-if="!selectedLibraryId" class="empty-card">
-        <template #content>
-          <i class="pi pi-folder-open" aria-hidden="true" />
+        <ElButton :icon="ElIconRefresh" size="small" @click="refreshLibraries">
+          再試行
+        </ElButton>
+      </ElAlert>
+      <ElCard v-else-if="!selectedLibraryId" class="empty-card">
+        <template #default>
+          <ElIcon aria-hidden="true"><ElIconFolderOpened /></ElIcon>
           <p>ライブラリは未登録です。</p>
-          <Button
-            as="router-link"
-            label="設定を開く"
-            icon="pi pi-cog"
-            to="/setup"
-          />
+          <NuxtLink class="button-link" to="/setup">
+            <ElButton :icon="ElIconSetting">設定を開く</ElButton>
+          </NuxtLink>
         </template>
-      </Card>
+      </ElCard>
       <div v-else-if="pending" class="status" role="status">
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="error" severity="error" :closable="false">
+      <ElAlert v-else-if="error" type="error" :closable="false" show-icon>
         {{ errorMessage }}
-      </Message>
+      </ElAlert>
       <template v-else>
         <p class="summary" aria-live="polite">{{ resultSummary }}</p>
         <BookList
@@ -442,29 +465,30 @@ const changePage = async (event: { page: number }): Promise<void> => {
           "
           @edit="openMetadataDialog"
         />
-        <Paginator
+        <ElPagination
           v-if="totalBooks > BOOK_LIST_PAGE_SIZE"
-          :first="firstBookOffset"
-          :rows="BOOK_LIST_PAGE_SIZE"
-          :total-records="totalBooks"
-          template="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
-          current-page-report-template="{currentPage} / {totalPages}"
+          :current-page="appliedPage"
+          :page-size="BOOK_LIST_PAGE_SIZE"
+          :total="totalBooks"
+          layout="prev, pager, next"
+          background
           aria-label="蔵書ページ"
-          @page="changePage"
+          @current-change="changePage"
         />
-        <Card v-else class="empty-card">
-          <template #content>
-            <i class="pi pi-book" aria-hidden="true" />
+        <ElCard v-if="books.length === 0" class="empty-card">
+          <template #default>
+            <ElIcon aria-hidden="true"><ElIconReading /></ElIcon>
             <p>{{ emptyMessage }}</p>
-            <Button
+            <ElButton
               v-if="hasActiveFilters"
-              label="絞り込みを解除"
-              severity="secondary"
-              variant="outlined"
+              type="info"
+              plain
               @click="clearFilters"
-            />
+            >
+              絞り込みを解除
+            </ElButton>
           </template>
-        </Card>
+        </ElCard>
       </template>
     </ClientOnly>
 
@@ -485,6 +509,10 @@ const changePage = async (event: { page: number }): Promise<void> => {
   inline-size: min(82rem, 100%);
   padding: clamp(1.25rem, 4vw, 3.5rem);
   margin: 0 auto;
+}
+
+.button-link {
+  text-decoration: none;
 }
 
 .heading,
@@ -559,7 +587,7 @@ const changePage = async (event: { page: number }): Promise<void> => {
   text-align: center;
 }
 
-.empty-card :deep(.p-card-content) {
+.empty-card :deep(.el-card__body) {
   display: grid;
   justify-items: center;
   gap: 0.85rem;

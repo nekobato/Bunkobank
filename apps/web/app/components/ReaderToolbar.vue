@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** PrimeVue control surface for the distraction-free book reader. */
+/** Element Plus control surface for the distraction-free book reader. */
 
 import type { PageLayout, ReadingDirection } from "@bunkobank/core";
 
@@ -43,14 +43,6 @@ defineEmits<{
   resetZoom: [];
 }>();
 
-const settingsPopover = useTemplateRef<{
-  toggle: (event: Event) => void;
-}>("settings-popover");
-
-const toggleSettings = (event: Event): void => {
-  settingsPopover.value?.toggle(event);
-};
-
 const directionOptions = [
   { label: "右から左", value: "rtl" },
   { label: "左から右", value: "ltr" }
@@ -75,23 +67,21 @@ const fitOptions = [
   <header class="reader-toolbar">
     <div class="book-status">
       <div class="book-title">
-        <Button
-          as="router-link"
+        <NuxtLink
+          class="back-link"
           to="/"
-          icon="pi pi-arrow-left"
-          severity="secondary"
-          variant="text"
-          size="small"
           aria-label="ライブラリへ戻る"
           title="ライブラリへ戻る"
-        />
+        >
+          <ElIcon aria-hidden="true"><ElIconBack /></ElIcon>
+        </NuxtLink>
         <strong>{{ title }}</strong>
       </div>
       <span>{{ pageLabel }}</span>
-      <ProgressBar
+      <ElProgress
         class="reader-progress"
-        :value="pageProgress"
-        :show-value="false"
+        :percentage="pageProgress"
+        :show-text="false"
         :aria-label="`読書の進捗 ${pageProgressLabel}`"
       />
       <span class="progress-label">{{ pageProgressLabel }}</span>
@@ -99,18 +89,18 @@ const fitOptions = [
 
     <div class="controls" role="toolbar" aria-label="リーダー操作">
       <div class="button-group" role="group" aria-label="ページ送り">
-        <Button
-          icon="pi pi-chevron-left"
-          severity="secondary"
-          variant="text"
+        <ElButton
+          :icon="ElIconArrowLeft"
+          type="info"
+          text
           aria-label="前のページ"
           :disabled="disabled"
           @click="$emit('previous')"
         />
-        <Button
-          icon="pi pi-chevron-right"
-          severity="secondary"
-          variant="text"
+        <ElButton
+          :icon="ElIconArrowRight"
+          type="info"
+          text
           aria-label="次のページ"
           :disabled="disabled"
           @click="$emit('next')"
@@ -123,7 +113,7 @@ const fitOptions = [
         @submit.prevent="$emit('commitPage')"
       >
         <label :for="pageInputId">ページ</label>
-        <InputText
+        <ElInput
           :id="pageInputId"
           v-model="pageInput"
           name="page"
@@ -137,24 +127,30 @@ const fitOptions = [
           :disabled="disabled"
         />
         <span>/ {{ pageCount }}</span>
-        <Button label="移動" size="small" type="submit" :disabled="disabled" />
+        <ElButton size="small" native-type="submit" :disabled="disabled">
+          移動
+        </ElButton>
       </form>
 
-      <Button
-        label="設定"
-        icon="pi pi-cog"
-        severity="secondary"
-        variant="outlined"
-        aria-haspopup="dialog"
-        :disabled="disabled"
-        @click="toggleSettings"
-      />
-
-      <Popover
-        ref="settings-popover"
-        class="reader-settings-popover"
+      <ElPopover
+        trigger="click"
+        placement="bottom-end"
+        width="min(25rem, calc(100vw - 2rem))"
+        :fallback-placements="['top-end', 'bottom-start', 'top-start']"
+        popper-class="reader-settings-popover"
         aria-label="リーダー設定"
       >
+        <template #reference>
+          <ElButton
+            :icon="ElIconSetting"
+            type="info"
+            plain
+            aria-haspopup="true"
+            :disabled="disabled"
+          >
+            設定
+          </ElButton>
+        </template>
         <div class="reader-settings">
           <div class="setting-field">
             <span id="reader-zoom-label" class="setting-label">拡大率</span>
@@ -163,89 +159,106 @@ const fitOptions = [
               role="group"
               aria-labelledby="reader-zoom-label"
             >
-              <Button
-                icon="pi pi-minus"
-                severity="secondary"
-                variant="text"
+              <ElButton
+                :icon="ElIconMinus"
+                type="info"
+                text
                 aria-label="縮小"
                 :disabled="disabled"
                 @click="$emit('zoomOut')"
               />
               <output aria-live="polite">{{ zoomLabel }}</output>
-              <Button
-                icon="pi pi-plus"
-                severity="secondary"
-                variant="text"
+              <ElButton
+                :icon="ElIconPlus"
+                type="info"
+                text
                 aria-label="拡大"
                 :disabled="disabled"
                 @click="$emit('zoomIn')"
               />
-              <Button
-                label="100%に戻す"
+              <ElButton
                 size="small"
-                severity="secondary"
-                variant="text"
+                type="info"
+                text
                 :disabled="disabled"
                 @click="$emit('resetZoom')"
-              />
+              >
+                100%に戻す
+              </ElButton>
             </div>
           </div>
 
           <div class="setting-field">
             <label class="setting-label" for="reader-direction">読む方向</label>
-            <Select
+            <ElSelect
+              id="reader-direction"
               v-model="direction"
-              input-id="reader-direction"
-              :options="directionOptions"
-              option-label="label"
-              option-value="value"
               size="small"
               :disabled="disabled"
-            />
+            >
+              <ElOption
+                v-for="option in directionOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </ElSelect>
           </div>
 
           <div class="setting-field">
             <label class="setting-label" for="reader-mode">表示方法</label>
-            <Select
+            <ElSelect
+              id="reader-mode"
               v-model="mode"
-              input-id="reader-mode"
-              :options="modeOptions"
-              option-label="label"
-              option-value="value"
               size="small"
               :disabled="disabled"
-            />
+            >
+              <ElOption
+                v-for="option in modeOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </ElSelect>
           </div>
 
           <div v-if="mode === 'paged'" class="setting-field">
             <label class="setting-label" for="reader-layout">
               ページレイアウト
             </label>
-            <Select
+            <ElSelect
+              id="reader-layout"
               v-model="layout"
-              input-id="reader-layout"
-              :options="layoutOptions"
-              option-label="label"
-              option-value="value"
               size="small"
               :disabled="disabled"
-            />
+            >
+              <ElOption
+                v-for="option in layoutOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </ElSelect>
           </div>
 
           <div class="setting-field">
             <label class="setting-label" for="reader-fit">画像の表示倍率</label>
-            <Select
+            <ElSelect
+              id="reader-fit"
               v-model="fit"
-              input-id="reader-fit"
-              :options="fitOptions"
-              option-label="label"
-              option-value="value"
               size="small"
               :disabled="disabled"
-            />
+            >
+              <ElOption
+                v-for="option in fitOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </ElSelect>
           </div>
         </div>
-      </Popover>
+      </ElPopover>
     </div>
   </header>
 </template>
@@ -279,8 +292,15 @@ const fitOptions = [
   min-inline-size: 0;
 }
 
-.book-title :deep(.p-button) {
+.back-link {
+  display: inline-grid;
   flex: 0 0 auto;
+  place-items: center;
+  min-inline-size: 2rem;
+  min-block-size: 2rem;
+  border-radius: var(--el-border-radius-base);
+  color: var(--reader-text);
+  text-decoration: none;
 }
 
 .book-status strong {
@@ -328,7 +348,7 @@ const fitOptions = [
   font-size: 0.72rem;
 }
 
-.jump :deep(.p-inputtext) {
+.jump :deep(.el-input) {
   inline-size: 4rem;
 }
 
@@ -340,13 +360,16 @@ const fitOptions = [
   text-align: center;
 }
 
-.reader-toolbar :deep(.p-button.p-button-text) {
+.reader-toolbar :deep(.el-button.is-text) {
   color: var(--reader-text);
 }
 
-.reader-toolbar :deep(.p-inputtext) {
+.reader-toolbar :deep(.el-input__wrapper) {
   border-color: rgb(255 255 255 / 16%);
   background: #26363c;
+}
+
+.reader-toolbar :deep(.el-input__inner) {
   color: var(--reader-text);
 }
 
@@ -354,7 +377,8 @@ const fitOptions = [
   display: grid;
   grid-template-columns: repeat(2, minmax(9rem, 1fr));
   gap: 1rem;
-  inline-size: min(25rem, calc(100vw - 2rem));
+  min-inline-size: 0;
+  inline-size: 100%;
 }
 
 .setting-field {
@@ -368,20 +392,20 @@ const fitOptions = [
 }
 
 .reader-settings .button-group {
-  border-color: var(--p-content-border-color);
+  border-color: var(--el-border-color);
 }
 
 .reader-settings .zoom output {
-  color: var(--p-text-muted-color);
+  color: var(--el-text-color-secondary);
 }
 
 .setting-label {
-  color: var(--p-text-muted-color);
+  color: var(--el-text-color-secondary);
   font-size: 0.8rem;
   font-weight: 600;
 }
 
-.setting-field :deep(.p-select) {
+.setting-field :deep(.el-select) {
   inline-size: 100%;
 }
 

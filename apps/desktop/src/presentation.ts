@@ -15,7 +15,7 @@ export interface ServerPresentation {
   tone: ShelfmarkTone;
 }
 
-/** Compact lifecycle label and tone for PrimeVue status components. */
+/** Compact lifecycle label and tone for desktop status components. */
 export interface PhasePresentation {
   label: string;
   tone: ShelfmarkTone;

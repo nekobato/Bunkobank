@@ -86,13 +86,11 @@ watch(
 </script>
 
 <template>
-  <Dialog
+  <ElDialog
     id="scan-failure-dialog"
-    v-model:visible="visible"
-    modal
-    header="スキャン失敗の詳細"
-    :style="{ width: '52rem' }"
-    :breakpoints="{ '64rem': '80vw', '40rem': 'calc(100vw - 2rem)' }"
+    v-model="visible"
+    title="スキャン失敗の詳細"
+    width="min(52rem, calc(100vw - 2rem))"
   >
     <div class="failure-content">
       <p class="failure-summary">
@@ -102,29 +100,28 @@ watch(
         <template v-else>解析失敗{{ expectedCount }}件</template>
       </p>
 
-      <Message v-if="errorMessage" severity="error" :closable="false">
+      <ElAlert v-if="errorMessage" type="error" :closable="false" show-icon>
         {{ errorMessage }}
-      </Message>
+      </ElAlert>
 
       <p v-if="pending && failures.length === 0" class="failure-state">
         詳細を読み込んでいます。
       </p>
-      <Message
+      <ElAlert
         v-else-if="!errorMessage && failures.length === 0 && expectedCount > 0"
-        severity="info"
+        type="info"
         :closable="false"
+        show-icon
       >
         このジョブは詳細記録機能の追加前に実行されたため、件数のみが残っています。
-      </Message>
+      </ElAlert>
 
       <ul v-if="failures.length > 0" class="failure-list" role="list">
         <li v-for="failure in failures" :key="failure.id" class="failure-row">
           <div class="failure-heading">
-            <Tag
-              :value="getBookCoverFormatLabel(failure.format)"
-              severity="secondary"
-              rounded
-            />
+            <ElTag type="info" round>
+              {{ getBookCoverFormatLabel(failure.format) }}
+            </ElTag>
             <strong>{{ getScanFailureCodeLabel(failure.code) }}</strong>
           </div>
           <code>{{ failure.relativePath }}</code>
@@ -136,17 +133,18 @@ watch(
     </div>
 
     <template #footer>
-      <Button
+      <ElButton
         v-if="hasMore"
-        label="さらに読み込む"
-        severity="secondary"
-        variant="text"
+        type="info"
+        text
         :loading="pending"
         @click="loadFailurePage(false)"
-      />
-      <Button label="閉じる" @click="visible = false" />
+      >
+        さらに読み込む
+      </ElButton>
+      <ElButton @click="visible = false">閉じる</ElButton>
     </template>
-  </Dialog>
+  </ElDialog>
 </template>
 
 <style scoped>

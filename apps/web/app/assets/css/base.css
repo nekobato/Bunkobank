@@ -77,11 +77,6 @@
     letter-spacing: -0.05em;
   }
 
-  .p-card {
-    border: 1px solid var(--bc-line-soft);
-    box-shadow: var(--bc-shadow-low);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     html {
       scroll-behavior: auto;
@@ -95,4 +90,10 @@
       animation-iteration-count: 1 !important;
     }
   }
+}
+
+/* Component overrides remain unlayered to outrank Element Plus theme-chalk. */
+.el-card {
+  border: 1px solid var(--bc-line-soft);
+  box-shadow: var(--bc-shadow-low);
 }

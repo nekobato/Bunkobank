@@ -55,9 +55,6 @@ const { data, error, pending, refresh } = await useAsyncData(
 );
 const books = computed(() => data.value?.books ?? []);
 const totalBooks = computed(() => data.value?.total ?? 0);
-const firstBookOffset = computed(
-  () => (appliedPage.value - 1) * BOOK_LIST_PAGE_SIZE
-);
 const libraryErrorMessage = computed(() =>
   getApiErrorMessage(libraryError.value, "ライブラリを読み込めませんでした。")
 );
@@ -71,11 +68,11 @@ const errorMessage = computed(() =>
 /**
  * Moves to a one-based archived-book page.
  */
-const changePage = async (event: { page: number }): Promise<void> => {
+const changePage = async (page: number): Promise<void> => {
   await navigateTo(
     {
       path: "/archived",
-      query: event.page > 0 ? { page: String(event.page + 1) } : {}
+      query: page > 1 ? { page: String(page) } : {}
     },
     { replace: true }
   );
@@ -116,23 +113,25 @@ const restoreArchivedBook = async (book: BookSummary): Promise<void> => {
         </p>
         <h1 class="page-title">アーカイブ</h1>
       </div>
-      <Button
-        label="更新"
-        icon="pi pi-refresh"
-        severity="secondary"
-        variant="outlined"
+      <ElButton
+        :icon="ElIconRefresh"
+        type="info"
+        plain
         :disabled="!selectedLibraryId"
         @click="() => refresh()"
-      />
+      >
+        更新
+      </ElButton>
     </header>
 
-    <Message
+    <ElAlert
       v-if="operationMessage"
-      :severity="operationSeverity"
+      :type="operationSeverity"
       :closable="false"
+      show-icon
     >
       {{ operationMessage }}
-    </Message>
+    </ElAlert>
 
     <ClientOnly>
       <div
@@ -140,34 +139,33 @@ const restoreArchivedBook = async (book: BookSummary): Promise<void> => {
         class="status"
         role="status"
       >
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="libraryError" severity="error" :closable="false">
+      <ElAlert
+        v-else-if="libraryError"
+        type="error"
+        :closable="false"
+        show-icon
+      >
         <span>{{ libraryErrorMessage }}</span>
-        <Button
-          label="再試行"
-          icon="pi pi-refresh"
-          size="small"
-          @click="refreshLibraries"
-        />
-      </Message>
-      <Card v-else-if="!selectedLibraryId" class="empty-card">
-        <template #content>
+        <ElButton :icon="ElIconRefresh" size="small" @click="refreshLibraries">
+          再試行
+        </ElButton>
+      </ElAlert>
+      <ElCard v-else-if="!selectedLibraryId" class="empty-card">
+        <template #default>
           <p>ライブラリは未登録です。</p>
-          <Button
-            as="router-link"
-            label="設定を開く"
-            icon="pi pi-cog"
-            to="/setup"
-          />
+          <NuxtLink class="button-link" to="/setup">
+            <ElButton :icon="ElIconSetting">設定を開く</ElButton>
+          </NuxtLink>
         </template>
-      </Card>
+      </ElCard>
       <div v-else-if="pending" class="status" role="status">
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="error" severity="error" :closable="false">
+      <ElAlert v-else-if="error" type="error" :closable="false" show-icon>
         {{ errorMessage }}
-      </Message>
+      </ElAlert>
       <template v-else-if="books.length > 0">
         <BookList
           :books="books"
@@ -176,22 +174,22 @@ const restoreArchivedBook = async (book: BookSummary): Promise<void> => {
           :aria-busy="restoringBookId !== null"
           @restore="restoreArchivedBook"
         />
-        <Paginator
+        <ElPagination
           v-if="totalBooks > BOOK_LIST_PAGE_SIZE"
-          :first="firstBookOffset"
-          :rows="BOOK_LIST_PAGE_SIZE"
-          :total-records="totalBooks"
-          template="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
-          current-page-report-template="{currentPage} / {totalPages}"
+          :current-page="appliedPage"
+          :page-size="BOOK_LIST_PAGE_SIZE"
+          :total="totalBooks"
+          layout="prev, pager, next"
+          background
           aria-label="アーカイブページ"
-          @page="changePage"
+          @current-change="changePage"
         />
       </template>
-      <Card v-else class="empty-card">
-        <template #content>
+      <ElCard v-else class="empty-card">
+        <template #default>
           <p>アーカイブは空です。</p>
         </template>
-      </Card>
+      </ElCard>
     </ClientOnly>
   </section>
 </template>
@@ -203,6 +201,10 @@ const restoreArchivedBook = async (book: BookSummary): Promise<void> => {
   inline-size: min(82rem, 100%);
   padding: clamp(1.25rem, 4vw, 3.5rem);
   margin: 0 auto;
+}
+
+.button-link {
+  text-decoration: none;
 }
 
 .heading {
@@ -232,7 +234,7 @@ const restoreArchivedBook = async (book: BookSummary): Promise<void> => {
   text-align: center;
 }
 
-.empty-card :deep(.p-card-content) {
+.empty-card :deep(.el-card__body) {
   display: grid;
   justify-items: center;
   gap: 0.85rem;

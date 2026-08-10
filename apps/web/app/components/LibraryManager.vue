@@ -30,7 +30,7 @@ import {
   listRecentJobs
 } from "../utils/libraryJobs";
 
-type FeedbackSeverity = "success" | "info" | "warn" | "error";
+type FeedbackType = "success" | "info" | "warning" | "error";
 
 const emit = defineEmits<{
   updated: [];
@@ -60,7 +60,7 @@ const allJobs = ref<BackgroundJobResponse[]>([]);
 const jobsPending = ref(false);
 const jobsError = ref("");
 const message = ref("");
-const messageSeverity = ref<FeedbackSeverity>("info");
+const messageType = ref<FeedbackType>("info");
 const isCreating = ref(false);
 const scanningLibraryId = ref<string | null>(null);
 const cancellingJobId = ref<string | null>(null);
@@ -149,11 +149,11 @@ const submitLibrary = async (): Promise<void> => {
     name.value = "";
     rootPath.value = "";
     await selectCreatedLibrary(library.id);
-    messageSeverity.value = "success";
+    messageType.value = "success";
     message.value = "ライブラリを追加しました。";
     emit("updated");
   } catch (error) {
-    messageSeverity.value = "error";
+    messageType.value = "error";
     message.value = getApiErrorMessage(
       error,
       "ライブラリを追加できませんでした。"
@@ -198,11 +198,11 @@ const submitLibraryEdit = async (): Promise<void> => {
     await updateLibrary(editingLibrary.value.id, validation.data);
     editingLibrary.value = null;
     await refreshLibraries();
-    messageSeverity.value = "success";
+    messageType.value = "success";
     message.value = "ライブラリを更新しました。";
     emit("updated");
   } catch (error) {
-    messageSeverity.value = "error";
+    messageType.value = "error";
     message.value = getApiErrorMessage(
       error,
       "ライブラリを更新できませんでした。"
@@ -221,10 +221,10 @@ const scanLibrary = async (libraryId: string): Promise<void> => {
     await selectLibrary(libraryId);
     upsertJob(await createScanJob(libraryId));
     await refreshJobs();
-    messageSeverity.value = "success";
+    messageType.value = "success";
     message.value = "スキャンを開始しました。";
   } catch (error) {
-    messageSeverity.value = "error";
+    messageType.value = "error";
     message.value = getApiErrorMessage(
       error,
       "スキャンを開始できませんでした。"
@@ -245,10 +245,10 @@ const cancelScanJob = async (
   try {
     upsertJob(await cancelJob(libraryId, jobId));
     await refreshJobs();
-    messageSeverity.value = "success";
+    messageType.value = "success";
     message.value = "スキャンを停止しました。";
   } catch (error) {
-    messageSeverity.value = "error";
+    messageType.value = "error";
     message.value = getApiErrorMessage(
       error,
       "スキャンを停止できませんでした。"
@@ -314,11 +314,11 @@ const confirmLibraryDeletion = async (): Promise<void> => {
     deletingLibrary.value = null;
     await refreshLibraries();
     await refreshJobs();
-    messageSeverity.value = "success";
+    messageType.value = "success";
     message.value = "ライブラリを削除しました。";
     emit("updated");
   } catch (error) {
-    messageSeverity.value = "error";
+    messageType.value = "error";
     message.value = getApiErrorMessage(
       error,
       "ライブラリを削除できませんでした。"
@@ -356,10 +356,10 @@ async function refreshJobs(): Promise<void> {
   }
 }
 
-/** Maps a job state to its PrimeVue tag severity. */
-const getJobSeverity = (
+/** Maps a job state to its Element Plus tag type. */
+const getJobType = (
   status: BackgroundJobResponse["status"]
-): "secondary" | "info" | "success" | "danger" => {
+): "info" | "success" | "danger" => {
   switch (getJobTone(status)) {
     case "active":
       return "info";
@@ -368,7 +368,7 @@ const getJobSeverity = (
     case "danger":
       return "danger";
     default:
-      return "secondary";
+      return "info";
   }
 };
 
@@ -390,13 +390,14 @@ const localizeLibraryFieldErrors = (
   <section class="manager" aria-labelledby="libraries-title">
     <header class="manager-heading">
       <h2 id="libraries-title">ライブラリ</h2>
-      <Button
-        label="更新"
-        icon="pi pi-refresh"
-        severity="secondary"
-        variant="text"
+      <ElButton
+        :icon="ElIconRefresh"
+        type="info"
+        text
         @click="refreshLibraries"
-      />
+      >
+        更新
+      </ElButton>
     </header>
 
     <form class="create-form" @submit.prevent="submitLibrary">
@@ -417,17 +418,17 @@ const localizeLibraryFieldErrors = (
       </div>
       <div class="field">
         <label for="library-name">名前</label>
-        <InputText
+        <ElInput
           id="library-name"
           v-model="name"
           name="name"
           autocomplete="off"
           maxlength="100"
           required
-          fluid
-          :invalid="Boolean(createFieldErrors.name)"
           :aria-invalid="Boolean(createFieldErrors.name)"
           aria-describedby="library-name-error"
+          class="fluid-control"
+          :class="{ 'is-invalid': Boolean(createFieldErrors.name) }"
         />
         <small
           v-if="createFieldErrors.name"
@@ -439,16 +440,16 @@ const localizeLibraryFieldErrors = (
       </div>
       <div class="field path-field">
         <label for="library-root-path">対象ディレクトリ</label>
-        <InputText
+        <ElInput
           id="library-root-path"
           v-model="rootPath"
           name="rootPath"
           autocomplete="off"
           required
-          fluid
-          :invalid="Boolean(createFieldErrors.rootPath)"
           :aria-invalid="Boolean(createFieldErrors.rootPath)"
           aria-describedby="library-root-path-error"
+          class="fluid-control"
+          :class="{ 'is-invalid': Boolean(createFieldErrors.rootPath) }"
         />
         <small
           v-if="createFieldErrors.rootPath"
@@ -458,30 +459,28 @@ const localizeLibraryFieldErrors = (
           {{ createFieldErrors.rootPath }}
         </small>
       </div>
-      <Button
-        label="追加"
-        icon="pi pi-plus"
-        type="submit"
-        :loading="isCreating"
-      />
+      <ElButton :icon="ElIconPlus" native-type="submit" :loading="isCreating">
+        追加
+      </ElButton>
     </form>
 
-    <Message
+    <ElAlert
       v-if="message"
-      :severity="messageSeverity"
+      :type="messageType"
       :closable="false"
+      show-icon
       aria-live="polite"
     >
       {{ message }}
-    </Message>
+    </ElAlert>
 
-    <Message v-if="libraryError" severity="error" :closable="false">
+    <ElAlert v-if="libraryError" type="error" :closable="false" show-icon>
       {{
         getApiErrorMessage(libraryError, "ライブラリを読み込めませんでした。")
       }}
-    </Message>
+    </ElAlert>
     <div v-else-if="librariesLoading" class="loading" role="status">
-      <ProgressSpinner class="spinner" stroke-width="4" />
+      <LoadingIndicator class="spinner" />
     </div>
     <ul v-else-if="libraries.length > 0" class="library-list">
       <li
@@ -497,43 +496,41 @@ const localizeLibraryFieldErrors = (
         >
           <span class="library-title">
             <strong>{{ library.name }}</strong>
-            <Tag
-              v-if="getActiveScanJob(library.id)"
-              value="スキャン中"
-              severity="info"
-              rounded
-            />
+            <ElTag v-if="getActiveScanJob(library.id)" type="info" round>
+              スキャン中
+            </ElTag>
           </span>
           <code>{{ library.rootPath }}</code>
         </button>
         <div class="row-actions">
-          <Button
-            :label="getActiveScanJob(library.id) ? 'スキャン停止' : 'スキャン'"
+          <ElButton
             :icon="
-              getActiveScanJob(library.id) ? 'pi pi-stop-circle' : 'pi pi-sync'
+              getActiveScanJob(library.id) ? ElIconVideoPause : ElIconRefresh
             "
             size="small"
-            :severity="getActiveScanJob(library.id) ? 'danger' : undefined"
+            :type="getActiveScanJob(library.id) ? 'danger' : undefined"
             :loading="isUpdatingLibraryScan(library.id)"
             :disabled="isStoppingLibraryScan(library.id)"
             @click="toggleLibraryScan(library.id)"
-          />
-          <Button
-            icon="pi pi-pencil"
+          >
+            {{ getActiveScanJob(library.id) ? "スキャン停止" : "スキャン" }}
+          </ElButton>
+          <ElButton
+            :icon="ElIconEdit"
             size="small"
-            severity="secondary"
-            variant="outlined"
-            rounded
+            type="info"
+            plain
+            circle
             :aria-label="`${library.name}を編集`"
             :disabled="isLibraryScanning(library.id)"
             @click="openEditDialog(library)"
           />
-          <Button
-            icon="pi pi-trash"
+          <ElButton
+            :icon="ElIconDelete"
             size="small"
-            severity="danger"
-            variant="text"
-            rounded
+            type="danger"
+            text
+            circle
             :aria-label="`${library.name}を削除`"
             :disabled="isLibraryScanning(library.id)"
             @click="deletingLibrary = library"
@@ -543,63 +540,64 @@ const localizeLibraryFieldErrors = (
     </ul>
     <p v-else-if="librariesLoaded" class="empty">ライブラリは未登録です。</p>
 
-    <Card v-if="selectedLibrary" class="jobs">
-      <template #title>
+    <ElCard v-if="selectedLibrary" class="jobs">
+      <template #header>
         <div class="jobs-heading">
           <span>ジョブ</span>
-          <Button
-            label="更新"
-            icon="pi pi-refresh"
+          <ElButton
+            :icon="ElIconRefresh"
             size="small"
-            severity="secondary"
-            variant="text"
+            type="info"
+            text
             :loading="jobsPending"
             @click="refreshJobs"
-          />
+          >
+            更新
+          </ElButton>
         </div>
       </template>
-      <template #content>
-        <Message v-if="jobsError" severity="error" :closable="false">
+      <template #default>
+        <ElAlert v-if="jobsError" type="error" :closable="false" show-icon>
           {{ jobsError }}
-        </Message>
+        </ElAlert>
         <ul v-else-if="recentJobs.length > 0" class="job-list">
           <li v-for="job in recentJobs" :key="job.id" class="job-row">
-            <Tag
-              :value="getJobStatusLabel(job.status)"
-              :severity="getJobSeverity(job.status)"
-              rounded
-            />
+            <ElTag :type="getJobType(job.status)" round>
+              {{ getJobStatusLabel(job.status) }}
+            </ElTag>
             <span>{{ getScanJobSummary(job) ?? "スキャン" }}</span>
             <div
               v-if="job.canCancel || getScanJobFailureCount(job) > 0"
               class="job-actions"
             >
-              <Button
+              <ElButton
                 v-if="getScanJobFailureCount(job) > 0"
-                label="詳細"
                 size="small"
-                severity="secondary"
-                variant="text"
+                type="info"
+                text
                 aria-controls="scan-failure-dialog"
                 :aria-expanded="
                   failureDialogVisible && failureDialogJob?.id === job.id
                 "
                 @click="openScanFailures(job)"
-              />
-              <Button
+              >
+                詳細
+              </ElButton>
+              <ElButton
                 v-if="job.canCancel"
-                label="キャンセル"
                 size="small"
-                severity="danger"
-                variant="text"
+                type="danger"
+                text
                 :loading="cancellingJobId === job.id"
                 :disabled="cancellingJobId !== null"
                 @click="cancelScanJob(job.libraryId, job.id)"
-              />
+              >
+                キャンセル
+              </ElButton>
             </div>
-            <ProgressBar
-              :value="job.progress"
-              :show-value="false"
+            <ElProgress
+              :percentage="job.progress"
+              :show-text="false"
               :aria-label="`${getJobStatusLabel(job.status)} ${job.progress}%`"
             />
             <small v-if="job.error">{{ job.error }}</small>
@@ -607,14 +605,13 @@ const localizeLibraryFieldErrors = (
         </ul>
         <p v-else class="empty">ジョブはありません。</p>
       </template>
-    </Card>
+    </ElCard>
 
-    <Dialog
-      :visible="editingLibrary !== null"
-      modal
-      header="ライブラリを編集"
-      :style="{ width: 'min(34rem, calc(100vw - 2rem))' }"
-      @update:visible="editingLibrary = null"
+    <ElDialog
+      :model-value="editingLibrary !== null"
+      title="ライブラリを編集"
+      width="min(34rem, calc(100vw - 2rem))"
+      @update:model-value="editingLibrary = null"
     >
       <form
         id="library-edit-form"
@@ -638,17 +635,17 @@ const localizeLibraryFieldErrors = (
         </div>
         <div class="field">
           <label for="library-edit-name">名前</label>
-          <InputText
+          <ElInput
             id="library-edit-name"
             v-model="editName"
             name="name"
             autocomplete="off"
             maxlength="100"
             required
-            fluid
-            :invalid="Boolean(editFieldErrors.name)"
             :aria-invalid="Boolean(editFieldErrors.name)"
             aria-describedby="library-edit-name-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(editFieldErrors.name) }"
           />
           <small
             v-if="editFieldErrors.name"
@@ -660,16 +657,16 @@ const localizeLibraryFieldErrors = (
         </div>
         <div class="field">
           <label for="library-edit-path">対象ディレクトリ</label>
-          <InputText
+          <ElInput
             id="library-edit-path"
             v-model="editRootPath"
             name="rootPath"
             autocomplete="off"
             required
-            fluid
-            :invalid="Boolean(editFieldErrors.rootPath)"
             :aria-invalid="Boolean(editFieldErrors.rootPath)"
             aria-describedby="library-edit-path-error"
+            class="fluid-control"
+            :class="{ 'is-invalid': Boolean(editFieldErrors.rootPath) }"
           />
           <small
             v-if="editFieldErrors.rootPath"
@@ -681,27 +678,24 @@ const localizeLibraryFieldErrors = (
         </div>
       </form>
       <template #footer>
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          variant="text"
-          @click="editingLibrary = null"
-        />
-        <Button
+        <ElButton type="info" text @click="editingLibrary = null">
+          キャンセル
+        </ElButton>
+        <ElButton
           form="library-edit-form"
-          label="保存"
-          type="submit"
+          native-type="submit"
           :loading="isSavingEdit"
-        />
+        >
+          保存
+        </ElButton>
       </template>
-    </Dialog>
+    </ElDialog>
 
-    <Dialog
-      :visible="deletingLibrary !== null"
-      modal
-      header="ライブラリを削除"
-      :style="{ width: 'min(30rem, calc(100vw - 2rem))' }"
-      @update:visible="deletingLibrary = null"
+    <ElDialog
+      :model-value="deletingLibrary !== null"
+      title="ライブラリを削除"
+      width="min(30rem, calc(100vw - 2rem))"
+      @update:model-value="deletingLibrary = null"
     >
       <p class="dialog-copy">
         「{{
@@ -709,20 +703,18 @@ const localizeLibraryFieldErrors = (
         }}」の管理データを削除します。原本は削除しません。
       </p>
       <template #footer>
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          variant="text"
-          @click="deletingLibrary = null"
-        />
-        <Button
-          label="削除"
-          severity="danger"
+        <ElButton type="info" text @click="deletingLibrary = null">
+          キャンセル
+        </ElButton>
+        <ElButton
+          type="danger"
           :loading="isDeleting"
           @click="confirmLibraryDeletion"
-        />
+        >
+          削除
+        </ElButton>
       </template>
-    </Dialog>
+    </ElDialog>
 
     <ScanFailureDialog
       v-if="failureDialogJob && selectedLibrary"
@@ -870,7 +862,7 @@ const localizeLibraryFieldErrors = (
   min-inline-size: 0;
 }
 
-.library-title :deep(.p-tag) {
+.library-title :deep(.el-tag) {
   font-size: 0.68rem;
 }
 
@@ -898,7 +890,7 @@ const localizeLibraryFieldErrors = (
   box-shadow: none;
 }
 
-.jobs :deep(.p-card-content) {
+.jobs :deep(.el-card__body) {
   display: grid;
   gap: 0.75rem;
 }
@@ -910,7 +902,7 @@ const localizeLibraryFieldErrors = (
   gap: 0.65rem;
 }
 
-.job-row :deep(.p-progressbar),
+.job-row :deep(.el-progress),
 .job-row small {
   grid-column: 1 / -1;
 }

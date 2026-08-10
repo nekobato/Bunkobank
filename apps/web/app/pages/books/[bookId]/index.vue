@@ -275,15 +275,15 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
   <section class="detail">
     <ClientOnly>
       <div v-if="pending" class="status" role="status">
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
         <span>書籍を読み込んでいます。</span>
       </div>
-      <Message v-else-if="error" severity="error" :closable="false">
+      <ElAlert v-else-if="error" type="error" :closable="false" show-icon>
         <span>{{ errorMessage }}</span>
         <NuxtLink v-if="actionLink" :to="actionLink.to">
           {{ actionLink.label }}
         </NuxtLink>
-      </Message>
+      </ElAlert>
       <template v-else-if="data">
         <header class="heading">
           <div>
@@ -304,14 +304,15 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
             >
               読む
             </NuxtLink>
-            <Button
+            <ElButton
               v-if="!data.archivedAt"
-              label="アーカイブ"
-              icon="pi pi-inbox"
-              severity="secondary"
-              variant="text"
+              :icon="ElIconBox"
+              type="info"
+              text
               @click="archiveDialogOpen = true"
-            />
+            >
+              アーカイブ
+            </ElButton>
           </nav>
         </header>
 
@@ -322,11 +323,9 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
           role="status"
           aria-live="polite"
         >
-          <Tag
-            :value="getBookSourceStatusLabel(data.status)"
-            severity="warn"
-            rounded
-          />
+          <ElTag type="warning" round>
+            {{ getBookSourceStatusLabel(data.status) }}
+          </ElTag>
           <strong>{{ sourceStatusTitle }}</strong>
           <span>{{ sourceStatusMessage }}</span>
         </p>
@@ -532,61 +531,61 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
             {{ formError || statusMessage }}
           </p>
           <div class="actions">
-            <Button
-              label="変更を保存"
-              icon="pi pi-check"
-              type="submit"
+            <ElButton
+              :icon="ElIconCheck"
+              native-type="submit"
               :loading="saving"
-            />
-            <Button
-              label="元に戻す"
-              icon="pi pi-undo"
-              type="button"
-              severity="secondary"
-              variant="outlined"
+            >
+              変更を保存
+            </ElButton>
+            <ElButton
+              :icon="ElIconRefreshLeft"
+              native-type="button"
+              type="info"
+              plain
               @click="resetMetadata"
-            />
-            <Button
-              label="再読み込み"
-              icon="pi pi-refresh"
-              type="button"
-              severity="secondary"
-              variant="text"
+            >
+              元に戻す
+            </ElButton>
+            <ElButton
+              :icon="ElIconRefresh"
+              native-type="button"
+              type="info"
+              text
               @click="() => refresh()"
-            />
+            >
+              再読み込み
+            </ElButton>
           </div>
         </form>
       </template>
       <template #fallback>
         <div class="status" role="status">
-          <ProgressSpinner class="spinner" stroke-width="4" />
+          <LoadingIndicator class="spinner" />
           <span>書籍を読み込んでいます。</span>
         </div>
       </template>
     </ClientOnly>
 
-    <Dialog
-      v-model:visible="archiveDialogOpen"
-      modal
-      header="アーカイブ"
-      :style="{ width: 'min(28rem, calc(100vw - 2rem))' }"
+    <ElDialog
+      v-model="archiveDialogOpen"
+      title="アーカイブ"
+      width="min(28rem, calc(100vw - 2rem))"
     >
       <p class="dialog-copy">「{{ data?.title }}」を非表示にします。</p>
       <template #footer>
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          variant="text"
-          @click="archiveDialogOpen = false"
-        />
-        <Button
-          label="アーカイブ"
-          icon="pi pi-inbox"
+        <ElButton type="info" text @click="archiveDialogOpen = false">
+          キャンセル
+        </ElButton>
+        <ElButton
+          :icon="ElIconBox"
           :loading="archiving"
           @click="confirmArchive"
-        />
+        >
+          アーカイブ
+        </ElButton>
       </template>
-    </Dialog>
+    </ElDialog>
   </section>
 </template>
 
@@ -594,7 +593,7 @@ onUnmounted(() => window.removeEventListener("beforeunload", warnBeforeUnload));
 .detail {
   display: grid;
   gap: 1.25rem;
-  width: min(900px, 100%);
+  width: min(56.25rem, 100%);
   padding: clamp(1rem, 4vw, 2rem);
   margin: 0 auto;
 }

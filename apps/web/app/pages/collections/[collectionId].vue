@@ -130,8 +130,8 @@ const submitPickerSearch = async (): Promise<void> => {
 /**
  * Moves to another candidate page.
  */
-const changePickerPage = async (event: { page: number }): Promise<void> => {
-  await loadPickerBooks(event.page + 1);
+const changePickerPage = async (page: number): Promise<void> => {
+  await loadPickerBooks(page);
 };
 
 /**
@@ -238,7 +238,7 @@ const removeBook = async (book: BookSummary): Promise<void> => {
     <header class="heading">
       <div>
         <NuxtLink class="back-link" to="/collections">
-          <i class="pi pi-arrow-left" aria-hidden="true" />
+          <ElIcon aria-hidden="true"><ElIconBack /></ElIcon>
           コレクション一覧
         </NuxtLink>
         <p v-if="selectedLibrary" class="page-eyebrow">
@@ -247,30 +247,33 @@ const removeBook = async (book: BookSummary): Promise<void> => {
         <h1 class="page-title">{{ data?.name ?? "コレクション" }}</h1>
       </div>
       <div class="commands">
-        <Button
-          label="更新"
-          icon="pi pi-refresh"
-          severity="secondary"
-          variant="outlined"
+        <ElButton
+          :icon="ElIconRefresh"
+          type="info"
+          plain
           :disabled="!selectedLibraryId"
           @click="() => refresh()"
-        />
-        <Button
-          label="本を追加"
-          icon="pi pi-plus"
+        >
+          更新
+        </ElButton>
+        <ElButton
+          :icon="ElIconPlus"
           :disabled="!selectedLibraryId || Boolean(error)"
           @click="openBookPicker"
-        />
+        >
+          本を追加
+        </ElButton>
       </div>
     </header>
 
-    <Message
+    <ElAlert
       v-if="operationMessage"
-      :severity="operationSeverity"
+      :type="operationSeverity"
       :closable="false"
+      show-icon
     >
       {{ operationMessage }}
-    </Message>
+    </ElAlert>
 
     <ClientOnly>
       <div
@@ -278,34 +281,33 @@ const removeBook = async (book: BookSummary): Promise<void> => {
         class="status"
         role="status"
       >
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="libraryError" severity="error" :closable="false">
+      <ElAlert
+        v-else-if="libraryError"
+        type="error"
+        :closable="false"
+        show-icon
+      >
         <span>{{ libraryErrorMessage }}</span>
-        <Button
-          label="再試行"
-          icon="pi pi-refresh"
-          size="small"
-          @click="refreshLibraries"
-        />
-      </Message>
-      <Card v-else-if="!selectedLibraryId" class="empty-card">
-        <template #content>
+        <ElButton :icon="ElIconRefresh" size="small" @click="refreshLibraries">
+          再試行
+        </ElButton>
+      </ElAlert>
+      <ElCard v-else-if="!selectedLibraryId" class="empty-card">
+        <template #default>
           <p>ライブラリは未登録です。</p>
-          <Button
-            as="router-link"
-            label="設定を開く"
-            icon="pi pi-cog"
-            to="/setup"
-          />
+          <NuxtLink class="button-link" to="/setup">
+            <ElButton :icon="ElIconSetting">設定を開く</ElButton>
+          </NuxtLink>
         </template>
-      </Card>
+      </ElCard>
       <div v-else-if="pending" class="status" role="status">
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="error" severity="error" :closable="false">
+      <ElAlert v-else-if="error" type="error" :closable="false" show-icon>
         {{ errorMessage }}
-      </Message>
+      </ElAlert>
       <BookList
         v-else-if="books.length > 0"
         :books="books"
@@ -315,48 +317,50 @@ const removeBook = async (book: BookSummary): Promise<void> => {
         @move-down="moveBook($event, 1)"
         @remove="removeBook"
       />
-      <Card v-else class="empty-card">
-        <template #content>
-          <i class="pi pi-book" aria-hidden="true" />
+      <ElCard v-else class="empty-card">
+        <template #default>
+          <ElIcon aria-hidden="true"><ElIconReading /></ElIcon>
           <p>このコレクションには本がありません。</p>
-          <Button label="本を追加" icon="pi pi-plus" @click="openBookPicker" />
+          <ElButton :icon="ElIconPlus" @click="openBookPicker">
+            本を追加
+          </ElButton>
         </template>
-      </Card>
+      </ElCard>
     </ClientOnly>
 
-    <Dialog
-      v-model:visible="pickerVisible"
-      modal
-      header="本を追加"
-      :style="{ width: 'min(48rem, calc(100vw - 2rem))' }"
+    <ElDialog
+      v-model="pickerVisible"
+      title="本を追加"
+      width="min(48rem, calc(100vw - 2rem))"
     >
       <form class="picker-search" @submit.prevent="submitPickerSearch">
         <label for="collection-book-search">蔵書を検索</label>
         <div class="search-controls">
-          <InputText
+          <ElInput
             id="collection-book-search"
             v-model="pickerSearch"
             type="search"
             maxlength="200"
             autocomplete="off"
             placeholder="タイトル、著者、タグ"
-            fluid
+            class="fluid-control"
           />
-          <Button
-            label="検索"
-            icon="pi pi-search"
-            type="submit"
+          <ElButton
+            :icon="ElIconSearch"
+            native-type="submit"
             :loading="pickerLoading"
-          />
+          >
+            検索
+          </ElButton>
         </div>
       </form>
 
       <div v-if="pickerLoading" class="status" role="status">
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="pickerError" severity="error" :closable="false">
+      <ElAlert v-else-if="pickerError" type="error" :closable="false" show-icon>
         {{ pickerError }}
-      </Message>
+      </ElAlert>
       <ul v-else-if="pickerBooks.length > 0" class="picker-list">
         <li v-for="book in pickerBooks" :key="book.id">
           <span>
@@ -365,33 +369,32 @@ const removeBook = async (book: BookSummary): Promise<void> => {
               {{ book.authors.join(", ") }}
             </small>
           </span>
-          <Button
-            :label="
-              collectionBookIds.has(book.id) ? '追加済み' : 'コレクションへ追加'
-            "
-            :icon="
-              collectionBookIds.has(book.id) ? 'pi pi-check' : 'pi pi-plus'
-            "
+          <ElButton
+            :icon="collectionBookIds.has(book.id) ? ElIconCheck : ElIconPlus"
             size="small"
             :loading="busyBookId === book.id"
             :disabled="isPickerBookDisabled(book)"
             @click="addBook(book)"
-          />
+          >
+            {{
+              collectionBookIds.has(book.id) ? "追加済み" : "コレクションへ追加"
+            }}
+          </ElButton>
         </li>
       </ul>
       <p v-else class="picker-empty">追加できる本はありません。</p>
 
-      <Paginator
+      <ElPagination
         v-if="pickerTotal > BOOK_LIST_PAGE_SIZE"
-        :first="(pickerPage - 1) * BOOK_LIST_PAGE_SIZE"
-        :rows="BOOK_LIST_PAGE_SIZE"
-        :total-records="pickerTotal"
-        template="FirstPageLink PrevPageLink CurrentPageReport NextPageLink LastPageLink"
-        current-page-report-template="{currentPage} / {totalPages}"
+        :current-page="pickerPage"
+        :page-size="BOOK_LIST_PAGE_SIZE"
+        :total="pickerTotal"
+        layout="prev, pager, next"
+        background
         aria-label="追加する本のページ"
-        @page="changePickerPage"
+        @current-change="changePickerPage"
       />
-    </Dialog>
+    </ElDialog>
   </section>
 </template>
 
@@ -455,11 +458,15 @@ const removeBook = async (book: BookSummary): Promise<void> => {
   text-align: center;
 }
 
-.empty-card :deep(.p-card-content) {
+.empty-card :deep(.el-card__body) {
   display: grid;
   justify-items: center;
   gap: 0.85rem;
   padding-block: 2.5rem;
+}
+
+.button-link {
+  text-decoration: none;
 }
 
 .empty-card p,

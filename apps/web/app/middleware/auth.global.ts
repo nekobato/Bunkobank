@@ -1,13 +1,54 @@
 /**
- * Client-side route guard for every authenticated Bunkobank page.
+ * Route guard for every authenticated Bunkobank page.
  *
  * @module
  */
 
 import { getLoginRedirect } from "../utils/authRedirect";
 
+interface AuthSessionResponse {
+  user?: unknown;
+}
+
+interface SetupStatusResponse {
+  setupComplete: boolean;
+}
+
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (import.meta.server || to.path === "/setup") {
+  if (to.path === "/setup") {
+    return;
+  }
+
+  if (import.meta.server) {
+    const requestFetch = useRequestFetch();
+    const apiBase = useApiBase();
+    const authenticated = await requestFetch<AuthSessionResponse | null>(
+      `${apiBase}/auth/get-session`
+    )
+      .then((authSession) => Boolean(authSession?.user))
+      .catch(() => false);
+
+    if (to.path === "/login") {
+      return authenticated
+        ? navigateTo(getLoginRedirect(to.query.redirect), { replace: true })
+        : undefined;
+    }
+
+    if (!authenticated) {
+      const setup = await requestFetch<SetupStatusResponse>(
+        `${apiBase}/setup/status`
+      ).catch(() => null);
+
+      if (setup && !setup.setupComplete) {
+        return navigateTo("/setup");
+      }
+
+      return navigateTo({
+        path: "/login",
+        query: { redirect: to.fullPath }
+      });
+    }
+
     return;
   }
 

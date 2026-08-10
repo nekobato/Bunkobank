@@ -173,23 +173,25 @@ const confirmDelete = async (): Promise<void> => {
         </p>
         <h1 class="page-title">コレクション</h1>
       </div>
-      <Button
-        label="更新"
-        icon="pi pi-refresh"
-        severity="secondary"
-        variant="outlined"
+      <ElButton
+        :icon="ElIconRefresh"
+        type="info"
+        plain
         :disabled="!selectedLibraryId"
         @click="() => refresh()"
-      />
+      >
+        更新
+      </ElButton>
     </header>
 
-    <Message
+    <ElAlert
       v-if="operationMessage"
-      :severity="operationSeverity"
+      :type="operationSeverity"
       :closable="false"
+      show-icon
     >
       {{ operationMessage }}
-    </Message>
+    </ElAlert>
 
     <ClientOnly>
       <div
@@ -197,36 +199,35 @@ const confirmDelete = async (): Promise<void> => {
         class="status"
         role="status"
       >
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
       </div>
-      <Message v-else-if="libraryError" severity="error" :closable="false">
+      <ElAlert
+        v-else-if="libraryError"
+        type="error"
+        :closable="false"
+        show-icon
+      >
         <span>{{ libraryErrorMessage }}</span>
-        <Button
-          label="再試行"
-          icon="pi pi-refresh"
-          size="small"
-          @click="refreshLibraries"
-        />
-      </Message>
-      <Card v-else-if="!selectedLibraryId" class="empty-card">
-        <template #content>
+        <ElButton :icon="ElIconRefresh" size="small" @click="refreshLibraries">
+          再試行
+        </ElButton>
+      </ElAlert>
+      <ElCard v-else-if="!selectedLibraryId" class="empty-card">
+        <template #default>
           <p>ライブラリは未登録です。</p>
-          <Button
-            as="router-link"
-            label="設定を開く"
-            icon="pi pi-cog"
-            to="/setup"
-          />
+          <NuxtLink class="button-link" to="/setup">
+            <ElButton :icon="ElIconSetting">設定を開く</ElButton>
+          </NuxtLink>
         </template>
-      </Card>
+      </ElCard>
       <template v-else>
-        <Card class="create-card">
-          <template #title>新しいコレクション</template>
-          <template #content>
+        <ElCard class="create-card">
+          <template #header>新しいコレクション</template>
+          <template #default>
             <form class="create-form" @submit.prevent="submitCreate">
               <div class="name-field">
                 <label for="collection-name">名前</label>
-                <InputText
+                <ElInput
                   id="collection-name"
                   v-model="newName"
                   name="name"
@@ -234,26 +235,27 @@ const confirmDelete = async (): Promise<void> => {
                   autocomplete="off"
                   placeholder="例: 今月読む本"
                   required
-                  fluid
+                  class="fluid-control"
                 />
               </div>
-              <Button
-                label="作成"
-                icon="pi pi-plus"
-                type="submit"
+              <ElButton
+                :icon="ElIconPlus"
+                native-type="submit"
                 :loading="isCreating"
                 :disabled="!newName.trim()"
-              />
+              >
+                作成
+              </ElButton>
             </form>
           </template>
-        </Card>
+        </ElCard>
 
         <div v-if="pending" class="status" role="status">
-          <ProgressSpinner class="spinner" stroke-width="4" />
+          <LoadingIndicator class="spinner" />
         </div>
-        <Message v-else-if="error" severity="error" :closable="false">
+        <ElAlert v-else-if="error" type="error" :closable="false" show-icon>
           {{ errorMessage }}
-        </Message>
+        </ElAlert>
         <ul v-else-if="collections.length > 0" class="collection-list">
           <li
             v-for="collection in collections"
@@ -268,101 +270,97 @@ const confirmDelete = async (): Promise<void> => {
                 <strong>{{ collection.name }}</strong>
                 <small>{{ collection.bookCount }}冊</small>
               </span>
-              <i class="pi pi-chevron-right" aria-hidden="true" />
+              <ElIcon aria-hidden="true"><ElIconArrowRight /></ElIcon>
             </NuxtLink>
             <div class="item-actions">
-              <Button
-                label="名前を変更"
-                icon="pi pi-pencil"
+              <ElButton
+                :icon="ElIconEdit"
                 size="small"
-                severity="secondary"
-                variant="text"
+                type="info"
+                text
                 @click="openRenameDialog(collection)"
-              />
-              <Button
-                label="削除"
-                icon="pi pi-trash"
+              >
+                名前を変更
+              </ElButton>
+              <ElButton
+                :icon="ElIconDelete"
                 size="small"
-                severity="danger"
-                variant="text"
+                type="danger"
+                text
                 @click="collectionToDelete = collection"
-              />
+              >
+                削除
+              </ElButton>
             </div>
           </li>
         </ul>
-        <Card v-else class="empty-card">
-          <template #content>
-            <i class="pi pi-list" aria-hidden="true" />
+        <ElCard v-else class="empty-card">
+          <template #default>
+            <ElIcon aria-hidden="true"><ElIconList /></ElIcon>
             <p>コレクションはありません。</p>
           </template>
-        </Card>
+        </ElCard>
       </template>
     </ClientOnly>
 
-    <Dialog
-      :visible="collectionToRename !== null"
-      modal
-      header="コレクション名を変更"
-      :style="{ width: 'min(28rem, calc(100vw - 2rem))' }"
-      @update:visible="collectionToRename = null"
+    <ElDialog
+      :model-value="collectionToRename !== null"
+      title="コレクション名を変更"
+      width="min(28rem, calc(100vw - 2rem))"
+      @update:model-value="collectionToRename = null"
     >
       <form id="rename-collection-form" @submit.prevent="submitRename">
         <div class="name-field">
           <label for="rename-collection">名前</label>
-          <InputText
+          <ElInput
             id="rename-collection"
             v-model="renameDraft"
             maxlength="100"
             autocomplete="off"
             required
-            fluid
+            class="fluid-control"
           />
         </div>
       </form>
       <template #footer>
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          variant="text"
-          @click="collectionToRename = null"
-        />
-        <Button
+        <ElButton type="info" text @click="collectionToRename = null">
+          キャンセル
+        </ElButton>
+        <ElButton
           form="rename-collection-form"
-          label="保存"
-          icon="pi pi-check"
-          type="submit"
+          :icon="ElIconCheck"
+          native-type="submit"
           :loading="isRenaming"
           :disabled="!renameDraft.trim()"
-        />
+        >
+          保存
+        </ElButton>
       </template>
-    </Dialog>
+    </ElDialog>
 
-    <Dialog
-      :visible="collectionToDelete !== null"
-      modal
-      header="コレクションを削除"
-      :style="{ width: 'min(28rem, calc(100vw - 2rem))' }"
-      @update:visible="collectionToDelete = null"
+    <ElDialog
+      :model-value="collectionToDelete !== null"
+      title="コレクションを削除"
+      width="min(28rem, calc(100vw - 2rem))"
+      @update:model-value="collectionToDelete = null"
     >
       <p class="dialog-copy">
         「{{ collectionToDelete?.name }}」を削除します。本は削除されません。
       </p>
       <template #footer>
-        <Button
-          label="キャンセル"
-          severity="secondary"
-          variant="text"
-          @click="collectionToDelete = null"
-        />
-        <Button
-          label="削除"
-          icon="pi pi-trash"
-          severity="danger"
+        <ElButton type="info" text @click="collectionToDelete = null">
+          キャンセル
+        </ElButton>
+        <ElButton
+          :icon="ElIconDelete"
+          type="danger"
           :loading="isDeleting"
           @click="confirmDelete"
-        />
+        >
+          削除
+        </ElButton>
       </template>
-    </Dialog>
+    </ElDialog>
   </section>
 </template>
 
@@ -390,6 +388,10 @@ const confirmDelete = async (): Promise<void> => {
 
 .create-card {
   border-inline-start: 0.35rem solid var(--bc-ink-blue);
+}
+
+.button-link {
+  text-decoration: none;
 }
 
 .create-form {
@@ -480,7 +482,7 @@ const confirmDelete = async (): Promise<void> => {
   text-align: center;
 }
 
-.empty-card :deep(.p-card-content) {
+.empty-card :deep(.el-card__body) {
   display: grid;
   justify-items: center;
   gap: 0.85rem;

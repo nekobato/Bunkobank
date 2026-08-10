@@ -158,45 +158,48 @@ onBeforeUnmount(() => {
 <template>
   <ClientOnly>
     <div v-if="pending" class="status" role="status">
-      <ProgressSpinner class="spinner" stroke-width="4" />
+      <LoadingIndicator class="spinner" />
       <span>書籍を読み込んでいます。</span>
     </div>
-    <Message
+    <ElAlert
       v-else-if="error"
       class="status"
-      severity="error"
+      type="error"
       :closable="false"
+      show-icon
     >
       <span>{{ errorMessage }}</span>
       <span class="status-actions">
         <NuxtLink v-if="actionLink" :to="actionLink.to">
           {{ actionLink.label }}
         </NuxtLink>
-        <Button
+        <ElButton
           v-else
-          label="再試行"
-          icon="pi pi-refresh"
-          severity="secondary"
+          :icon="ElIconRefresh"
+          type="info"
           size="small"
           @click="() => refresh()"
-        />
+        >
+          再試行
+        </ElButton>
         <NuxtLink to="/">ライブラリへ戻る</NuxtLink>
       </span>
-    </Message>
+    </ElAlert>
     <template v-else-if="data">
       <ReaderView :book="data" @page-change="handlePageChange" />
-      <Message
+      <ElAlert
         v-if="progressError"
         class="progress-status is-error"
-        severity="error"
+        type="error"
         :closable="false"
+        show-icon
       >
         {{ progressError }}
-      </Message>
+      </ElAlert>
     </template>
     <template #fallback>
       <div class="status" role="status">
-        <ProgressSpinner class="spinner" stroke-width="4" />
+        <LoadingIndicator class="spinner" />
         <span>書籍を読み込んでいます。</span>
       </div>
     </template>
@@ -209,11 +212,11 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  width: min(720px, calc(100% - 2rem));
+  width: min(45rem, calc(100% - 2rem));
   padding: 1rem;
   margin: 1rem auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0.375rem;
   background: var(--panel);
 }
 

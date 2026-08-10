@@ -1,6 +1,8 @@
 <script setup lang="ts">
-/** Responsive PrimeVue application shell for the Bunkobank Web Library. */
+/** Responsive Element Plus application shell for the Bunkobank Web Library. */
 
+import "dayjs/locale/ja";
+import ja from "element-plus/es/locale/lang/ja";
 import { isReaderRoute } from "./utils/appNavigation";
 
 useHead({
@@ -79,64 +81,63 @@ const restoreNavigationFocus = (): void => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'is-reader': isReader }">
-    <a class="skip-link" href="#content">本文へ移動</a>
+  <ElConfigProvider :locale="ja">
+    <div class="app-shell" :class="{ 'is-reader': isReader }">
+      <a class="skip-link" href="#content">本文へ移動</a>
 
-    <aside v-if="!isReader" class="sidebar">
-      <AppSidebar
-        :has-session="hasSession"
-        :libraries
-        :libraries-loading
-        :library-placeholder
-        :selected-library-id
-        :user-label
-        @navigate="isNavigationOpen = false"
-        @sign-out="submitSignOut"
-        @update-library="updateSelectedLibrary"
+      <aside v-if="!isReader" class="sidebar">
+        <AppSidebar
+          :has-session="hasSession"
+          :libraries
+          :libraries-loading
+          :library-placeholder
+          :selected-library-id
+          :user-label
+          @navigate="isNavigationOpen = false"
+          @sign-out="submitSignOut"
+          @update-library="updateSelectedLibrary"
+        />
+      </aside>
+
+      <ElButton
+        v-if="!isReader"
+        class="menu-trigger"
+        :icon="ElIconMenu"
+        circle
+        aria-label="ナビゲーションを開く"
+        aria-controls="navigation-drawer"
+        :aria-expanded="isNavigationOpen"
+        @click="isNavigationOpen = true"
       />
-    </aside>
 
-    <Button
-      v-if="!isReader"
-      class="menu-trigger"
-      icon="pi pi-bars"
-      severity="secondary"
-      rounded
-      aria-label="ナビゲーションを開く"
-      aria-controls="navigation-drawer"
-      :aria-expanded="isNavigationOpen"
-      @click="isNavigationOpen = true"
-    />
+      <main id="content" class="content" tabindex="-1">
+        <NuxtPage />
+      </main>
 
-    <main id="content" class="content" tabindex="-1">
-      <NuxtPage />
-    </main>
-
-    <Drawer
-      v-if="!isReader"
-      id="navigation-drawer"
-      v-model:visible="isNavigationOpen"
-      header=""
-      aria-label="メインナビゲーション"
-      position="left"
-      block-scroll
-      class="navigation-drawer"
-      :close-button-props="{ 'aria-label': '閉じる' }"
-      @after-hide="restoreNavigationFocus"
-    >
-      <AppSidebar
-        :has-session="hasSession"
-        :libraries
-        :libraries-loading
-        :library-placeholder
-        :selected-library-id
-        :user-label
-        @navigate="isNavigationOpen = false"
-        @sign-out="submitSignOut"
-        @update-library="updateSelectedLibrary"
-      />
-    </Drawer>
-  </div>
+      <ElDrawer
+        v-if="!isReader"
+        id="navigation-drawer"
+        v-model="isNavigationOpen"
+        class="navigation-drawer"
+        direction="ltr"
+        size="16.5rem"
+        aria-label="メインナビゲーション"
+        @closed="restoreNavigationFocus"
+      >
+        <AppSidebar
+          :has-session="hasSession"
+          :libraries
+          :libraries-loading
+          :library-placeholder
+          :selected-library-id
+          :user-label
+          @navigate="isNavigationOpen = false"
+          @sign-out="submitSignOut"
+          @update-library="updateSelectedLibrary"
+        />
+      </ElDrawer>
+    </div>
+  </ElConfigProvider>
 </template>
 
 <style scoped>
@@ -197,8 +198,15 @@ const restoreNavigationFocus = (): void => {
 
 @media (width <= 50rem) {
   .app-shell {
+    --app-topbar-height: calc(3.75rem + env(safe-area-inset-top));
+
     grid-template-areas: "content";
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell:not(.is-reader) .content {
+    box-sizing: border-box;
+    padding-block-start: var(--app-topbar-height);
   }
 
   .sidebar {
@@ -208,8 +216,8 @@ const restoreNavigationFocus = (): void => {
   .menu-trigger {
     position: fixed;
     z-index: 40;
-    inset-block-start: 0.75rem;
-    inset-inline-start: 0.75rem;
+    inset-block-start: max(0.75rem, env(safe-area-inset-top));
+    inset-inline-start: max(0.75rem, env(safe-area-inset-left));
     display: inline-flex;
     border: 1px solid rgb(255 255 255 / 18%);
     background: var(--bc-deep-shelf);
@@ -218,24 +226,25 @@ const restoreNavigationFocus = (): void => {
   }
 }
 
-:global(.navigation-drawer.p-drawer) {
+:global(.navigation-drawer.el-drawer) {
   border: 0;
   background: var(--bc-deep-shelf);
 }
 
-:global(.navigation-drawer .p-drawer-header) {
+:global(.navigation-drawer .el-drawer__header) {
   position: absolute;
   z-index: 2;
   inset-block-start: 0.7rem;
   inset-inline-end: 0.7rem;
+  margin: 0;
   padding: 0;
 }
 
-:global(.navigation-drawer .p-drawer-close-button) {
+:global(.navigation-drawer .el-drawer__close-btn) {
   color: #f7f9f8;
 }
 
-:global(.navigation-drawer .p-drawer-content) {
+:global(.navigation-drawer .el-drawer__body) {
   padding: 0;
 }
 </style>

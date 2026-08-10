@@ -868,11 +868,9 @@ onUnmounted(() => {
       >
         <strong>{{ issueTitle }}</strong>
         <span>{{ issueBody }}</span>
-        <Button
-          label="再試行"
-          icon="pi pi-refresh"
-          @click="retryVisiblePages"
-        />
+        <ElButton :icon="ElIconRefresh" @click="retryVisiblePages">
+          再試行
+        </ElButton>
       </div>
       <div
         v-else-if="mode === 'paged'"

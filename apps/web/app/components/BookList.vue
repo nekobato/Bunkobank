@@ -67,19 +67,19 @@ const getCoverLinkLabel = (book: BookSummary): string =>
     ? `${book.title}を読む`
     : getCoverPlaceholder(book).accessibleName;
 
-/** Returns a PrimeVue severity for source availability. */
-const getSourceSeverity = (
+/** Returns an Element Plus tag type for source availability. */
+const getSourceType = (
   status: BookSummary["status"]
-): "secondary" | "info" | "warn" | "danger" => {
+): "info" | "warning" | "danger" => {
   switch (status) {
     case "error":
       return "danger";
     case "missing":
-      return "warn";
+      return "warning";
     case "scanning":
       return "info";
     default:
-      return "secondary";
+      return "info";
   }
 };
 
@@ -216,20 +216,21 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
           </span>
           <span class="line">
             <span class="meta">{{ book.pageCount }}ページ</span>
-            <Tag
+            <ElTag
               v-if="book.status !== 'ready'"
-              :value="getBookSourceStatusLabel(book.status)"
-              :severity="getSourceSeverity(book.status)"
-              rounded
-            />
-            <Button
+              :type="getSourceType(book.status)"
+              round
+            >
+              {{ getBookSourceStatusLabel(book.status) }}
+            </ElTag>
+            <ElButton
               v-if="mode === 'normal'"
               class="edit-button"
-              icon="pi pi-pencil"
+              :icon="ElIconEdit"
               size="small"
-              severity="secondary"
-              variant="text"
-              rounded
+              type="info"
+              text
+              circle
               :aria-label="`${book.title}の情報を編集`"
               :aria-controls="
                 editingBookId === book.id
@@ -248,13 +249,11 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
             {{ getBookSourceStatusMessage(book.status) }}
           </span>
           <span v-if="book.tags.length > 0" class="tags">
-            <Chip
-              v-for="tag in book.tags.slice(0, 3)"
-              :key="tag"
-              :label="tag"
-            />
+            <ElTag v-for="tag in book.tags.slice(0, 3)" :key="tag">
+              {{ tag }}
+            </ElTag>
           </span>
-          <span v-if="mode === 'collection'" class="actions">
+          <span v-if="mode === 'collection'" class="actions collection-actions">
             <NuxtLink
               class="action"
               :class="{ 'is-disabled': !canReadBook(book) }"
@@ -265,44 +264,48 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
               読む
             </NuxtLink>
             <NuxtLink class="action" :to="`/books/${book.id}`">詳細</NuxtLink>
-            <Button
-              label="上へ"
-              icon="pi pi-arrow-up"
+            <ElButton
+              :icon="ElIconArrowUp"
               size="small"
-              severity="secondary"
-              variant="text"
+              type="info"
+              text
               :disabled="index === 0 || busyBookId !== null"
               @click="emit('moveUp', book)"
-            />
-            <Button
-              label="下へ"
-              icon="pi pi-arrow-down"
+            >
+              上へ
+            </ElButton>
+            <ElButton
+              :icon="ElIconArrowDown"
               size="small"
-              severity="secondary"
-              variant="text"
+              type="info"
+              text
               :disabled="index === books.length - 1 || busyBookId !== null"
               @click="emit('moveDown', book)"
-            />
-            <Button
-              label="外す"
-              icon="pi pi-times"
+            >
+              下へ
+            </ElButton>
+            <ElButton
+              :icon="ElIconClose"
               size="small"
-              severity="danger"
-              variant="text"
+              type="danger"
+              text
               :loading="busyBookId === book.id"
               :disabled="busyBookId !== null && busyBookId !== book.id"
               @click="emit('remove', book)"
-            />
+            >
+              外す
+            </ElButton>
           </span>
           <span v-else-if="mode === 'archived'" class="actions">
-            <Button
-              label="元に戻す"
-              icon="pi pi-replay"
+            <ElButton
+              :icon="ElIconRefreshLeft"
               size="small"
               :loading="busyBookId === book.id"
               :disabled="busyBookId !== null && busyBookId !== undefined"
               @click="emit('restore', book)"
-            />
+            >
+              元に戻す
+            </ElButton>
           </span>
         </div>
       </div>
@@ -508,6 +511,30 @@ const preventUnavailableRead = (event: Event, book: BookSummary): void => {
 .actions {
   margin-block-start: auto;
   padding-block-start: 0.5rem;
+}
+
+.actions :deep(.el-button + .el-button) {
+  margin-inline-start: 0;
+}
+
+.collection-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  --el-disabled-text-color: var(--muted);
+}
+
+.collection-actions > .action,
+.collection-actions :deep(.el-button) {
+  inline-size: 100%;
+  margin-inline-start: 0;
+}
+
+.collection-actions :deep(.el-button:last-child) {
+  grid-column: 1 / -1;
+}
+
+.collection-actions :deep(.el-button--info.is-text.is-disabled) {
+  color: var(--muted);
 }
 
 .tag,
