@@ -1,0 +1,28 @@
+[package]
+name = "bec1-interop"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+description = "Independent Rust interoperability validator for BEC1"
+license = "MIT"
+
+[dependencies]
+aes-gcm = { version = "0.11.1", features = ["alloc"] }
+aes-kw = { version = "0.2.1", features = ["alloc"] }
+argon2 = "0.5.3"
+ciborium = "0.2.2"
+hex = "0.4.3"
+hkdf = "0.13.0"
+hmac = "0.13.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.11.0"
+unicode-normalization = "0.1.25"
+uuid = "1.20.0"
+zeroize = "1.8.2"
+
+[profile.release]
+strip = true
+lto = "thin"
+

@@ -1,0 +1,47 @@
+{
+  "name": "BEC1 version 1 two-chunk interoperability vector",
+  "passwordCodePoints": [
+    66, 117, 776, 110, 107, 111, 32, 118, 101, 99, 116, 111, 114, 32, 112, 97,
+    115, 115, 119, 111, 114, 100
+  ],
+  "normalizedPasswordUtf8Hex": "42c3bc6e6b6f20766563746f722070617373776f7264",
+  "libraryId": "11111111-2222-4333-8444-555555555555",
+  "assetId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  "masterKeyHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "fileKeyHex": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+  "kdfSaltHex": "000102030405060708090a0b0c0d0e0f",
+  "noncePrefixHex": "a0a1a2a3a4a5a6a7",
+  "manifestNonceHex": "b0b1b2b3b4b5b6b7b8b9babb",
+  "kdf": {
+    "memoryKiB": 65536,
+    "passes": 3,
+    "parallelism": 4,
+    "tagLength": 32,
+    "version": 19
+  },
+  "plaintext": {
+    "length": 70000,
+    "byteFormula": "(index * 73 + 41) mod 256",
+    "sha256": "70aa70d4038e8dd12be9089d495049f8092b7a61c10a8c123d5a9e1af4333148"
+  },
+  "chunkSize": 65536,
+  "recovery": {
+    "originalName": "vector.bin",
+    "mimeType": "application/octet-stream",
+    "mediaKind": "video",
+    "itemId": "01234567-89ab-4cde-8fab-0123456789ab",
+    "assetRole": "original",
+    "sequence": 7,
+    "logicalPath": "Vectors/BEC1",
+    "modifiedAt": 1700000000000
+  },
+  "expected": {
+    "recoveryKekHex": "2370ca6ad5c4e81f84475141a078f40853f8eba46ca3de0680362e55bba42b77",
+    "wrappedMasterKeyHex": "dbc8f596ab479a9529b42c503c64c8496053e259efb1188182fec9b5464f2f4219cfec882adbb522",
+    "containerSize": 78224,
+    "containerSha256": "e790732bda0feda4bef628a86a85d6c723d652e07deeb0833a0ba74408dd38e3",
+    "descriptorSha256": "6d037e3ee21ad506df067aaedb37ebba09c6e84d17ea6c1f0d951f9a451c20c1",
+    "firstChunkSha256": "2d1650b67a030696299a67949cbc70b0fe3d766e46d2cb0e5da93a48778f17b2",
+    "finalChunkSha256": "3e1752610a9d81f97a4fd6eb57ee519bd8f71a94c220c6f1ce43840c39f5fbf2"
+  }
+}

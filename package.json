@@ -11,13 +11,13 @@
     "dev": "pnpm -r --parallel --filter @bunkobank/server --filter @bunkobank/web dev",
     "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @bunkobank/app build && pnpm --filter @bunkobank/web generate && pnpm --filter @bunkobank/server build && pnpm --filter @bunkobank/server copy-web",
     "test": "pnpm -r --filter \"./packages/*\" build && pnpm -r --if-present test",
+    "verify:bec1-interop": "pnpm --filter @bunkobank/encrypted-container build && node packages/encrypted-container/scripts/verify-rust-interop.mjs",
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "pnpm -r --filter \"./packages/*\" build && pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@playwright/test": "^1.61.1",
     "@types/node": "^24.10.1",
     "eslint": "^9.39.1",
     "eslint-plugin-vue": "^10.6.1",

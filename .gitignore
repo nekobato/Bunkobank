@@ -18,3 +18,4 @@ apps/desktop/src-tauri/binaries/
 apps/desktop/.sidecar-stage/
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/target/
+/tools/bec1-interop-rust/target/
