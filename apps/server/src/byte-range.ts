@@ -36,6 +36,17 @@ export interface BufferResponseOptions extends BinaryResponseOptions {
   data: Uint8Array;
 }
 
+/** Options for a lazily produced, range-addressable binary response. */
+export interface IterableResponseOptions extends BinaryResponseOptions {
+  size: number;
+  etag?: string;
+  iterate(range: {
+    start: number;
+    endExclusive: number;
+  }): AsyncIterable<Uint8Array>;
+  close(): Promise<void>;
+}
+
 /**
  * Parses a single RFC 9110 bytes range for a representation of `size` bytes.
  * Unsupported units, malformed values, and multiple ranges are ignored, while
@@ -206,6 +217,91 @@ export const createBufferResponse = ({
     status: 200,
     headers
   });
+};
+
+/**
+ * Streams an authenticated or generated representation without buffering it.
+ * The supplied source is closed after completion, cancellation, or HEAD.
+ */
+export const createIterableResponse = async ({
+  request,
+  size,
+  etag,
+  iterate,
+  close,
+  contentType,
+  cacheControl,
+  dispositionFileName
+}: IterableResponseOptions): Promise<Response> => {
+  const headers = createBinaryHeaders({
+    contentType,
+    cacheControl,
+    dispositionFileName
+  });
+
+  if (etag) {
+    headers.set("ETag", etag);
+  }
+
+  const shouldUseRange =
+    request.method === "GET" &&
+    (!request.headers.has("If-Range") ||
+      request.headers.get("If-Range") === etag);
+  const range = shouldUseRange
+    ? parseByteRange(request.headers.get("Range"), size)
+    : ({ kind: "full" } satisfies ByteRangeResult);
+
+  if (range.kind === "unsatisfiable") {
+    await close();
+    return createUnsatisfiableResponse(headers, size);
+  }
+
+  const selected =
+    range.kind === "partial"
+      ? {
+          start: range.range.start,
+          endExclusive: range.range.end + 1,
+          status: 206
+        }
+      : { start: 0, endExclusive: size, status: 200 };
+  const contentLength = selected.endExclusive - selected.start;
+  headers.set("Content-Length", String(contentLength));
+
+  if (selected.status === 206) {
+    headers.set(
+      "Content-Range",
+      `bytes ${selected.start}-${selected.endExclusive - 1}/${size}`
+    );
+  }
+
+  if (request.method === "HEAD") {
+    await close();
+    return new Response(null, { status: selected.status, headers });
+  }
+
+  let closed = false;
+  const closeOnce = async (): Promise<void> => {
+    if (closed) return;
+    closed = true;
+    await close();
+  };
+  const body = new ReadableStream<Uint8Array>({
+    start: async (controller) => {
+      try {
+        for await (const chunk of iterate(selected)) {
+          controller.enqueue(Uint8Array.from(chunk));
+        }
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        await closeOnce();
+      }
+    },
+    cancel: closeOnce
+  });
+
+  return new Response(body, { status: selected.status, headers });
 };
 
 /**

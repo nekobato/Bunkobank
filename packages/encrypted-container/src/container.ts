@@ -190,11 +190,26 @@ const authenticateDescriptor = async (
     descriptor.info.kdf
   );
   let masterKey: Buffer | undefined;
+
+  try {
+    masterKey = await unwrapKey(recoveryKek, descriptor.wrappedMasterKey);
+    return await authenticateDescriptorWithMasterKey(descriptor, masterKey);
+  } catch (error) {
+    masterKey?.fill(0);
+    throw asAuthenticationError(error);
+  } finally {
+    recoveryKek.fill(0);
+  }
+};
+
+const authenticateDescriptorWithMasterKey = async (
+  descriptor: Bec1DescriptorFields,
+  masterKey: Buffer
+): Promise<AuthenticatedDescriptor> => {
   let fileKey: Buffer | undefined;
   let contentKey: Buffer | undefined;
 
   try {
-    masterKey = await unwrapKey(recoveryKek, descriptor.wrappedMasterKey);
     const headerAuthKey = deriveHeaderAuthKey(
       masterKey,
       descriptor.info.libraryId
@@ -249,12 +264,10 @@ const authenticateDescriptor = async (
       manifestPlaintext.fill(0);
     }
   } catch (error) {
-    masterKey?.fill(0);
+    masterKey.fill(0);
     fileKey?.fill(0);
     contentKey?.fill(0);
     throw asAuthenticationError(error);
-  } finally {
-    recoveryKek.fill(0);
   }
 };
 
@@ -506,6 +519,47 @@ const createEncryptorFromSecrets = (
         operationSecrets.wrappedMasterKey.fill(0);
       }
     },
+    openFile: async (inputPath) => {
+      if (disposed) {
+        throw new Bec1Error("CLOSED", "The BEC1 library key is disposed.");
+      }
+
+      const sourceStat = await openRegularFileStat(inputPath);
+      const handle = await open(inputPath, "r");
+
+      try {
+        const candidates = await readDescriptorCandidates(
+          handle,
+          sourceStat.size
+        );
+        let failure: unknown;
+
+        for (const candidate of candidates) {
+          if (candidate.info.libraryId !== secrets.libraryId) {
+            failure = new Bec1Error(
+              "AUTHENTICATION_FAILED",
+              "The BEC1 asset belongs to another library."
+            );
+            continue;
+          }
+
+          try {
+            const authenticated = await authenticateDescriptorWithMasterKey(
+              candidate,
+              Buffer.from(secrets.masterKey)
+            );
+            return createOpenContainer(handle, authenticated);
+          } catch (error) {
+            failure = error;
+          }
+        }
+
+        throw asAuthenticationError(failure);
+      } catch (error) {
+        await handle.close();
+        throw error;
+      }
+    },
     dispose: () => {
       if (disposed) return;
       disposed = true;
@@ -687,6 +741,13 @@ export const openBec1Container = async (
     throw error;
   }
 
+  return createOpenContainer(handle, authenticated);
+};
+
+const createOpenContainer = (
+  handle: Awaited<ReturnType<typeof open>>,
+  authenticated: AuthenticatedDescriptor
+): Bec1OpenContainer => {
   const { descriptor, contentKey, manifest } = authenticated;
   authenticated.masterKey.fill(0);
   authenticated.fileKey.fill(0);

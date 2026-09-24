@@ -44,15 +44,15 @@ const isBusy = computed(() =>
 const webGuidance = computed(() => {
   switch (state.server.phase) {
     case "running":
-      return "アカウント、ライブラリ、ネットワーク、サムネイルの設定はWeb UIで行います。";
+      return "アプリ内でライブラリを管理できます。";
     case "checking":
       return "サーバー状態を確認しています。完了までお待ちください。";
     case "starting":
-      return "サーバーを起動しています。稼働するとWeb UIを開けます。";
+      return "サーバーを起動しています。稼働するとBunkobankを開けます。";
     case "stopping":
       return "サーバーを停止しています。完了までお待ちください。";
     default:
-      return "Web UIを開くには、まずサーバーを起動してください。";
+      return "Bunkobankを開くには、まずサーバーを起動してください。";
   }
 });
 </script>
@@ -68,7 +68,7 @@ const webGuidance = computed(() => {
       <span class="brand-mark" aria-hidden="true">BB</span>
       <div>
         <h1 id="product-name" class="brand-name">Bunkobank</h1>
-        <p class="product-kind">Server Monitor</p>
+        <p class="product-kind">Desktop</p>
       </div>
     </header>
 
@@ -93,18 +93,21 @@ const webGuidance = computed(() => {
       {{ errorMessage }}
     </ElAlert>
 
-    <p class="web-guidance">{{ webGuidance }}</p>
-
-    <div class="monitor-actions" aria-label="サーバー操作">
+    <div class="app-action">
       <ElButton
-        class="monitor-button type-primary fluid-control"
+        class="app-button type-primary fluid-control"
         :icon="TopRight"
         :disabled="state.server.phase !== 'running'"
         @click="$emit('open')"
       >
-        Web UIを開く
+        Bunkobankを開く
       </ElButton>
+      <p class="web-guidance">{{ webGuidance }}</p>
+    </div>
+
+    <div class="monitor-actions" aria-label="サーバー操作">
       <ElButton
+        v-if="state.server.phase !== 'running'"
         class="monitor-button type-secondary fluid-control"
         :icon="VideoPlay"
         plain
@@ -115,6 +118,7 @@ const webGuidance = computed(() => {
         起動
       </ElButton>
       <ElButton
+        v-if="state.server.canStop"
         class="monitor-button type-danger fluid-control"
         :icon="VideoPause"
         type="danger"
@@ -203,7 +207,6 @@ const webGuidance = computed(() => {
 .product-kind,
 .server-heading,
 .server-detail,
-.web-guidance,
 .process-message {
   margin: 0;
 }
@@ -225,7 +228,7 @@ const webGuidance = computed(() => {
 }
 
 .server-status {
-  margin-block: clamp(2.5rem, 8vh, 4.5rem) 1.5rem;
+  margin-block: clamp(2.2rem, 7vh, 3.75rem) 1.25rem;
   padding-inline-start: 1.25rem;
 }
 
@@ -265,8 +268,13 @@ const webGuidance = computed(() => {
   font-size: 0.72rem;
 }
 
+.app-action {
+  display: grid;
+  gap: 0.65rem;
+}
+
 .web-guidance {
-  margin-block: 1.5rem;
+  margin: 0;
   color: rgb(247 249 248 / 68%);
   font-size: 0.78rem;
   line-height: 1.6;
@@ -286,9 +294,12 @@ const webGuidance = computed(() => {
 
 .monitor-actions {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.65rem;
+  margin-block-start: 1rem;
 }
 
+.app-action :deep(.app-button),
 .monitor-actions :deep(.monitor-button) {
   min-block-size: 3.15rem;
   border-width: 1px;
@@ -296,13 +307,13 @@ const webGuidance = computed(() => {
   box-shadow: none;
 }
 
-.monitor-actions :deep(.monitor-button.type-primary:not(:disabled)) {
+.app-action :deep(.app-button.type-primary:not(:disabled)) {
   border-color: #d9ddff;
   background: #d9ddff;
   color: var(--bc-deep-shelf);
 }
 
-.monitor-actions :deep(.monitor-button.type-primary:not(:disabled):hover) {
+.app-action :deep(.app-button.type-primary:not(:disabled):hover) {
   border-color: #eef0ff;
   background: #eef0ff;
 }
@@ -338,6 +349,7 @@ const webGuidance = computed(() => {
   color: #edf4f2;
 }
 
+.app-action :deep(.app-button:disabled),
 .monitor-actions :deep(.monitor-button:disabled) {
   border-color: #718784;
   background: rgb(255 255 255 / 4%);
@@ -373,6 +385,11 @@ const webGuidance = computed(() => {
   }
 
   .monitor-actions :deep(.monitor-button) {
+    border-color: ButtonBorder;
+    color: ButtonText;
+  }
+
+  .app-action :deep(.app-button) {
     border-color: ButtonBorder;
     color: ButtonText;
   }

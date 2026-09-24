@@ -27,7 +27,7 @@
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.json",
     "copy-web": "node scripts/copy-web.mjs",
-    "test": "vitest run src/loopback.test.ts --passWithNoTests",
+    "test": "vitest run src --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -35,6 +35,7 @@
     "@bunkobank/contracts": "workspace:*",
     "@bunkobank/core": "workspace:*",
     "@bunkobank/db": "workspace:*",
+    "@bunkobank/encrypted-container": "workspace:*",
     "@bunkobank/format-adapters": "workspace:*",
     "@bunkobank/scanner": "workspace:*",
     "@hono/node-server": "^2.0.10",

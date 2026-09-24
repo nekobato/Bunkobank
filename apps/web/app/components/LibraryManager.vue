@@ -9,10 +9,7 @@ import type {
   BackgroundJobResponse,
   LibraryResponse
 } from "@bunkobank/contracts";
-import {
-  libraryCreateRequestSchema,
-  libraryUpdateRequestSchema
-} from "@bunkobank/contracts";
+import { libraryUpdateRequestSchema } from "@bunkobank/contracts";
 import { useIntervalFn } from "@vueuse/core";
 
 import { getApiErrorMessage } from "../utils/apiErrors";
@@ -37,10 +34,12 @@ const emit = defineEmits<{
 }>();
 const {
   cancelJob,
-  createLibrary,
   createScanJob,
   deleteLibrary,
+  importLibraryBook,
+  lockLibrary,
   listJobs,
+  unlockLibrary,
   updateLibrary
 } = useBookApi();
 const {
@@ -54,14 +53,12 @@ const {
   selectedLibraryId,
   selectLibrary
 } = useLibraries();
-const name = ref("");
-const rootPath = ref("");
 const allJobs = ref<BackgroundJobResponse[]>([]);
 const jobsPending = ref(false);
 const jobsError = ref("");
 const message = ref("");
 const messageType = ref<FeedbackType>("info");
-const isCreating = ref(false);
+const createDrawerVisible = ref(false);
 const scanningLibraryId = ref<string | null>(null);
 const cancellingJobId = ref<string | null>(null);
 const editingLibrary = ref<LibraryResponse | null>(null);
@@ -72,10 +69,16 @@ const editName = ref("");
 const editRootPath = ref("");
 const isSavingEdit = ref(false);
 const isDeleting = ref(false);
-const createFieldErrors = ref<Record<string, string>>({});
 const editFieldErrors = ref<Record<string, string>>({});
-const createErrorSummary = useTemplateRef<HTMLElement>("create-error-summary");
 const editErrorSummary = useTemplateRef<HTMLElement>("edit-error-summary");
+const unlockingLibrary = ref<LibraryResponse | null>(null);
+const unlockPassword = ref("");
+const isUnlocking = ref(false);
+const unlockError = ref("");
+const importTargetLibraryId = ref<string | null>(null);
+const importProgress = ref<{ current: number; total: number } | null>(null);
+const importingLibraryId = ref<string | null>(null);
+const libraryFileInput = useTemplateRef<HTMLInputElement>("library-file-input");
 const jobs = computed(() =>
   selectedLibraryId.value
     ? allJobs.value.filter(
@@ -125,42 +128,12 @@ watch(
   { immediate: true }
 );
 
-/** Registers a named library and makes it the active selection. */
-const submitLibrary = async (): Promise<void> => {
-  const validation = libraryCreateRequestSchema.safeParse({
-    name: name.value,
-    rootPath: rootPath.value
-  });
-
-  if (!validation.success) {
-    createFieldErrors.value = localizeLibraryFieldErrors(
-      createFieldErrorMap(validation.error.issues)
-    );
-    await focusFormErrorSummary(createErrorSummary.value);
-    return;
-  }
-
-  isCreating.value = true;
-  message.value = "";
-  createFieldErrors.value = {};
-
-  try {
-    const library = await createLibrary(validation.data);
-    name.value = "";
-    rootPath.value = "";
-    await selectCreatedLibrary(library.id);
-    messageType.value = "success";
-    message.value = "ライブラリを追加しました。";
-    emit("updated");
-  } catch (error) {
-    messageType.value = "error";
-    message.value = getApiErrorMessage(
-      error,
-      "ライブラリを追加できませんでした。"
-    );
-  } finally {
-    isCreating.value = false;
-  }
+/** Selects a newly created library and refreshes dependent page state. */
+const onLibraryCreated = async (library: LibraryResponse): Promise<void> => {
+  await selectCreatedLibrary(library.id);
+  messageType.value = "success";
+  message.value = "ライブラリを追加しました。";
+  emit("updated");
 };
 
 /** Opens the edit dialog with one library's persisted values. */
@@ -177,10 +150,11 @@ const submitLibraryEdit = async (): Promise<void> => {
     return;
   }
 
-  const validation = libraryUpdateRequestSchema.safeParse({
-    name: editName.value,
-    rootPath: editRootPath.value
-  });
+  const validation = libraryUpdateRequestSchema.safeParse(
+    editingLibrary.value.kind === "encrypted"
+      ? { name: editName.value }
+      : { name: editName.value, rootPath: editRootPath.value }
+  );
 
   if (!validation.success) {
     editFieldErrors.value = localizeLibraryFieldErrors(
@@ -286,6 +260,104 @@ const isStoppingLibraryScan = (libraryId: string): boolean =>
 const isUpdatingLibraryScan = (libraryId: string): boolean =>
   scanningLibraryId.value === libraryId || isStoppingLibraryScan(libraryId);
 
+/** Opens a native file picker for one unlocked encrypted library. */
+const openImportPicker = (libraryId: string): void => {
+  importTargetLibraryId.value = libraryId;
+  libraryFileInput.value?.click();
+};
+
+/** Imports each selected book sequentially so progress remains comprehensible. */
+const importSelectedBooks = async (event: Event): Promise<void> => {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  const libraryId = importTargetLibraryId.value;
+  input.value = "";
+
+  if (!libraryId || files.length === 0) {
+    return;
+  }
+
+  importingLibraryId.value = libraryId;
+  importProgress.value = { current: 0, total: files.length };
+  message.value = "";
+
+  try {
+    for (const [index, file] of files.entries()) {
+      await importLibraryBook(libraryId, file);
+      importProgress.value = { current: index + 1, total: files.length };
+    }
+    await refreshLibraries();
+    messageType.value = "success";
+    message.value = `${files.length}冊を追加しました。`;
+    emit("updated");
+  } catch (error) {
+    messageType.value = "error";
+    message.value = getApiErrorMessage(
+      error,
+      "ファイルを追加できませんでした。"
+    );
+  } finally {
+    importingLibraryId.value = null;
+    importProgress.value = null;
+    importTargetLibraryId.value = null;
+  }
+};
+
+/** Clears one library's in-memory encryption key. */
+const lockEncryptedLibrary = async (
+  library: LibraryResponse
+): Promise<void> => {
+  message.value = "";
+
+  try {
+    await lockLibrary(library.id);
+    await refreshLibraries();
+    messageType.value = "success";
+    message.value = "ライブラリをロックしました。";
+  } catch (error) {
+    messageType.value = "error";
+    message.value = getApiErrorMessage(
+      error,
+      "ライブラリをロックできませんでした。"
+    );
+  }
+};
+
+/** Opens password entry for a locked encrypted library. */
+const openUnlockDialog = (library: LibraryResponse): void => {
+  unlockingLibrary.value = library;
+  unlockPassword.value = "";
+  unlockError.value = "";
+};
+
+/** Unlocks an encrypted library using its independently chosen password. */
+const submitLibraryUnlock = async (): Promise<void> => {
+  if (!unlockingLibrary.value) {
+    return;
+  }
+
+  isUnlocking.value = true;
+  unlockError.value = "";
+
+  try {
+    await unlockLibrary(unlockingLibrary.value.id, {
+      password: unlockPassword.value
+    });
+    unlockingLibrary.value = null;
+    unlockPassword.value = "";
+    await refreshLibraries();
+    messageType.value = "success";
+    message.value = "ライブラリをロック解除しました。";
+  } catch (error) {
+    unlockError.value = getApiErrorMessage(
+      error,
+      "ロック解除できませんでした。"
+    );
+  } finally {
+    isUnlocking.value = false;
+  }
+};
+
 /** Replaces one locally cached job with its newest API representation. */
 const upsertJob = (updatedJob: BackgroundJobResponse): void => {
   allJobs.value = [
@@ -390,79 +462,34 @@ const localizeLibraryFieldErrors = (
   <section class="manager" aria-labelledby="libraries-title">
     <header class="manager-heading">
       <h2 id="libraries-title">ライブラリ</h2>
-      <ElButton
-        :icon="ElIconRefresh"
-        type="info"
-        text
-        @click="refreshLibraries"
-      >
-        更新
-      </ElButton>
+      <div class="heading-actions">
+        <ElButton :icon="ElIconPlus" @click="createDrawerVisible = true">
+          ライブラリを追加
+        </ElButton>
+        <ElButton
+          :icon="ElIconRefresh"
+          type="info"
+          text
+          @click="refreshLibraries"
+        >
+          更新
+        </ElButton>
+      </div>
     </header>
 
-    <form class="create-form" @submit.prevent="submitLibrary">
-      <div
-        v-if="Object.keys(createFieldErrors).length > 0"
-        ref="create-error-summary"
-        class="error-summary"
-        tabindex="-1"
-        role="alert"
-      >
-        <strong>入力内容を確認してください。</strong>
-        <a v-if="createFieldErrors.name" href="#library-name">
-          {{ createFieldErrors.name }}
-        </a>
-        <a v-if="createFieldErrors.rootPath" href="#library-root-path">
-          {{ createFieldErrors.rootPath }}
-        </a>
-      </div>
-      <div class="field">
-        <label for="library-name">名前</label>
-        <ElInput
-          id="library-name"
-          v-model="name"
-          name="name"
-          autocomplete="off"
-          maxlength="100"
-          required
-          :aria-invalid="Boolean(createFieldErrors.name)"
-          aria-describedby="library-name-error"
-          class="fluid-control"
-          :class="{ 'is-invalid': Boolean(createFieldErrors.name) }"
-        />
-        <small
-          v-if="createFieldErrors.name"
-          id="library-name-error"
-          class="field-error"
-        >
-          {{ createFieldErrors.name }}
-        </small>
-      </div>
-      <div class="field path-field">
-        <label for="library-root-path">対象ディレクトリ</label>
-        <ElInput
-          id="library-root-path"
-          v-model="rootPath"
-          name="rootPath"
-          autocomplete="off"
-          required
-          :aria-invalid="Boolean(createFieldErrors.rootPath)"
-          aria-describedby="library-root-path-error"
-          class="fluid-control"
-          :class="{ 'is-invalid': Boolean(createFieldErrors.rootPath) }"
-        />
-        <small
-          v-if="createFieldErrors.rootPath"
-          id="library-root-path-error"
-          class="field-error"
-        >
-          {{ createFieldErrors.rootPath }}
-        </small>
-      </div>
-      <ElButton :icon="ElIconPlus" native-type="submit" :loading="isCreating">
-        追加
-      </ElButton>
-    </form>
+    <input
+      ref="library-file-input"
+      class="visually-hidden"
+      type="file"
+      multiple
+      accept=".zip,.cbz,.pdf,.epub,.rar,.cbr,.7z"
+      @change="importSelectedBooks"
+    />
+
+    <LibraryCreateDrawer
+      v-model:open="createDrawerVisible"
+      @created="onLibraryCreated"
+    />
 
     <ElAlert
       v-if="message"
@@ -496,7 +523,33 @@ const localizeLibraryFieldErrors = (
         >
           <span class="library-title">
             <strong>{{ library.name }}</strong>
-            <ElTag v-if="getActiveScanJob(library.id)" type="info" round>
+            <ElTag
+              v-if="library.kind === 'directory'"
+              type="info"
+              effect="plain"
+              round
+            >
+              フォルダー参照
+            </ElTag>
+            <ElTag
+              v-else
+              :type="library.lockState === 'unlocked' ? 'success' : 'info'"
+              effect="plain"
+              round
+            >
+              {{
+                library.lockState === "unlocked"
+                  ? "暗号化・解除済み"
+                  : "暗号化・ロック中"
+              }}
+            </ElTag>
+            <ElTag
+              v-if="
+                library.kind === 'directory' && getActiveScanJob(library.id)
+              "
+              type="info"
+              round
+            >
               スキャン中
             </ElTag>
           </span>
@@ -504,6 +557,7 @@ const localizeLibraryFieldErrors = (
         </button>
         <div class="row-actions">
           <ElButton
+            v-if="library.kind === 'directory'"
             :icon="
               getActiveScanJob(library.id) ? ElIconVideoPause : ElIconRefresh
             "
@@ -515,6 +569,37 @@ const localizeLibraryFieldErrors = (
           >
             {{ getActiveScanJob(library.id) ? "スキャン停止" : "スキャン" }}
           </ElButton>
+          <template v-else>
+            <ElButton
+              v-if="library.lockState === 'unlocked'"
+              :icon="ElIconUpload"
+              size="small"
+              :loading="importingLibraryId === library.id"
+              :disabled="importingLibraryId !== null"
+              @click="openImportPicker(library.id)"
+            >
+              ファイルを追加
+            </ElButton>
+            <ElButton
+              v-if="library.lockState === 'unlocked'"
+              :icon="ElIconLock"
+              size="small"
+              type="info"
+              plain
+              :disabled="importingLibraryId === library.id"
+              @click="lockEncryptedLibrary(library)"
+            >
+              ロック
+            </ElButton>
+            <ElButton
+              v-else
+              :icon="ElIconUnlock"
+              size="small"
+              @click="openUnlockDialog(library)"
+            >
+              ロック解除
+            </ElButton>
+          </template>
           <ElButton
             :icon="ElIconEdit"
             size="small"
@@ -522,7 +607,9 @@ const localizeLibraryFieldErrors = (
             plain
             circle
             :aria-label="`${library.name}を編集`"
-            :disabled="isLibraryScanning(library.id)"
+            :disabled="
+              library.kind === 'directory' && isLibraryScanning(library.id)
+            "
             @click="openEditDialog(library)"
           />
           <ElButton
@@ -532,15 +619,25 @@ const localizeLibraryFieldErrors = (
             text
             circle
             :aria-label="`${library.name}を削除`"
-            :disabled="isLibraryScanning(library.id)"
+            :disabled="
+              library.kind === 'directory' && isLibraryScanning(library.id)
+            "
             @click="deletingLibrary = library"
           />
         </div>
+        <p
+          v-if="importingLibraryId === library.id && importProgress"
+          class="import-progress"
+          role="status"
+        >
+          {{ importProgress.current }} /
+          {{ importProgress.total }} 冊を暗号化しています
+        </p>
       </li>
     </ul>
     <p v-else-if="librariesLoaded" class="empty">ライブラリは未登録です。</p>
 
-    <ElCard v-if="selectedLibrary" class="jobs">
+    <ElCard v-if="selectedLibrary?.kind === 'directory'" class="jobs">
       <template #header>
         <div class="jobs-heading">
           <span>ジョブ</span>
@@ -629,7 +726,12 @@ const localizeLibraryFieldErrors = (
           <a v-if="editFieldErrors.name" href="#library-edit-name">
             {{ editFieldErrors.name }}
           </a>
-          <a v-if="editFieldErrors.rootPath" href="#library-edit-path">
+          <a
+            v-if="
+              editingLibrary?.kind === 'directory' && editFieldErrors.rootPath
+            "
+            href="#library-edit-path"
+          >
             {{ editFieldErrors.rootPath }}
           </a>
         </div>
@@ -655,7 +757,7 @@ const localizeLibraryFieldErrors = (
             {{ editFieldErrors.name }}
           </small>
         </div>
-        <div class="field">
+        <div v-if="editingLibrary?.kind === 'directory'" class="field">
           <label for="library-edit-path">対象ディレクトリ</label>
           <ElInput
             id="library-edit-path"
@@ -687,6 +789,55 @@ const localizeLibraryFieldErrors = (
           :loading="isSavingEdit"
         >
           保存
+        </ElButton>
+      </template>
+    </ElDialog>
+
+    <ElDialog
+      :model-value="unlockingLibrary !== null"
+      title="ライブラリをロック解除"
+      width="min(30rem, calc(100vw - 2rem))"
+      @update:model-value="unlockingLibrary = null"
+    >
+      <form
+        id="library-unlock-form"
+        class="dialog-form"
+        @submit.prevent="submitLibraryUnlock"
+      >
+        <div v-if="unlockError" class="error-summary" role="alert">
+          {{ unlockError }}
+        </div>
+        <div class="field">
+          <label for="library-unlock-password">パスワード</label>
+          <ElInput
+            id="library-unlock-password"
+            v-model="unlockPassword"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            minlength="1"
+            maxlength="128"
+            required
+            show-password
+            autofocus
+          />
+        </div>
+      </form>
+      <template #footer>
+        <ElButton
+          type="info"
+          text
+          :disabled="isUnlocking"
+          @click="unlockingLibrary = null"
+        >
+          キャンセル
+        </ElButton>
+        <ElButton
+          form="library-unlock-form"
+          native-type="submit"
+          :loading="isUnlocking"
+        >
+          ロック解除
         </ElButton>
       </template>
     </ElDialog>
@@ -735,7 +886,8 @@ const localizeLibraryFieldErrors = (
 .manager-heading,
 .jobs-heading,
 .row-actions,
-.job-actions {
+.job-actions,
+.heading-actions {
   display: flex;
   align-items: center;
 }
@@ -752,19 +904,10 @@ const localizeLibraryFieldErrors = (
   font-size: 1.15rem;
 }
 
-.create-form {
-  display: grid;
-  grid-template-columns: minmax(10rem, 0.55fr) minmax(16rem, 1.45fr) auto;
-  align-items: end;
-  gap: 0.75rem;
-  border: 1px solid var(--bc-line-soft);
-  border-radius: 0.8rem;
-  background: var(--bc-paper);
-  padding: 1rem;
-}
-
-.create-form .error-summary {
-  grid-column: 1 / -1;
+.heading-actions {
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.25rem;
 }
 
 .field,
@@ -842,6 +985,13 @@ const localizeLibraryFieldErrors = (
   border-inline-start-color: var(--bc-ink-blue);
 }
 
+.import-progress {
+  grid-column: 1 / -1;
+  margin: -0.25rem 0 0;
+  color: var(--bc-ink-soft);
+  font-size: 0.78rem;
+}
+
 .library-label {
   display: grid;
   gap: 0.3rem;
@@ -917,12 +1067,21 @@ const localizeLibraryFieldErrors = (
   color: var(--bc-ink-soft);
 }
 
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
 .dialog-form {
   gap: 1rem;
 }
 
 @media (width <= 48rem) {
-  .create-form,
   .library-row {
     grid-template-columns: minmax(0, 1fr);
   }

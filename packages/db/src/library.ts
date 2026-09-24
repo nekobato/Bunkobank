@@ -28,6 +28,9 @@ export type BookSort = "title" | "purchasedAt" | "updatedAt" | "lastReadAt";
 
 export type SortOrder = "asc" | "desc";
 
+/** Persistent storage behavior for one library. */
+export type LibraryKind = "directory" | "encrypted";
+
 export type CancelJobResult = "cancelled" | "not-found" | "not-cancellable";
 
 export type BookPageSourceType =
@@ -40,6 +43,7 @@ export interface BunkobankDatabase {
 export interface LibraryRecord {
   id: string;
   name: string;
+  kind: LibraryKind;
   rootPath: string;
   canonicalRootPath: string;
   createdAt: Date;
@@ -67,6 +71,7 @@ export type ReorderCollectionBooksResult =
 
 export interface CreateLibraryInput {
   name: string;
+  kind?: LibraryKind;
   rootPath: string;
   canonicalRootPath: string;
 }
@@ -236,6 +241,7 @@ export interface BunkobankDomainError extends Error {
 interface LibraryRow {
   id: string;
   name: string;
+  kind: string;
   root_path: string;
   canonical_root_path: string;
   created_at: number;
@@ -355,6 +361,8 @@ export const migrateDatabase = (database: BunkobankDatabase): void => {
     CREATE TABLE IF NOT EXISTS libraries (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      kind TEXT NOT NULL DEFAULT 'directory'
+        CHECK (kind IN ('directory', 'encrypted')),
       root_path TEXT NOT NULL,
       canonical_root_path TEXT NOT NULL UNIQUE,
       created_at INTEGER NOT NULL,
@@ -546,6 +554,12 @@ export const migrateDatabase = (database: BunkobankDatabase): void => {
       ON collection_books(book_id);
   `);
 
+  addColumnIfMissing(
+    database,
+    "libraries",
+    "kind",
+    "TEXT NOT NULL DEFAULT 'directory' CHECK (kind IN ('directory', 'encrypted'))"
+  );
   addColumnIfMissing(database, "books", "last_seen_scan_id", "TEXT");
   database.sqlite.exec(`
     CREATE INDEX IF NOT EXISTS books_library_scan_idx
@@ -585,6 +599,7 @@ export const createLibrary = (
   input: CreateLibraryInput
 ): LibraryRecord => {
   const name = normalizeRequiredText(input.name);
+  const kind = input.kind ?? "directory";
   const rootPath = resolve(input.rootPath);
   const canonicalRootPath = resolve(input.canonicalRootPath);
 
@@ -599,13 +614,14 @@ export const createLibrary = (
       `INSERT INTO libraries (
         id,
         name,
+        kind,
         root_path,
         canonical_root_path,
         created_at,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(id, name, rootPath, canonicalRootPath, now, now);
+    .run(id, name, kind, rootPath, canonicalRootPath, now, now);
 
   return findLibrary(database, id) as LibraryRecord;
 };
@@ -2415,6 +2431,7 @@ const getCurrentPage = (
 const toLibraryRecord = (row: LibraryRow): LibraryRecord => ({
   id: row.id,
   name: row.name,
+  kind: row.kind as LibraryKind,
   rootPath: row.root_path,
   canonicalRootPath: row.canonical_root_path,
   createdAt: new Date(row.created_at),

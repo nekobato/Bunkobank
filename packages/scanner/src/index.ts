@@ -5,6 +5,7 @@
 import { readdir, stat } from "node:fs/promises";
 import {
   basename,
+  dirname,
   extname,
   isAbsolute,
   join,
@@ -59,6 +60,12 @@ export interface ScanLibraryOptions {
   onCandidateError?: (failure: ScanCandidateFailure) => void;
   signal?: AbortSignal;
 }
+
+/** Controls parsing one explicitly selected file-backed book. */
+export type ScanBookFileOptions = Pick<
+  ScanLibraryOptions,
+  "listPdfPages" | "signal"
+>;
 
 /** Safe identity of a supported source or subtree that could not be read. */
 export type ScanCandidateFailure = {
@@ -159,6 +166,50 @@ export const scanLibrary = async function* (
   }
 
   yield* scanDirectory(root, runtime);
+};
+
+/**
+ * Parses one explicitly selected file-backed book without scanning siblings.
+ * Image directories intentionally remain a directory-library-only feature.
+ */
+export const scanBookFile = async (
+  filePath: string,
+  options: ScanBookFileOptions = {}
+): Promise<ScannedBook | null> => {
+  const path = resolve(filePath);
+  const signal = options.signal;
+  signal?.throwIfAborted();
+  const fileStat = await stat(path);
+
+  if (!fileStat.isFile()) {
+    return null;
+  }
+
+  const format = await detectFileFormat(path, false);
+  signal?.throwIfAborted();
+  const rootPath = dirname(path);
+  const runtime = createScanRuntime(rootPath, {
+    listPdfPages: options.listPdfPages,
+    signal
+  });
+
+  if (format === "zip" || format === "cbz") {
+    return createArchiveBook(path, rootPath, format);
+  }
+
+  if (format === "pdf") {
+    return createPdfBook(path, runtime);
+  }
+
+  if (format === "epub") {
+    return createEpubBook(path, rootPath);
+  }
+
+  if (format === "rar" || format === "cbr" || format === "seven-zip") {
+    return createPackedArchiveBook(path, rootPath, format);
+  }
+
+  return null;
 };
 
 /**

@@ -117,6 +117,9 @@ importers:
       '@bunkobank/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@bunkobank/encrypted-container':
+        specifier: workspace:*
+        version: link:../../packages/encrypted-container
       '@bunkobank/format-adapters':
         specifier: workspace:*
         version: link:../../packages/format-adapters

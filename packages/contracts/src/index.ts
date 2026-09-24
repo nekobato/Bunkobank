@@ -126,6 +126,11 @@ export const apiErrorCodeSchema = z.enum([
   "SIGN_UP_DISABLED",
   "DATA_UNAVAILABLE",
   "LIBRARY_BUSY",
+  "LIBRARY_LOCKED",
+  "LIBRARY_NOT_ENCRYPTED",
+  "INVALID_LIBRARY_PASSWORD",
+  "UNSUPPORTED_BOOK_FORMAT",
+  "IMPORT_FAILED",
   "LIBRARY_NAME_CONFLICT",
   "LIBRARY_PATH_CONFLICT",
   "COLLECTION_NAME_CONFLICT",
@@ -170,17 +175,29 @@ export const healthResponseSchema = z.object({
 export const librarySchema = z.object({
   id: z.string(),
   name: z.string(),
+  kind: z.enum(["directory", "encrypted"]),
+  lockState: z.enum(["not-applicable", "locked", "unlocked"]),
   rootPath: z.string(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
 
-export const libraryCreateRequestSchema = z.object({
+const libraryCreateBaseSchema = z.object({
   name: z.string().trim().min(1).max(100),
   rootPath: z.string().trim().min(1).max(32767)
 });
 
-export const libraryUpdateRequestSchema = libraryCreateRequestSchema
+export const libraryCreateRequestSchema = z.discriminatedUnion("kind", [
+  libraryCreateBaseSchema.extend({
+    kind: z.literal("directory")
+  }),
+  libraryCreateBaseSchema.extend({
+    kind: z.literal("encrypted"),
+    password: z.string().min(8).max(128)
+  })
+]);
+
+export const libraryUpdateRequestSchema = libraryCreateBaseSchema
   .partial()
   .refine(
     (request) => request.name !== undefined || request.rootPath !== undefined,
@@ -189,6 +206,14 @@ export const libraryUpdateRequestSchema = libraryCreateRequestSchema
 
 export const libraryListResponseSchema = z.object({
   libraries: z.array(librarySchema)
+});
+
+export const libraryUnlockRequestSchema = z.object({
+  password: z.string().min(1).max(128)
+});
+
+export const libraryImportResponseSchema = z.object({
+  book: bookDetailSchema
 });
 
 export const collectionSchema = z.object({
@@ -341,6 +366,8 @@ export type LibraryResponse = z.infer<typeof librarySchema>;
 export type LibraryCreateRequest = z.infer<typeof libraryCreateRequestSchema>;
 export type LibraryUpdateRequest = z.infer<typeof libraryUpdateRequestSchema>;
 export type LibraryListResponse = z.infer<typeof libraryListResponseSchema>;
+export type LibraryUnlockRequest = z.infer<typeof libraryUnlockRequestSchema>;
+export type LibraryImportResponse = z.infer<typeof libraryImportResponseSchema>;
 export type CollectionResponse = z.infer<typeof collectionSchema>;
 export type CollectionDetailResponse = z.infer<typeof collectionDetailSchema>;
 export type CollectionListResponse = z.infer<

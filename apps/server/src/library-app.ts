@@ -39,9 +39,11 @@ import {
   healthResponseSchema,
   initialSetupRequestSchema,
   libraryCreateRequestSchema,
+  libraryImportResponseSchema,
   libraryListResponseSchema,
   libraryPreferenceSchema,
   librarySchema,
+  libraryUnlockRequestSchema,
   libraryUpdateRequestSchema,
   networkSettingsSchema,
   scanFailureListQuerySchema,
@@ -120,6 +122,13 @@ import { isLoopbackAddress } from "./loopback.js";
 import { getBunkobankClientOrigins } from "./origins.js";
 import { renderPdfPageImageInChildProcess } from "./pdf-process.js";
 import { createBufferResponse, createFileResponse } from "./byte-range.js";
+import { createEncryptedLibraryKeyring } from "./encrypted-library-keyring.js";
+import {
+  createEncryptedSourceResponse,
+  importEncryptedBook,
+  withDecryptedSource,
+  withUploadedBook
+} from "./encrypted-library-files.js";
 
 type Auth = ReturnType<typeof getAuth>;
 
@@ -152,6 +161,11 @@ export const createApp = (options: AppOptions = {}) => {
     port: initialConfig.port
   });
   const app = new Hono<{ Variables: AppVariables }>();
+  const encryptedKeyring = createEncryptedLibraryKeyring(
+    join(paths.cacheDir, "encrypted-library-keys")
+  );
+  const serializeLibrary = (library: LibraryRecord) =>
+    toLibraryResponse(library, encryptedKeyring.isUnlocked(library.id));
   const jobQueue = options.jobQueue ?? createBunkobankJobQueue();
   const publicDir = options.publicDir ?? getDefaultPublicDir();
   const readRemoteAddress =
@@ -481,7 +495,7 @@ export const createApp = (options: AppOptions = {}) => {
   app.get("/api/libraries", async (c) =>
     c.json(
       libraryListResponseSchema.parse({
-        libraries: (await withDatabase(listLibraries)).map(toLibraryResponse)
+        libraries: (await withDatabase(listLibraries)).map(serializeLibrary)
       })
     )
   );
@@ -491,13 +505,18 @@ export const createApp = (options: AppOptions = {}) => {
     zValidator("json", libraryCreateRequestSchema, invalidInputHook),
     async (c) => {
       const body = c.req.valid("json");
-      const validatedRoot = await validateLibraryRoot(body.rootPath);
+      const validatedRoot = await validateLibraryRoot(
+        body.rootPath,
+        body.kind === "encrypted"
+      );
 
       if (!validatedRoot) {
         return c.json(
           createApiError(
             "INVALID_LIBRARY_PATH",
-            "Library path must be an existing readable directory."
+            body.kind === "encrypted"
+              ? "Encrypted library path must be an existing readable and writable directory."
+              : "Library path must be an existing readable directory."
           ),
           400
         );
@@ -507,11 +526,31 @@ export const createApp = (options: AppOptions = {}) => {
         const library = await withDatabase((database) =>
           createLibrary(database, {
             name: body.name,
+            kind: body.kind,
             rootPath: validatedRoot.rootPath,
             canonicalRootPath: validatedRoot.canonicalRootPath
           })
         );
-        return c.json(librarySchema.parse(toLibraryResponse(library)), 201);
+
+        if (body.kind === "encrypted") {
+          try {
+            await encryptedKeyring.initialize(library, body.password);
+          } catch {
+            encryptedKeyring.lock(library.id);
+            await withDatabase((database) =>
+              deleteLibrary(database, library.id)
+            );
+            return c.json(
+              createApiError(
+                "IMPORT_FAILED",
+                "Encrypted library could not be initialized."
+              ),
+              500
+            );
+          }
+        }
+
+        return c.json(librarySchema.parse(serializeLibrary(library)), 201);
       } catch (error) {
         return handleLibraryDomainError(c, error);
       }
@@ -523,8 +562,72 @@ export const createApp = (options: AppOptions = {}) => {
       findLibrary(database, c.req.param("libraryId"))
     );
     return library
-      ? c.json(librarySchema.parse(toLibraryResponse(library)))
+      ? c.json(librarySchema.parse(serializeLibrary(library)))
       : c.json(createApiError("NOT_FOUND", "Library not found."), 404);
+  });
+
+  app.post(
+    "/api/libraries/:libraryId/unlock",
+    zValidator("json", libraryUnlockRequestSchema, invalidInputHook),
+    async (c) => {
+      const library = await withDatabase((database) =>
+        findLibrary(database, c.req.param("libraryId"))
+      );
+
+      if (!library) {
+        return c.json(createApiError("NOT_FOUND", "Library not found."), 404);
+      }
+
+      if (library.kind !== "encrypted") {
+        return c.json(
+          createApiError(
+            "LIBRARY_NOT_ENCRYPTED",
+            "This library does not use encryption."
+          ),
+          409
+        );
+      }
+
+      try {
+        await encryptedKeyring.unlock(library, c.req.valid("json").password);
+        return c.json(librarySchema.parse(serializeLibrary(library)));
+      } catch (error) {
+        if (isBec1AuthenticationFailure(error)) {
+          return c.json(
+            createApiError(
+              "INVALID_LIBRARY_PASSWORD",
+              "The library password is incorrect."
+            ),
+            403
+          );
+        }
+
+        throw error;
+      }
+    }
+  );
+
+  app.post("/api/libraries/:libraryId/lock", async (c) => {
+    const library = await withDatabase((database) =>
+      findLibrary(database, c.req.param("libraryId"))
+    );
+
+    if (!library) {
+      return c.json(createApiError("NOT_FOUND", "Library not found."), 404);
+    }
+
+    if (library.kind !== "encrypted") {
+      return c.json(
+        createApiError(
+          "LIBRARY_NOT_ENCRYPTED",
+          "This library does not use encryption."
+        ),
+        409
+      );
+    }
+
+    encryptedKeyring.lock(library.id);
+    return c.json(librarySchema.parse(serializeLibrary(library)));
   });
 
   app.patch(
@@ -532,6 +635,24 @@ export const createApp = (options: AppOptions = {}) => {
     zValidator("json", libraryUpdateRequestSchema, invalidInputHook),
     async (c) => {
       const body = c.req.valid("json");
+      const current = await withDatabase((database) =>
+        findLibrary(database, c.req.param("libraryId"))
+      );
+
+      if (!current) {
+        return c.json(createApiError("NOT_FOUND", "Library not found."), 404);
+      }
+
+      if (current.kind === "encrypted" && body.rootPath !== undefined) {
+        return c.json(
+          createApiError(
+            "INVALID_INPUT",
+            "The storage location of an encrypted library cannot be changed."
+          ),
+          400
+        );
+      }
+
       let validatedRoot:
         { rootPath: string; canonicalRootPath: string } | undefined;
 
@@ -569,7 +690,7 @@ export const createApp = (options: AppOptions = {}) => {
           );
         }
 
-        return c.json(librarySchema.parse(toLibraryResponse(result)));
+        return c.json(librarySchema.parse(serializeLibrary(result)));
       } catch (error) {
         return handleLibraryDomainError(c, error);
       }
@@ -597,7 +718,108 @@ export const createApp = (options: AppOptions = {}) => {
         unlinkCentralThumbnail(path, paths.thumbnailDir)
       )
     );
+    encryptedKeyring.lock(c.req.param("libraryId"));
     return c.body(null, 204);
+  });
+
+  app.post("/api/libraries/:libraryId/books/import", async (c) => {
+    const library = await withDatabase((database) =>
+      findLibrary(database, c.req.param("libraryId"))
+    );
+
+    if (!library) {
+      return c.json(createApiError("NOT_FOUND", "Library not found."), 404);
+    }
+
+    if (library.kind !== "encrypted") {
+      return c.json(
+        createApiError(
+          "LIBRARY_NOT_ENCRYPTED",
+          "Books can be imported only into encrypted libraries."
+        ),
+        409
+      );
+    }
+
+    const encryptor = encryptedKeyring.get(library.id);
+
+    if (!encryptor) {
+      return c.json(
+        createApiError(
+          "LIBRARY_LOCKED",
+          "Unlock this library before importing."
+        ),
+        423
+      );
+    }
+
+    const source = c.req.raw.body;
+    const originalName = c.req.query("filename") ?? "";
+
+    if (!source || !originalName.trim()) {
+      return c.json(
+        createApiError(
+          "INVALID_INPUT",
+          "An uploaded book and filename are required."
+        ),
+        400
+      );
+    }
+
+    try {
+      const book = await withUploadedBook(
+        {
+          body: source,
+          originalName,
+          cacheDir: join(paths.cacheDir, "encrypted-library-imports"),
+          signal: c.req.raw.signal
+        },
+        (sourcePath, normalizedName) =>
+          withDatabase((database) =>
+            importEncryptedBook({
+              database,
+              library,
+              encryptor,
+              sourcePath,
+              originalName: normalizedName,
+              thumbnailDir: paths.thumbnailDir,
+              thumbnailsEnabled: readConfig().thumbnails.enabled,
+              signal: c.req.raw.signal
+            })
+          )
+      );
+
+      if (!book) {
+        throw new Error("Encrypted book persistence did not return a book.");
+      }
+
+      return c.json(libraryImportResponseSchema.parse({ book }), 201);
+    } catch (error) {
+      const code = getErrorCode(error);
+
+      if (code === "INVALID_INPUT") {
+        return c.json(
+          createApiError("INVALID_INPUT", "The uploaded filename is invalid."),
+          400
+        );
+      }
+
+      if (code === "UNSUPPORTED_BOOK_FORMAT") {
+        return c.json(
+          createApiError(
+            "UNSUPPORTED_BOOK_FORMAT",
+            "Only ZIP, CBZ, PDF, EPUB, RAR, CBR, and 7z files can be imported."
+          ),
+          415
+        );
+      }
+
+      console.error(error);
+      return c.json(
+        createApiError("IMPORT_FAILED", "The book could not be imported."),
+        500
+      );
+    }
   });
 
   app.get("/api/users/me/library-preference", async (c) =>
@@ -1015,6 +1237,34 @@ export const createApp = (options: AppOptions = {}) => {
         );
       }
 
+      if (source.library.kind === "encrypted") {
+        const encryptor = encryptedKeyring.get(source.library.id);
+
+        if (!encryptor) {
+          return c.json(
+            createApiError(
+              "LIBRARY_LOCKED",
+              "Unlock this library before reading."
+            ),
+            423
+          );
+        }
+
+        try {
+          return await createEncryptedSourceResponse({
+            request: c.req.raw,
+            library: source.library,
+            relativePath: source.book.relativePath,
+            encryptor
+          });
+        } catch {
+          return c.json(
+            createApiError("NOT_FOUND", "Book source not found."),
+            404
+          );
+        }
+      }
+
       try {
         const sourcePath = await resolveLibrarySource(
           source.library.canonicalRootPath,
@@ -1070,7 +1320,24 @@ export const createApp = (options: AppOptions = {}) => {
         return c.json(createApiError("NOT_FOUND", "Page not found."), 404);
       }
 
-      if (source.page.sourceType === "file" && source.page.relativePath) {
+      if (
+        source.library.kind === "encrypted" &&
+        !encryptedKeyring.isUnlocked(source.library.id)
+      ) {
+        return c.json(
+          createApiError(
+            "LIBRARY_LOCKED",
+            "Unlock this library before reading."
+          ),
+          423
+        );
+      }
+
+      if (
+        source.library.kind === "directory" &&
+        source.page.sourceType === "file" &&
+        source.page.relativePath
+      ) {
         try {
           const sourcePath = await resolveLibrarySource(
             source.library.canonicalRootPath,
@@ -1089,7 +1356,20 @@ export const createApp = (options: AppOptions = {}) => {
         }
       }
 
-      const image = await readPageImage(source, c.req.raw.signal);
+      const image =
+        source.library.kind === "encrypted"
+          ? await withDecryptedSource(
+              {
+                library: source.library,
+                relativePath: source.page.relativePath ?? "",
+                encryptor: encryptedKeyring.get(source.library.id)!,
+                cacheDir: join(paths.cacheDir, "encrypted-library-plaintext"),
+                signal: c.req.raw.signal
+              },
+              (sourcePath) =>
+                readPageImageFromPath(sourcePath, source.page, c.req.raw.signal)
+            ).catch(() => null)
+          : await readPageImage(source, c.req.raw.signal);
 
       if (!image) {
         return c.json(createApiError("NOT_FOUND", "Page not found."), 404);
@@ -1193,6 +1473,10 @@ export const createApp = (options: AppOptions = {}) => {
         return { status: "not-found" as const };
       }
 
+      if (library.kind === "encrypted") {
+        return { status: "not-supported" as const };
+      }
+
       if (
         listJobs(database, library.id).some(
           (item) => item.status === "queued" || item.status === "running"
@@ -1214,10 +1498,18 @@ export const createApp = (options: AppOptions = {}) => {
     if (job.status !== "created") {
       return job.status === "not-found"
         ? c.json(createApiError("NOT_FOUND", "Library not found."), 404)
-        : c.json(
-            createApiError("LIBRARY_BUSY", "Library has an active job."),
-            409
-          );
+        : job.status === "not-supported"
+          ? c.json(
+              createApiError(
+                "LIBRARY_NOT_ENCRYPTED",
+                "Encrypted libraries receive books through file import."
+              ),
+              409
+            )
+          : c.json(
+              createApiError("LIBRARY_BUSY", "Library has an active job."),
+              409
+            );
     }
 
     jobQueue.add(job.job.id, (signal) =>
@@ -1310,9 +1602,16 @@ const requireUserId = (context: Context): string => {
 /**
  * Converts an internal library record to its authenticated API representation.
  */
-const toLibraryResponse = (library: LibraryRecord) => ({
+const toLibraryResponse = (library: LibraryRecord, isUnlocked: boolean) => ({
   id: library.id,
   name: library.name,
+  kind: library.kind,
+  lockState:
+    library.kind === "encrypted"
+      ? isUnlocked
+        ? "unlocked"
+        : "locked"
+      : "not-applicable",
   rootPath: library.rootPath,
   createdAt: library.createdAt.toISOString(),
   updatedAt: library.updatedAt.toISOString()
@@ -1363,7 +1662,8 @@ const toScanFailureResponse = (failure: ScanFailureRecord) => ({
  * Validates and canonicalizes a server-side absolute library directory.
  */
 const validateLibraryRoot = async (
-  rootPath: string
+  rootPath: string,
+  writable = false
 ): Promise<{ rootPath: string; canonicalRootPath: string } | null> => {
   if (!isAbsolute(rootPath)) {
     return null;
@@ -1371,7 +1671,10 @@ const validateLibraryRoot = async (
 
   try {
     const resolvedRootPath = resolve(rootPath);
-    await access(resolvedRootPath, constants.R_OK);
+    await access(
+      resolvedRootPath,
+      constants.R_OK | (writable ? constants.W_OK : 0)
+    );
     const rootStat = await stat(resolvedRootPath);
 
     if (!rootStat.isDirectory()) {
@@ -1419,6 +1722,15 @@ const readPageImage = async (
     return null;
   }
 
+  return readPageImageFromPath(sourcePath, page, signal);
+};
+
+/** Reads or renders one page from an already-resolved plaintext source file. */
+const readPageImageFromPath = async (
+  sourcePath: string,
+  page: ReadPageImageInput["page"],
+  signal?: AbortSignal
+): Promise<Uint8Array | null> => {
   if (page.sourceType === "file") {
     try {
       return new Uint8Array(await readFile(sourcePath));
@@ -1603,6 +1915,16 @@ const handleLibraryDomainError = (
 
   throw error;
 };
+
+/** Extracts a stable library or BEC1 error code without exposing its message. */
+const getErrorCode = (error: unknown): string | null =>
+  error instanceof Error && "code" in error && typeof error.code === "string"
+    ? error.code
+    : null;
+
+/** Identifies a password authentication failure from the BEC1 package. */
+const isBec1AuthenticationFailure = (error: unknown): boolean =>
+  getErrorCode(error) === "AUTHENTICATION_FAILED";
 
 /**
  * Maps collection name conflicts to a stable API response.

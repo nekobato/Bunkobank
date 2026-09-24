@@ -307,6 +307,17 @@ describe("BEC1 container", () => {
       "new password"
     );
     expect(reopenedEncryptor.libraryId).toBe(libraryId);
+    const reopenedFirst = await reopenedEncryptor.openFile(firstContainerPath);
+    try {
+      expect(
+        await reopenedFirst.readRange({
+          start: 0,
+          endExclusive: firstContent.length
+        })
+      ).toEqual(firstContent);
+    } finally {
+      await reopenedFirst.close();
+    }
     await reopenedEncryptor.encryptFile({
       inputPath: secondInputPath,
       outputPath: secondContainerPath,

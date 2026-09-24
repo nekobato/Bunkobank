@@ -4,8 +4,8 @@
 
 import type { AppConfig } from "@bunkobank/config/shared";
 import { invoke } from "@tauri-apps/api/core";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
-import { openUrl as openExternalUrl } from "@tauri-apps/plugin-opener";
 import { Command } from "@tauri-apps/plugin-shell";
 import {
   disable as disableAutostart,
@@ -65,7 +65,7 @@ export interface TauriRuntimeBindings {
   invoke: RuntimeInvoke;
   createSidecar: (name: string, args: string[]) => RuntimeSidecarCommand;
   openDirectory: (multiple: boolean) => Promise<RuntimeDirectorySelection>;
-  openUrl: (url: string) => Promise<void>;
+  openAppWindow: (url: string) => Promise<void>;
   isAutostartEnabled: () => Promise<boolean>;
   enableAutostart: () => Promise<void>;
   disableAutostart: () => Promise<void>;
@@ -92,7 +92,7 @@ export interface TauriDesktopRuntime {
     onEvent?: (event: ManagedServerRuntimeEvent) => void
   ) => Promise<ManagedServerSpawnResult>;
   stopManagedServer: (pid: number) => Promise<void>;
-  openUrl: (url: string) => Promise<void>;
+  openAppWindow: (url: string) => Promise<void>;
   openLogDirectory: () => Promise<void>;
   readMacLaunchAgentPlist: () => Promise<string | null>;
   installMacLaunchAgent: (plist: string) => Promise<void>;
@@ -111,11 +111,39 @@ const defaultBindings: TauriRuntimeBindings = {
       multiple,
       title: multiple ? "Choose collection folders" : "Choose a folder"
     }),
-  openUrl: openExternalUrl,
+  openAppWindow: openBunkobankAppWindow,
   isAutostartEnabled,
   enableAutostart,
   disableAutostart
 };
+
+/** Opens the shared local Web UI in a reusable native Tauri window. */
+async function openBunkobankAppWindow(url: string): Promise<void> {
+  const existing = await WebviewWindow.getByLabel("bunkobank-library");
+
+  if (existing) {
+    await existing.show();
+    await existing.setFocus();
+    return;
+  }
+
+  const appWindow = new WebviewWindow("bunkobank-library", {
+    url,
+    title: "Bunkobank",
+    width: 1280,
+    height: 860,
+    minWidth: 900,
+    minHeight: 640,
+    resizable: true
+  });
+
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    void appWindow.once("tauri://created", () => resolvePromise());
+    void appWindow.once<string>("tauri://error", (event) =>
+      rejectPromise(new Error(event.payload))
+    );
+  });
+}
 
 /**
  * Creates the Tauri runtime adapter and its in-memory managed child registry.
@@ -191,7 +219,7 @@ export const createTauriDesktopRuntime = (
       getMultipleDirectories(await bindings.openDirectory(true)),
     spawnManagedServer,
     stopManagedServer,
-    openUrl: bindings.openUrl,
+    openAppWindow: bindings.openAppWindow,
     openLogDirectory: () => bindings.invoke("open_log_directory"),
     readMacLaunchAgentPlist: () =>
       bindings.invoke("read_mac_launch_agent_plist"),

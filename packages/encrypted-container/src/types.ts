@@ -77,6 +77,8 @@ export interface Bec1OpenContainer {
 export interface Bec1LibraryEncryptor {
   readonly libraryId: string;
   encryptFile(options: EncryptBec1FileOptions): Promise<Bec1ContainerInfo>;
+  /** Opens one same-library asset using only the retained in-memory key. */
+  openFile(inputPath: string): Promise<Bec1OpenContainer>;
   dispose(): void;
 }
 

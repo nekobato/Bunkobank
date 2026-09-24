@@ -19,9 +19,11 @@ import type {
   CollectionUpdateRequest,
   InitialSetupRequest,
   LibraryCreateRequest,
+  LibraryImportResponse,
   LibraryListResponse,
   LibraryPreferenceResponse,
   LibraryResponse,
+  LibraryUnlockRequest,
   LibraryUpdateRequest,
   NetworkSettingsResponse,
   ScanFailureListQuery,
@@ -83,6 +85,39 @@ export const useBookApi = () => {
       ...requestOptions,
       method: "DELETE"
     });
+
+  /** Unlocks one encrypted library for the current server process. */
+  const unlockLibrary = (libraryId: string, body: LibraryUnlockRequest) =>
+    $fetch<LibraryResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["unlock"]),
+      {
+        ...requestOptions,
+        method: "POST",
+        body
+      }
+    );
+
+  /** Clears one encrypted library's in-memory encryption key. */
+  const lockLibrary = (libraryId: string) =>
+    $fetch<LibraryResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["lock"]),
+      {
+        ...requestOptions,
+        method: "POST"
+      }
+    );
+
+  /** Uploads and imports one supported file into an unlocked encrypted library. */
+  const importLibraryBook = (libraryId: string, file: File) =>
+    $fetch<LibraryImportResponse>(
+      createLibraryApiPath(apiBase, libraryId, ["books", "import"]),
+      {
+        ...requestOptions,
+        method: "POST",
+        query: { filename: file.name },
+        body: file
+      }
+    );
 
   /** Fetches the current user's selected-library preference. */
   const getLibraryPreference = () =>
@@ -477,6 +512,9 @@ export const useBookApi = () => {
     listLibraries,
     listScanFailures,
     restoreBook,
+    lockLibrary,
+    unlockLibrary,
+    importLibraryBook,
     removeCollectionBook,
     reorderCollectionBooks,
     updateBookMetadata,

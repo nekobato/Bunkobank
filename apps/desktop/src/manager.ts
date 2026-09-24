@@ -954,7 +954,7 @@ export const createDesktopManagerController = (
   };
 
   /**
-   * Opens the Web UI only after Bunkobank health is confirmed.
+   * Opens the shared Web UI in a native app window after health is confirmed.
    */
   const openWebUi = async (): Promise<boolean> => {
     const rootUrl = state.server.status?.url.replace(/\/api\/health$/, "/");
@@ -966,7 +966,7 @@ export const createDesktopManagerController = (
     const url = state.setup.phase === "required" ? `${rootUrl}setup` : rootUrl;
 
     try {
-      await resolvedDependencies.runtime.openUrl(url);
+      await resolvedDependencies.runtime.openAppWindow(url);
       setState((current) => ({ ...current, error: null }));
       return true;
     } catch {
@@ -1131,6 +1131,11 @@ const setupApiErrorMessages = {
   SIGN_UP_DISABLED: "Account creation is disabled.",
   DATA_UNAVAILABLE: "Bunkobank data is unavailable.",
   LIBRARY_BUSY: "Library is busy.",
+  LIBRARY_LOCKED: "The encrypted library is locked.",
+  LIBRARY_NOT_ENCRYPTED: "This action requires an encrypted library.",
+  INVALID_LIBRARY_PASSWORD: "The library password is incorrect.",
+  UNSUPPORTED_BOOK_FORMAT: "The selected book format is unsupported.",
+  IMPORT_FAILED: "The book import failed.",
   LIBRARY_NAME_CONFLICT: "Library name is already in use.",
   LIBRARY_PATH_CONFLICT: "Library path overlaps another library.",
   COLLECTION_NAME_CONFLICT: "Collection name is already in use.",
