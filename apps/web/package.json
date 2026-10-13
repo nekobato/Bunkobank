@@ -7,8 +7,9 @@
     "dev": "nuxt dev --host 127.0.0.1 --port 3000",
     "build": "nuxt build",
     "generate": "nuxt generate",
-    "test": "nuxt prepare && vitest run --passWithNoTests",
-    "typecheck": "nuxt typecheck"
+    "test": "nuxt prepare && pnpm test:devtools && vitest run --passWithNoTests",
+    "typecheck": "nuxt typecheck",
+    "test:devtools": "node --test tests/devtools-compat.mjs"
   },
   "dependencies": {
     "@bunkobank/contracts": "workspace:*",

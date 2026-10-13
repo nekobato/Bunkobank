@@ -17,3 +17,8 @@ overrides:
   "sharp@>=0.35.0 <0.35.5": 0.35.5
   "shell-quote@>=1.8.4 <1.11.0": 1.11.0
   "vue@<3.5.42": 3.5.42
+  "@nuxt/devtools>simple-git": 4.0.1
+  "@simple-git/argv-parser@<2.0.1": 2.0.1
+
+patchedDependencies:
+  "@nuxt/devtools@3.4.1": patches/@nuxt__devtools@3.4.1.patch
