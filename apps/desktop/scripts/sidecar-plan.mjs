@@ -4,6 +4,28 @@
 
 import { join } from "node:path";
 
+/** Security-patched Node.js release used for new server sidecars. */
+export const sidecarNodeVersion = "24.22.1";
+
+/** Rejects an old or incompatible host/embedded Node.js runtime. */
+export const assertSidecarNodeVersion = (version) => {
+  const [major, minor, patch] = version.split(".").map(Number);
+  const [requiredMajor, requiredMinor, requiredPatch] = sidecarNodeVersion
+    .split(".")
+    .map(Number);
+
+  if (
+    !/^\d+\.\d+\.\d+$/u.test(version) ||
+    major !== requiredMajor ||
+    minor < requiredMinor ||
+    (minor === requiredMinor && patch < requiredPatch)
+  ) {
+    throw new Error(
+      `Enhanced SEA packaging requires Node.js ${sidecarNodeVersion} or a later 24.x release; received ${version}.`
+    );
+  }
+};
+
 const pkgPlatformByNodePlatform = Object.freeze({
   darwin: "macos",
   linux: "linux",
@@ -52,7 +74,7 @@ export const resolveRustTarget = ({ rustVersionOutput, tauriTargetTriple }) =>
  * Resolves the host-specific `pkg` target used by the Tauri sidecar.
  *
  * @param {{ platform: NodeJS.Platform; arch: string }} environment Host values.
- * @returns {string} A `pkg` target string pinned to Node.js 24.
+ * @returns {string} A `pkg` target string pinned to the patched Node.js release.
  */
 export const resolvePkgTarget = ({ platform, arch }) => {
   const pkgPlatform = pkgPlatformByNodePlatform[platform];
@@ -66,7 +88,7 @@ export const resolvePkgTarget = ({ platform, arch }) => {
     throw new Error(`Unsupported sidecar architecture: ${arch}`);
   }
 
-  return `node24-${pkgPlatform}-${pkgArch}`;
+  return `node${sidecarNodeVersion}-${pkgPlatform}-${pkgArch}`;
 };
 
 /**

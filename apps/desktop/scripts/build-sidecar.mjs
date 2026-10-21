@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 import {
+  assertSidecarNodeVersion,
   createSidecarDeployPlan,
   createSidecarPackagePlan,
   resolveRustHostArch,
@@ -61,14 +62,7 @@ const assertPrerequisites = () => {
     );
   }
 
-  const nodeMajor = Number.parseInt(
-    process.versions.node.split(".")[0] ?? "",
-    10
-  );
-
-  if (nodeMajor !== 24) {
-    throw new Error("Enhanced SEA packaging requires Node.js 24.x.");
-  }
+  assertSidecarNodeVersion(process.versions.node);
 };
 
 assertPrerequisites();
@@ -144,6 +138,21 @@ try {
   if (!sidecarStat.isFile() || sidecarStat.size === 0) {
     throw new Error(
       `Packaged sidecar is not a readable file: ${plan.outputPath}`
+    );
+  }
+
+  if (targetArch === process.arch) {
+    const runtime = JSON.parse(
+      execFileSync(plan.outputPath, ["--runtime-info"], {
+        encoding: "utf8",
+        timeout: 30_000
+      })
+    );
+    assertSidecarNodeVersion(runtime.node);
+    console.log(`Verified sidecar Node.js ${runtime.node}.`);
+  } else {
+    console.warn(
+      `Cross-compiled sidecar requires Node.js runtime verification on a ${targetArch} host.`
     );
   }
 

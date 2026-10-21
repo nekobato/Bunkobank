@@ -37,7 +37,7 @@ Linux installations use the Web UI and server without the Desktop Manager.
 
 ### Requirements
 
-- Node.js 24
+- Node.js 24.22.1 or a later 24.x release (sidecars embed Node.js 24.22.1)
 - pnpm 11
 
 ### Run Bunkobank
