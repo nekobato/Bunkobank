@@ -55,7 +55,10 @@ const startServer = (): void => {
   );
 };
 
-if (isPdfWorkerInvocation(process.argv.slice(2))) {
+if (process.argv.slice(2).includes("--runtime-info")) {
+  // Packaging checks must identify the embedded runtime without opening user state.
+  console.log(JSON.stringify({ node: process.versions.node }));
+} else if (isPdfWorkerInvocation(process.argv.slice(2))) {
   await runPdfWorker().catch(() => {
     process.exitCode = 1;
   });
