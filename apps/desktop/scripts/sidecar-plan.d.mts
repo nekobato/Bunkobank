@@ -1,7 +1,7 @@
 /** Pure build planning helpers for the packaged Bunkobank server sidecar. */
 
 /** Security-patched Node.js release used for new server sidecars. */
-export declare const sidecarNodeVersion: "24.22.1";
+export declare const sidecarNodeVersion: "26.12.1";
 
 /** Rejects an old or incompatible host/embedded Node.js runtime. */
 export declare const assertSidecarNodeVersion: (version: string) => void;
