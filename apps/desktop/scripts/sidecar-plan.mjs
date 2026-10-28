@@ -5,7 +5,7 @@
 import { join } from "node:path";
 
 /** Security-patched Node.js release used for new server sidecars. */
-export const sidecarNodeVersion = "24.22.1";
+export const sidecarNodeVersion = "26.12.1";
 
 /** Rejects an old or incompatible host/embedded Node.js runtime. */
 export const assertSidecarNodeVersion = (version) => {
@@ -21,7 +21,7 @@ export const assertSidecarNodeVersion = (version) => {
     (minor === requiredMinor && patch < requiredPatch)
   ) {
     throw new Error(
-      `Enhanced SEA packaging requires Node.js ${sidecarNodeVersion} or a later 24.x release; received ${version}.`
+      `Enhanced SEA packaging requires Node.js ${sidecarNodeVersion} or a later 26.x release; received ${version}.`
     );
   }
 };
