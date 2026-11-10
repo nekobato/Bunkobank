@@ -49,14 +49,14 @@ test("DevTools build naming keeps Git branch, revision and clean/dirty status", 
         "--eval",
         `
           import { createRequire } from "node:module";
-          const { simpleGit } = createRequire(process.argv[1])("simple-git");
-          const git = simpleGit(process.argv[2]);
-          const branch = await git.branch();
-          const revision = (await git.revparse(["--short", "HEAD"])).trim();
-          const clean = (await git.status()).isClean();
+          const { x } = await import(createRequire(process.argv[1]).resolve("tinyexec"));
+          const git = async (...args) => (await x("git", args, { nodeOptions: { cwd: process.argv[2] }, throwOnError: true })).stdout.trim();
+          const branch = await git("rev-parse", "--abbrev-ref", "HEAD");
+          const revision = await git("rev-parse", "--short", "HEAD");
+          const clean = (await git("status", "--porcelain")) === "";
           process.stdout.write(JSON.stringify({
-            branch: branch.current, revision, clean,
-            name: branch.current + "#" + revision + (clean ? "" : "-dirty")
+            branch: branch, revision, clean,
+            name: branch + "#" + revision + (clean ? "" : "-dirty")
           }));
         `,
         devtoolsManifest,
@@ -119,12 +119,12 @@ test("DevTools Git reads the actual project worktree", async () => {
     "--eval",
     `
       import { createRequire } from "node:module";
-      const { simpleGit } = createRequire(process.argv[1])("simple-git");
-      const git = simpleGit(process.argv[2]);
-      const branch = await git.branch();
-      const revision = (await git.revparse(["--short", "HEAD"])).trim();
-      const clean = (await git.status()).isClean();
-      process.stdout.write(JSON.stringify({ branch: branch.current, revision, clean }));
+      const { x } = await import(createRequire(process.argv[1]).resolve("tinyexec"));
+      const git = async (...args) => (await x("git", args, { nodeOptions: { cwd: process.argv[2] }, throwOnError: true })).stdout.trim();
+      const branch = await git("rev-parse", "--abbrev-ref", "HEAD");
+      const revision = await git("rev-parse", "--short", "HEAD");
+      const clean = (await git("status", "--porcelain")) === "";
+      process.stdout.write(JSON.stringify({ branch: branch, revision, clean }));
     `,
     devtoolsManifest,
     directory
