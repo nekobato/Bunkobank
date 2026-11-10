@@ -8,6 +8,7 @@
   },
   "include": [
     "src/auth.ts",
+    "src/auth.test.ts",
     "src/byte-range.ts",
     "src/byte-range.test.ts",
     "src/cli.ts",
