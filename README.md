@@ -37,7 +37,7 @@ Linux installations use the Web UI and server without the Desktop Manager.
 
 ### Requirements
 
-- Node.js 26.12.1 or a later 26.x release for development and Enhanced SEA sidecar packaging (sidecars embed Node.js 26.12.1)
+- Node.js 26.13.1 or a later 26.x release for development and Enhanced SEA sidecar packaging (sidecars embed Node.js 26.13.1)
 - pnpm 11
 
 ### Run Bunkobank
