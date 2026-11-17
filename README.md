@@ -33,6 +33,11 @@ Supported book formats:
 
 Linux installations use the Web UI and server without the Desktop Manager.
 
+## Download
+
+- [Download macOS / Apple Silicon DMG](https://github.com/nekobato/Bunkobank/releases/download/v2.0.3/Bunkobank_2.0.3_aarch64.dmg)
+- [Download macOS / Intel DMG](https://github.com/nekobato/Bunkobank/releases/download/v2.0.3/Bunkobank_2.0.3_x64.dmg)
+
 ## Quick start
 
 ### Requirements
