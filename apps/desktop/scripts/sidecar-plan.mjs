@@ -5,7 +5,7 @@
 import { join } from "node:path";
 
 /** Security-patched Node.js release used for new server sidecars. */
-export const sidecarNodeVersion = "26.12.1";
+export const sidecarNodeVersion = "26.13.1";
 
 /** Rejects an old or incompatible host/embedded Node.js runtime. */
 export const assertSidecarNodeVersion = (version) => {
