@@ -33,31 +33,10 @@ Supported book formats:
 
 Linux installations use the Web UI and server without the Desktop Manager.
 
-## Installation
+## Download
 
-### macOS
-
-The latest release, [v2.0.3](https://github.com/nekobato/Bunkobank/releases/tag/v2.0.3), provides these signed and notarized installers for macOS 13 or later:
-
-| Mac | Download |
-| --- | --- |
-| Apple Silicon | [Bunkobank_2.0.3_aarch64.dmg](https://github.com/nekobato/Bunkobank/releases/download/v2.0.3/Bunkobank_2.0.3_aarch64.dmg) |
-| Intel | [Bunkobank_2.0.3_x64.dmg](https://github.com/nekobato/Bunkobank/releases/download/v2.0.3/Bunkobank_2.0.3_x64.dmg) |
-
-Open the DMG and install Bunkobank. If upgrading from BookCafe, back up your data first:
-the old data directory and macOS LaunchAgent are not migrated automatically. See the
-[release notes](https://github.com/nekobato/Bunkobank/releases/tag/v2.0.3) before upgrading.
-
-### Windows and Linux
-
-Release v2.0.3 does not include Windows or Linux binaries. To run the Web UI and
-server from source, clone this repository and follow [Quick start](#quick-start)
-below. Linux uses the Web UI and server without the Desktop Manager.
-
-For the Windows Desktop Manager, the source-build command is
-`pnpm --filter @bunkobank/app tauri:build` after installing the dependencies and
-Tauri's Rust and Windows build prerequisites. This is a source-build path, not a
-published Windows installer or a claim of verified Windows operation.
+- [Download macOS / Apple Silicon DMG](https://github.com/nekobato/Bunkobank/releases/download/v2.0.3/Bunkobank_2.0.3_aarch64.dmg)
+- [Download macOS / Intel DMG](https://github.com/nekobato/Bunkobank/releases/download/v2.0.3/Bunkobank_2.0.3_x64.dmg)
 
 ## Quick start
 
